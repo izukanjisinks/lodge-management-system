@@ -1,0 +1,12 @@
+# Environment
+.env
+
+# Binaries
+bin/
+*.exe
+*.out
+
+# Go
+vendor/
+
+#docs

@@ -16,12 +16,13 @@ import (
 
 type UserService struct {
 	repo                  *repository.UserRepository
+	roleRepo              *repository.RoleRepository
 	passwordPolicyService *PasswordPolicyService
 	emailService          *email.EmailService
 }
 
-func NewUserService(repo *repository.UserRepository) *UserService {
-	return &UserService{repo: repo}
+func NewUserService(repo *repository.UserRepository, roleRepo *repository.RoleRepository) *UserService {
+	return &UserService{repo: repo, roleRepo: roleRepo}
 }
 
 func (s *UserService) SetEmailService(emailService *email.EmailService) {
@@ -47,6 +48,7 @@ func (s *UserService) Register(user *models.User) error {
 		}
 	}
 
+	plainPassword := user.Password
 	hashed, err := utils.HashPassword(user.Password)
 	if err != nil {
 		return err
@@ -55,6 +57,15 @@ func (s *UserService) Register(user *models.User) error {
 	user.IsActive = true
 	now := time.Now()
 	user.PasswordChangedAt = &now
+
+	if user.RoleName != "" {
+		role, err := s.roleRepo.GetRoleByName(user.RoleName)
+		if err != nil {
+			return fmt.Errorf("role %q not found: %w", user.RoleName, err)
+		}
+		user.RoleID = &role.RoleID
+		user.Role = role
+	}
 
 	if s.passwordPolicyService != nil {
 		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
@@ -66,6 +77,17 @@ func (s *UserService) Register(user *models.User) error {
 
 	if s.passwordPolicyService != nil {
 		_ = s.passwordPolicyService.RecordPasswordChange(user.UserID, hashed)
+	}
+
+	if s.emailService != nil {
+		userEmail := user.Email
+		fullName := user.FullName
+		go func() {
+			htmlBody := email.WelcomeUserTemplate(fullName, userEmail, plainPassword)
+			if err := s.emailService.SendEmail([]string{userEmail}, "Welcome to Lodge Management System", htmlBody); err != nil {
+				fmt.Printf("WARNING: Failed to send welcome email to %s: %v\n", userEmail, err)
+			}
+		}()
 	}
 
 	return nil
@@ -100,11 +122,11 @@ func (s *UserService) Login(emailAddr, pwd string) (map[string]interface{}, erro
 		return nil, errors.New("invalid email or password")
 	}
 
-	if s.passwordPolicyService != nil {
-		user.FailedLoginAttempts = 0
-		user.LockedUntil = nil
-		_ = s.repo.Update(user)
-	}
+	now := time.Now()
+	user.FailedLoginAttempts = 0
+	user.LockedUntil = nil
+	user.LastLoginAt = &now
+	_ = s.repo.Update(user)
 
 	var passwordExpired bool
 	var passwordExpiringSoon bool
@@ -188,6 +210,65 @@ func (s *UserService) UpdateUser(updates *models.User) (*models.User, error) {
 		return nil, err
 	}
 	return s.repo.GetUserByID(existing.UserID)
+}
+
+// UpdateUserFull handles the frontend PUT /users/{id} payload: full_name, email, role name, status, optional password.
+func (s *UserService) UpdateUserFull(id uuid.UUID, fullName, email, pwd, roleName, status string) (*models.User, error) {
+	user, err := s.repo.GetUserByID(id)
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	if fullName != "" {
+		user.FullName = fullName
+	}
+
+	if email != "" && email != user.Email {
+		exists, err := s.repo.EmailExists(email)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, errors.New("email already in use")
+		}
+		user.Email = email
+	}
+
+	if roleName != "" {
+		role, err := s.roleRepo.GetRoleByName(roleName)
+		if err != nil {
+			return nil, fmt.Errorf("role %q not found: %w", roleName, err)
+		}
+		user.RoleID = &role.RoleID
+	}
+
+	if status != "" {
+		user.IsActive = status != "inactive"
+	}
+
+	if pwd != "" {
+		if s.passwordPolicyService != nil {
+			if err := s.passwordPolicyService.ValidateNewPassword(id, pwd, user.Password); err != nil {
+				return nil, err
+			}
+		}
+		hashed, err := utils.HashPassword(pwd)
+		if err != nil {
+			return nil, err
+		}
+		user.Password = hashed
+		now := time.Now()
+		user.PasswordChangedAt = &now
+		if s.passwordPolicyService != nil {
+			user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
+			_ = s.passwordPolicyService.RecordPasswordChange(id, hashed)
+		}
+	}
+
+	if err := s.repo.Update(user); err != nil {
+		return nil, err
+	}
+	return s.repo.GetUserByID(id)
 }
 
 func (s *UserService) GetByEmail(emailAddr string) (*models.User, error) {

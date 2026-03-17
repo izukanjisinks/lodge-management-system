@@ -19,12 +19,44 @@ func NewUserHandler(service *services.UserService) *UserHandler {
 	return &UserHandler{service: service}
 }
 
+
+func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		FullName string `json:"full_name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+		Status   string `json:"status"`
+	}
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.FullName == "" || req.Email == "" || req.Password == "" || req.Role == "" {
+		utils.RespondError(w, http.StatusBadRequest, "full_name, email, password, and role are required")
+		return
+	}
+
+	user := &models.User{
+		FullName: req.FullName,
+		Email:    req.Email,
+		Password: req.Password,
+		RoleName: req.Role,
+		IsActive: req.Status != "inactive",
+	}
+
+	if err := h.service.Register(user); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, userResponse(user))
+}
+
 func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	// Parse pagination
 	pag := utils.ParsePagination(r)
 	search := r.URL.Query().Get("search")
 
-	// Parse role_id filter
 	var roleID *uuid.UUID
 	if roleIDStr := r.URL.Query().Get("role_id"); roleIDStr != "" {
 		if id, err := uuid.Parse(roleIDStr); err == nil {
@@ -32,16 +64,10 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Parse is_active filter
 	var isActive *bool
 	if activeStr := r.URL.Query().Get("is_active"); activeStr != "" {
-		if activeStr == "true" {
-			val := true
-			isActive = &val
-		} else if activeStr == "false" {
-			val := false
-			isActive = &val
-		}
+		val := activeStr == "true"
+		isActive = &val
 	}
 
 	users, total, err := h.service.ListUsers(search, roleID, isActive, pag.Page, pag.PageSize)
@@ -50,13 +76,13 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear sensitive password data
+	data := make([]map[string]interface{}, len(users))
 	for i := range users {
-		users[i].Password = ""
+		data[i] = userResponse(&users[i])
 	}
 
 	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
-		Data:     users,
+		Data:     data,
 		Page:     pag.Page,
 		PageSize: pag.PageSize,
 		Total:    total,
@@ -64,8 +90,7 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := uuid.Parse(idStr)
+	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid user ID")
 		return
@@ -77,10 +102,35 @@ func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear sensitive password data
-	user.Password = ""
+	utils.RespondJSON(w, http.StatusOK, userResponse(user))
+}
 
-	utils.RespondJSON(w, http.StatusOK, user)
+func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	var req struct {
+		FullName string `json:"full_name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+		Status   string `json:"status"`
+	}
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	user, err := h.service.UpdateUserFull(id, req.FullName, req.Email, req.Password, req.Role, req.Status)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, userResponse(user))
 }
 
 func (h *UserHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
@@ -89,13 +139,11 @@ func (h *UserHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	user.Password = ""
-	utils.RespondJSON(w, http.StatusOK, user)
+	utils.RespondJSON(w, http.StatusOK, userResponse(user))
 }
 
 func (h *UserHandler) ChangeRole(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := uuid.Parse(idStr)
+	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid user ID")
 		return
@@ -104,13 +152,8 @@ func (h *UserHandler) ChangeRole(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RoleID string `json:"role_id"`
 	}
-	if err := utils.DecodeJson(r, &req); err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	if req.RoleID == "" {
-		utils.RespondError(w, http.StatusBadRequest, "Role ID is required")
+	if err := utils.DecodeJson(r, &req); err != nil || req.RoleID == "" {
+		utils.RespondError(w, http.StatusBadRequest, "role_id is required")
 		return
 	}
 
@@ -126,13 +169,11 @@ func (h *UserHandler) ChangeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user.Password = ""
-	utils.RespondJSON(w, http.StatusOK, user)
+	utils.RespondJSON(w, http.StatusOK, userResponse(user))
 }
 
 func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := uuid.Parse(idStr)
+	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid user ID")
 		return
@@ -143,14 +184,11 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusOK, map[string]string{
-		"message": "User deleted successfully",
-	})
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
 }
 
 func (h *UserHandler) Lock(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := uuid.Parse(idStr)
+	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid user ID")
 		return
@@ -161,14 +199,11 @@ func (h *UserHandler) Lock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusOK, map[string]string{
-		"message": "User account locked successfully",
-	})
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "User account locked successfully"})
 }
 
 func (h *UserHandler) Unlock(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := uuid.Parse(idStr)
+	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid user ID")
 		return
@@ -179,7 +214,6 @@ func (h *UserHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusOK, map[string]string{
-		"message": "User account unlocked successfully",
-	})
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "User account unlocked successfully"})
 }
+

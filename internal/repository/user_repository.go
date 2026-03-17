@@ -22,22 +22,22 @@ func NewUserRepository() *UserRepository {
 
 func (r *UserRepository) Create(user *models.User) error {
 	query := `
-		INSERT INTO users (user_id, email, password, role_id, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO users (user_id, full_name, email, password, role_id, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	user.UserID = uuid.New()
 	now := time.Now()
 	user.CreatedAt = now
 	user.UpdatedAt = now
 	_, err := r.db.Exec(query,
-		user.UserID, user.Email, user.Password, user.RoleID, user.IsActive, user.CreatedAt, user.UpdatedAt)
+		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.IsActive, user.CreatedAt, user.UpdatedAt)
 	return err
 }
 
 func (r *UserRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 	query := `
-		SELECT u.user_id, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
+		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
-		       u.failed_login_attempts, u.is_locked, u.locked_until,
+		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
 		       r.role_id, r.name, r.description
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
@@ -48,9 +48,9 @@ func (r *UserRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 
 func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 	query := `
-		SELECT u.user_id, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
+		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
-		       u.failed_login_attempts, u.is_locked, u.locked_until,
+		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
 		       r.role_id, r.name, r.description
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
@@ -61,9 +61,9 @@ func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 
 func (r *UserRepository) GetAllUsers() ([]models.User, error) {
 	query := `
-		SELECT u.user_id, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
+		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
-		       u.failed_login_attempts, u.is_locked, u.locked_until,
+		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
 		       r.role_id, r.name, r.description
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
@@ -129,9 +129,9 @@ func (r *UserRepository) List(search string, roleID *uuid.UUID, isActive *bool, 
 	// Get paginated results
 	args = append(args, pageSize, (page-1)*pageSize)
 	query := fmt.Sprintf(`
-		SELECT u.user_id, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
+		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
-		       u.failed_login_attempts, u.is_locked, u.locked_until,
+		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
 		       r.role_id, r.name, r.description
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
@@ -159,16 +159,16 @@ func (r *UserRepository) List(search string, roleID *uuid.UUID, isActive *bool, 
 
 func (r *UserRepository) Update(user *models.User) error {
 	query := `
-		UPDATE users SET email = $1, role_id = $2, is_active = $3, updated_at = $4,
-		       password = $5, change_password = $6, password_changed_at = $7,
-		       password_expires_at = $8, failed_login_attempts = $9,
-		       is_locked = $10, locked_until = $11
-		WHERE user_id = $12`
+		UPDATE users SET full_name = $1, email = $2, role_id = $3, is_active = $4, updated_at = $5,
+		       password = $6, change_password = $7, password_changed_at = $8,
+		       password_expires_at = $9, failed_login_attempts = $10,
+		       is_locked = $11, locked_until = $12, last_login_at = $13
+		WHERE user_id = $14`
 	_, err := r.db.Exec(query,
-		user.Email, user.RoleID, user.IsActive, time.Now(),
+		user.FullName, user.Email, user.RoleID, user.IsActive, time.Now(),
 		user.Password, user.ChangePassword, user.PasswordChangedAt,
 		user.PasswordExpiresAt, user.FailedLoginAttempts,
-		user.IsLocked, user.LockedUntil, user.UserID,
+		user.IsLocked, user.LockedUntil, user.LastLoginAt, user.UserID,
 	)
 	return err
 }
@@ -204,12 +204,12 @@ func (r *UserRepository) scanUser(row rowScanner) (*models.User, error) {
 	var u models.User
 	var roleID sql.NullString
 	var rRoleID, rName, rDesc sql.NullString
-	var passwordChangedAt, passwordExpiresAt, lockedUntil sql.NullTime
+	var passwordChangedAt, passwordExpiresAt, lockedUntil, lastLoginAt sql.NullTime
 
 	err := row.Scan(
-		&u.UserID, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+		&u.UserID, &u.FullName, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
 		&u.ChangePassword, &passwordChangedAt, &passwordExpiresAt,
-		&u.FailedLoginAttempts, &u.IsLocked, &lockedUntil,
+		&u.FailedLoginAttempts, &u.IsLocked, &lockedUntil, &lastLoginAt,
 		&rRoleID, &rName, &rDesc,
 	)
 	if err != nil {
@@ -231,6 +231,10 @@ func (r *UserRepository) scanUser(row rowScanner) (*models.User, error) {
 
 	if lockedUntil.Valid {
 		u.LockedUntil = &lockedUntil.Time
+	}
+
+	if lastLoginAt.Valid {
+		u.LastLoginAt = &lastLoginAt.Time
 	}
 
 	if rRoleID.Valid {

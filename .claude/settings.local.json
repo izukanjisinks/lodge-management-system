@@ -8,7 +8,17 @@
       "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\" -type f -name \"*.vue\" -o -name \"*.ts\")",
       "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\" -name \"*.ts\" -path \"*/stores/*\" -o -path \"*/types/*\")",
       "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\\\\services\" -type f)",
-      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\" -maxdepth 2 -name \"index.ts\" -o -name \"router.ts\")"
+      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\" -maxdepth 2 -name \"index.ts\" -o -name \"router.ts\")",
+      "Bash(go build:*)",
+      "Bash(ls -la \"c:/development/New folder \\(3\\)/src/\")",
+      "Bash(find \"c:/development/New folder \\(3\\)/src/views\" \"c:/development/New folder \\(3\\)/src/components\" -type f \\\\\\( -name \"*user*\" -o -name \"*register*\" -o -name \"*create*\" -o -name \"*staff*\" -o -name \"*employee*\" \\\\\\))",
+      "Bash(ls -la \"c:/development/New folder \\(3\\)/src/views\")",
+      "Bash(find 'c:/development/New folder \\(3\\)/src/views/admin' -type f)",
+      "Bash(find \"c:/development/New folder \\(3\\)/src/components\" -type f)",
+      "Bash(find \"c:/development/New folder \\(3\\)/src/views/auth\" -type f)",
+      "Bash(find \"c:/development/New folder \\(3\\)/src/types\" -type f)",
+      "Bash(find \"c:/development/New folder \\(3\\)/src\" -name \"*validat*\" -o -name \"*rule*\")",
+      "Bash(grep -r \"SystemUserPayload\\\\|createUser\\\\|register\" 'c:/development/New folder \\(3\\)/src' --include=*.ts --include=*.vue)"
     ]
   }
 }

@@ -14,6 +14,7 @@ func RegisterAuthRoutes(authHandler *handlers.AuthHandler) {
 	http.HandleFunc("POST /api/v1/auth/logout",
 		withAuth(authHandler.Logout))
 
+	// Keep /auth/register for backward compat
 	http.HandleFunc("POST /api/v1/auth/register",
 		withAuthAndRole(authHandler.Register, models.RoleAdmin))
 }

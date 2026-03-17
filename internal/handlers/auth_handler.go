@@ -97,17 +97,35 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user models.User
-	if err := utils.DecodeJson(r, &user); err != nil {
+	var req struct {
+		FullName string `json:"full_name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+		Status   string `json:"status"`
+	}
+	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if req.FullName == "" || req.Email == "" || req.Password == "" || req.Role == "" {
+		utils.RespondError(w, http.StatusBadRequest, "full_name, email, password, and role are required")
+		return
+	}
 
-	if err := h.userService.Register(&user); err != nil {
+	user := &models.User{
+		FullName: req.FullName,
+		Email:    req.Email,
+		Password: req.Password,
+		RoleName: req.Role,
+		IsActive: req.Status != "inactive",
+	}
+
+	if err := h.userService.Register(user); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	user.Password = ""
-	utils.RespondJSON(w, http.StatusCreated, user)
+	utils.RespondJSON(w, http.StatusCreated, userResponse(user))
 }
+

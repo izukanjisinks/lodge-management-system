@@ -31,6 +31,7 @@ func main() {
 
 	// Repositories
 	userRepo := repository.NewUserRepository()
+	roleRepo := repository.NewRoleRepository()
 
 	workflowRepo := repository.NewWorkflowRepository()
 	instanceRepo := repository.NewWorkflowInstanceRepository()
@@ -41,8 +42,8 @@ func main() {
 	passwordHistoryRepo := repositories.NewPasswordHistoryRepository()
 
 	// Services
-	roleService := services.NewRoleService(userRepo)
-	userService := services.NewUserService(userRepo)
+	roleService := services.NewRoleService(userRepo, roleRepo)
+	userService := services.NewUserService(userRepo, roleRepo)
 
 	passwordPolicyService := services.NewPasswordPolicyService(passwordPolicyRepo, passwordHistoryRepo)
 	log.Println("Password policy service initialized")

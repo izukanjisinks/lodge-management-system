@@ -7,15 +7,16 @@ import (
 
 type RoleService struct {
 	userRepo *repository.UserRepository
+	roleRepo *repository.RoleRepository
 }
 
-func NewRoleService(userRepo *repository.UserRepository) *RoleService {
-	return &RoleService{userRepo: userRepo}
+func NewRoleService(userRepo *repository.UserRepository, roleRepo *repository.RoleRepository) *RoleService {
+	return &RoleService{userRepo: userRepo, roleRepo: roleRepo}
 }
 
 func (s *RoleService) InitializePredefinedRoles() error {
 	for _, r := range models.GetPredefinedRoles() {
-		_, err := s.userRepo.GetRoleByName(r.Name)
+		_, err := s.roleRepo.GetRoleByName(r.Name)
 		if err != nil {
 			if err := s.userRepo.CreateRole(&r); err != nil {
 				return err
@@ -23,4 +24,8 @@ func (s *RoleService) InitializePredefinedRoles() error {
 		}
 	}
 	return nil
+}
+
+func (s *RoleService) GetAllRoles() ([]models.Role, error) {
+	return s.roleRepo.GetAllRoles()
 }

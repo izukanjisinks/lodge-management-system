@@ -8,10 +8,14 @@ import (
 
 type User struct {
 	UserID               uuid.UUID  `json:"user_id"`
+	FullName             string     `json:"full_name"`
 	Email                string     `json:"email"`
 	Password             string     `json:"-"`
 	RoleID               *uuid.UUID `json:"role_id,omitempty"`
 	Role                 *Role      `json:"role,omitempty"`
+	// RoleName is accepted on create/update requests to resolve the role by name.
+	// It is never persisted directly; the service resolves it to RoleID.
+	RoleName             string     `json:"role_name,omitempty"`
 	IsActive             bool       `json:"is_active"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
@@ -21,6 +25,7 @@ type User struct {
 	FailedLoginAttempts  int        `json:"-"` // Never expose in JSON
 	IsLocked             bool       `json:"is_locked"`
 	LockedUntil          *time.Time `json:"locked_until,omitempty"`
+	LastLoginAt          *time.Time `json:"last_login,omitempty"`
 }
 
 // HasPermission checks role-based access using lodge role names.

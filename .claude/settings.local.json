@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs wc -l)"
+      "Bash(xargs wc -l)",
+      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\" -type f -not -path \"*/node_modules/*\")",
+      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\" -type f)",
+      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\docs\" -type f)",
+      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\" -type f -name \"*.vue\" -o -name \"*.ts\")",
+      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\" -name \"*.ts\" -path \"*/stores/*\" -o -path \"*/types/*\")",
+      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\\\\services\" -type f)",
+      "Bash(find \"C:\\\\development\\\\New folder \\(3\\)\\\\src\" -maxdepth 2 -name \"index.ts\" -o -name \"router.ts\")"
     ]
   }
 }

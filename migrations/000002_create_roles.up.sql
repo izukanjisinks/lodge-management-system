@@ -7,10 +7,10 @@ CREATE TABLE IF NOT EXISTS roles (
 );
 
 INSERT INTO roles (name, description) VALUES
-    ('super_admin', 'Full system access'),
-    ('hr_manager',  'Manage employees, payroll, recruitment, leave'),
-    ('manager',     'Approve leave, view team attendance, review team'),
-    ('employee',    'Self-service access')
+    ('admin',        'Full system access — manages users, rooms, bookings, and configuration'),
+    ('manager',      'Oversees operations — approves bookings, views reports, manages rooms'),
+    ('receptionist', 'Front-desk staff — handles bookings, clients, and invoices'),
+    ('cleaner',      'Housekeeping staff — views assigned rooms and cleaning schedule')
 ON CONFLICT (name) DO NOTHING;
 
 ALTER TABLE users

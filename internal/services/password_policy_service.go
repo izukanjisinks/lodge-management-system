@@ -7,8 +7,8 @@ import (
 	"time"
 	"unicode"
 
-	"hr-system/internal/models"
-	"hr-system/internal/repositories"
+	"lodge-system/internal/models"
+	"lodge-system/internal/repositories"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"

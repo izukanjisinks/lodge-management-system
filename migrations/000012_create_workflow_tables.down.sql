@@ -1,0 +1,10 @@
+DROP TRIGGER IF EXISTS trg_assigned_tasks_updated_at ON assigned_tasks;
+DROP TRIGGER IF EXISTS trg_workflow_instances_updated_at ON workflow_instances;
+DROP TRIGGER IF EXISTS trg_workflows_updated_at ON workflows;
+DROP FUNCTION IF EXISTS update_updated_at_column();
+DROP TABLE IF EXISTS workflow_history;
+DROP TABLE IF EXISTS assigned_tasks;
+DROP TABLE IF EXISTS workflow_instances;
+DROP TABLE IF EXISTS workflow_transitions;
+DROP TABLE IF EXISTS workflow_steps;
+DROP TABLE IF EXISTS workflows;

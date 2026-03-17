@@ -3,7 +3,7 @@ package routes
 import (
 	"net/http"
 
-	"hr-system/internal/handlers"
+	"lodge-system/internal/handlers"
 )
 
 func RegisterPublicRoutes(authHandler *handlers.AuthHandler) {

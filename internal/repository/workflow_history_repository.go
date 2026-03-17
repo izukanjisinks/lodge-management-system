@@ -3,8 +3,8 @@ package repository
 import (
 	"database/sql"
 
-	"hr-system/internal/database"
-	"hr-system/internal/models"
+	"lodge-system/internal/database"
+	"lodge-system/internal/models"
 
 	"github.com/google/uuid"
 )

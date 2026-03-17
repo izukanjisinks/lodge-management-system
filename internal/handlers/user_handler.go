@@ -3,10 +3,10 @@ package handlers
 import (
 	"net/http"
 
-	"hr-system/internal/middleware"
-	"hr-system/internal/models"
-	"hr-system/internal/services"
-	"hr-system/pkg/utils"
+	"lodge-system/internal/middleware"
+	"lodge-system/internal/models"
+	"lodge-system/internal/services"
+	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
@@ -89,14 +89,8 @@ func (h *UserHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-
-	profile, err := h.service.GetProfile(user.UserID)
-	if err != nil {
-		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve profile")
-		return
-	}
-
-	utils.RespondJSON(w, http.StatusOK, profile)
+	user.Password = ""
+	utils.RespondJSON(w, http.StatusOK, user)
 }
 
 func (h *UserHandler) ChangeRole(w http.ResponseWriter, r *http.Request) {

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"hr-system/internal/repository"
-	"hr-system/pkg/utils"
+	"lodge-system/internal/repository"
+	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )

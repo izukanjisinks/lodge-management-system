@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"hr-system/pkg/utils"
+	"lodge-system/pkg/utils"
 	"net/http"
 )
 

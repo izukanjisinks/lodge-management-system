@@ -3,8 +3,8 @@ package routes
 import (
 	"net/http"
 
-	"hr-system/internal/handlers"
-	"hr-system/internal/models"
+	"lodge-system/internal/handlers"
+	"lodge-system/internal/models"
 )
 
 func RegisterAuthRoutes(authHandler *handlers.AuthHandler) {
@@ -15,5 +15,5 @@ func RegisterAuthRoutes(authHandler *handlers.AuthHandler) {
 		withAuth(authHandler.Logout))
 
 	http.HandleFunc("POST /api/v1/auth/register",
-		withAuthAndRole(authHandler.Register, models.RoleSuperAdmin, models.RoleHRManager))
+		withAuthAndRole(authHandler.Register, models.RoleAdmin))
 }

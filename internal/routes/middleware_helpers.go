@@ -3,7 +3,7 @@ package routes
 import (
 	"net/http"
 
-	"hr-system/internal/middleware"
+	"lodge-system/internal/middleware"
 )
 
 func withAuth(handler http.HandlerFunc) http.HandlerFunc {

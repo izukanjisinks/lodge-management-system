@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"hr-system/internal/database"
-	"hr-system/internal/models"
+	"lodge-system/internal/database"
+	"lodge-system/internal/models"
 
 	"github.com/google/uuid"
 )
@@ -243,6 +243,26 @@ func (r *UserRepository) scanUser(row rowScanner) (*models.User, error) {
 	}
 
 	return &u, nil
+}
+
+func (r *UserRepository) CreateRole(role *models.Role) error {
+	role.RoleID = uuid.New()
+	_, err := r.db.Exec(
+		`INSERT INTO roles (role_id, name, description) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING`,
+		role.RoleID, role.Name, role.Description,
+	)
+	return err
+}
+
+func (r *UserRepository) GetRoleByName(name string) (*models.Role, error) {
+	var role models.Role
+	err := r.db.QueryRow(
+		`SELECT role_id, name, description, created_at, updated_at FROM roles WHERE name = $1`, name,
+	).Scan(&role.RoleID, &role.Name, &role.Description, &role.CreatedAt, &role.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &role, nil
 }
 
 // GetUserWithFewestTasksByRole finds a user with the specified role who has the fewest pending tasks

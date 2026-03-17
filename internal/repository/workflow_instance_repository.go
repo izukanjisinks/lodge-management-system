@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"hr-system/internal/database"
-	"hr-system/internal/models"
+	"lodge-system/internal/database"
+	"lodge-system/internal/models"
 
 	"github.com/google/uuid"
 )

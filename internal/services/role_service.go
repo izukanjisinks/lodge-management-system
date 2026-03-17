@@ -1,53 +1,26 @@
 package services
 
 import (
-	"hr-system/internal/models"
-	"hr-system/internal/repository"
-
-	"github.com/google/uuid"
+	"lodge-system/internal/models"
+	"lodge-system/internal/repository"
 )
 
 type RoleService struct {
-	repo *repository.RoleRepository
+	userRepo *repository.UserRepository
 }
 
-func NewRoleService(repo *repository.RoleRepository) *RoleService {
-	return &RoleService{repo: repo}
+func NewRoleService(userRepo *repository.UserRepository) *RoleService {
+	return &RoleService{userRepo: userRepo}
 }
 
 func (s *RoleService) InitializePredefinedRoles() error {
 	for _, r := range models.GetPredefinedRoles() {
-		_, err := s.repo.GetByName(r.Name)
+		_, err := s.userRepo.GetRoleByName(r.Name)
 		if err != nil {
-			// Role doesn't exist — create it
-			if err := s.repo.Create(&r); err != nil {
+			if err := s.userRepo.CreateRole(&r); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
-}
-
-func (s *RoleService) CreateRole(role *models.Role) error {
-	return s.repo.Create(role)
-}
-
-func (s *RoleService) GetRoleByID(id uuid.UUID) (*models.Role, error) {
-	return s.repo.GetByID(id)
-}
-
-func (s *RoleService) GetRoleByName(name string) (*models.Role, error) {
-	return s.repo.GetByName(name)
-}
-
-func (s *RoleService) GetAllRoles() ([]models.Role, error) {
-	return s.repo.GetAll()
-}
-
-func (s *RoleService) UpdateRole(role *models.Role) error {
-	return s.repo.Update(role)
-}
-
-func (s *RoleService) DeleteRole(id uuid.UUID) error {
-	return s.repo.Delete(id)
 }

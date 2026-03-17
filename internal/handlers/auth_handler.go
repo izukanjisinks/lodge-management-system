@@ -3,10 +3,10 @@ package handlers
 import (
 	"net/http"
 
-	"hr-system/internal/middleware"
-	"hr-system/internal/models"
-	"hr-system/internal/services"
-	"hr-system/pkg/utils"
+	"lodge-system/internal/middleware"
+	"lodge-system/internal/models"
+	"lodge-system/internal/services"
+	"lodge-system/pkg/utils"
 )
 
 type AuthHandler struct {

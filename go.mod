@@ -1,4 +1,4 @@
-module hr-system
+module lodge-system
 
 go 1.25.3
 

@@ -1,39 +1,31 @@
 package routes
 
 import (
-	"hr-system/internal/handlers"
-	"hr-system/internal/models"
 	"net/http"
+
+	"lodge-system/internal/handlers"
+	"lodge-system/internal/models"
 )
 
 func RegisterWorkflowRoutes(h *handlers.WorkflowHandler) {
-	// Get my tasks (all or filtered by status)
-	// Query param: ?status=pending
 	http.HandleFunc("GET /api/v1/workflow/my-tasks",
-		withAuthAndRole(h.GetMyTasks, models.RoleSuperAdmin, models.RoleHRManager, models.RoleManager))
+		withAuthAndRole(h.GetMyTasks, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
-	// Get only pending tasks
 	http.HandleFunc("GET /api/v1/workflow/my-tasks/pending",
-		withAuthAndRole(h.GetMyPendingTasks, models.RoleSuperAdmin, models.RoleHRManager, models.RoleManager))
+		withAuthAndRole(h.GetMyPendingTasks, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
-	// Get specific task details with full context
 	http.HandleFunc("GET /api/v1/workflow/tasks/{id}",
-		withAuthAndRole(h.GetTaskDetails, models.RoleSuperAdmin, models.RoleHRManager, models.RoleManager))
+		withAuthAndRole(h.GetTaskDetails, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
-	// Initiate a new workflow (typically called by other services, not directly by users)
 	http.HandleFunc("POST /api/v1/workflow/instances",
-		withAuthAndRole(h.InitiateWorkflow, models.RoleSuperAdmin, models.RoleHRManager))
+		withAuthAndRole(h.InitiateWorkflow, models.RoleAdmin, models.RoleManager))
 
-	// Get workflow instance by task ID (e.g., leave request ID)
-	// This needs to come before the {id} routes to avoid conflicts
 	http.HandleFunc("GET /api/v1/workflow/task/{task_id}/instance",
-		withAuthAndRole(h.GetInstanceByTaskID, models.RoleSuperAdmin, models.RoleHRManager, models.RoleManager))
+		withAuthAndRole(h.GetInstanceByTaskID, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
-	// Process an action on a workflow instance
-	// Body: {"action": "approve", "comments": "Looks good"}
 	http.HandleFunc("POST /api/v1/workflow/instances/{id}/action",
-		withAuthAndRole(h.ProcessAction, models.RoleSuperAdmin, models.RoleHRManager, models.RoleManager))
+		withAuthAndRole(h.ProcessAction, models.RoleAdmin, models.RoleManager))
 
-	// Get workflow instance history
-	http.HandleFunc("GET /api/v1/workflow/instances/{id}/history", withAuthAndRole(h.GetInstanceHistory, models.RoleSuperAdmin, models.RoleHRManager, models.RoleManager))
+	http.HandleFunc("GET /api/v1/workflow/instances/{id}/history",
+		withAuthAndRole(h.GetInstanceHistory, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 }

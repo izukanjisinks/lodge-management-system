@@ -3,11 +3,11 @@ package handlers
 import (
 	"net/http"
 
-	"hr-system/internal/middleware"
-	"hr-system/internal/models"
-	"hr-system/internal/services"
-	"hr-system/internal/utils/password"
-	"hr-system/pkg/utils"
+	"lodge-system/internal/middleware"
+	"lodge-system/internal/models"
+	"lodge-system/internal/services"
+	"lodge-system/internal/utils/password"
+	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
@@ -45,7 +45,7 @@ func (h *PasswordPolicyHandler) UpdatePasswordPolicy(w http.ResponseWriter, r *h
 	}
 
 	// Check if user has permission
-	if user.Role == nil || (user.Role.Name != models.RoleSuperAdmin && user.Role.Name != models.RoleHRManager) {
+	if user.Role == nil || (user.Role.Name != models.RoleAdmin) {
 		utils.RespondError(w, http.StatusForbidden, "Insufficient permissions to update password policy")
 		return
 	}
@@ -134,7 +134,7 @@ func (h *PasswordPolicyHandler) ResetUserPassword(w http.ResponseWriter, r *http
 		return
 	}
 
-	if user.Role == nil || (user.Role.Name != models.RoleSuperAdmin && user.Role.Name != models.RoleHRManager) {
+	if user.Role == nil || (user.Role.Name != models.RoleAdmin) {
 		utils.RespondError(w, http.StatusForbidden, "Insufficient permissions to reset passwords")
 		return
 	}

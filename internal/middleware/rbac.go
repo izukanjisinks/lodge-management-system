@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"hr-system/internal/models"
+	"lodge-system/internal/models"
 )
 
 func RequirePermission(permission string) func(http.Handler) http.Handler {

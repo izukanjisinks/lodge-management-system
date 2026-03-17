@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"hr-system/internal/middleware"
-	"hr-system/internal/models"
-	"hr-system/internal/services"
+	"lodge-system/internal/middleware"
+	"lodge-system/internal/models"
+	"lodge-system/internal/services"
 )
 
 type WorkflowHandler struct {

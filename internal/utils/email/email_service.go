@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"hr-system/internal/config"
+	"lodge-system/internal/config"
 )
 
 type EmailService struct {

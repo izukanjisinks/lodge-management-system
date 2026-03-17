@@ -3,26 +3,23 @@ package routes
 import (
 	"net/http"
 
-	"hr-system/internal/handlers"
-	"hr-system/internal/models"
+	"lodge-system/internal/handlers"
+	"lodge-system/internal/models"
 )
 
-func RegisterPasswordPolicyRoutes(handler *handlers.PasswordPolicyHandler) {
-	// Password policy management routes (authenticated)
+func RegisterPasswordPolicyRoutes(h *handlers.PasswordPolicyHandler) {
 	http.HandleFunc("GET /api/v1/password-policy",
-		withAuthAndRole(handler.GetPasswordPolicy, models.RoleSuperAdmin, models.RoleHRManager))
+		withAuthAndRole(h.GetPasswordPolicy, models.RoleAdmin))
 
 	http.HandleFunc("PUT /api/v1/password-policy",
-		withAuthAndRole(handler.UpdatePasswordPolicy, models.RoleSuperAdmin, models.RoleHRManager))
+		withAuthAndRole(h.UpdatePasswordPolicy, models.RoleAdmin))
 
-	// Password change routes (authenticated)
 	http.HandleFunc("POST /api/v1/auth/change-password",
-		withAuth(handler.ChangePassword))
+		withAuth(h.ChangePassword))
 
-	http.HandleFunc("POST /api/v1/auth/reset-password",
-		withAuthAndRole(handler.ResetUserPassword, models.RoleSuperAdmin, models.RoleHRManager))
+	http.HandleFunc("GET /api/v1/auth/generate-password",
+		withAuth(h.GeneratePassword))
 
-	// Password generation route (accessible to authenticated users)
-	http.HandleFunc("GET /api/v1/password-policy/generate",
-		withAuth(handler.GeneratePassword))
+	http.HandleFunc("POST /api/v1/admin/users/{id}/reset-password",
+		withAuthAndRole(h.ResetUserPassword, models.RoleAdmin))
 }

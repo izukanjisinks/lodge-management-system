@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"hr-system/internal/middleware"
-	"hr-system/internal/models"
-	"hr-system/internal/repository"
+	"lodge-system/internal/middleware"
+	"lodge-system/internal/models"
+	"lodge-system/internal/repository"
 )
 
 type WorkflowAdminHandler struct {

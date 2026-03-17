@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS meals;
+DROP TYPE IF EXISTS meal_type;

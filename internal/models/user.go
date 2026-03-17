@@ -23,46 +23,47 @@ type User struct {
 	LockedUntil          *time.Time `json:"locked_until,omitempty"`
 }
 
-// HasPermission checks role-based access using HR role names.
-// The permission string follows the format "resource:action" or just a role name.
+// HasPermission checks role-based access using lodge role names.
+// The permission string follows the format "resource:action".
 func (u *User) HasPermission(permission string) bool {
 	if u.Role == nil {
 		return false
 	}
 	switch u.Role.Name {
-	case RoleSuperAdmin:
+	case RoleAdmin:
 		return true
-	case RoleHRManager:
-		// HR managers can do everything except super_admin-only operations
-		restricted := map[string]bool{
-			"roles:delete": true,
-			"users:delete": true,
-		}
-		return !restricted[permission]
 	case RoleManager:
 		allowed := map[string]bool{
-			"employees:read":       true,
-			"leave_requests:read":  true,
-			"leave_requests:approve": true,
-			"attendance:read":      true,
-			"performance:read":     true,
-			"performance:write":    true,
-			"goals:read":           true,
-			"goals:write":          true,
+			"rooms:read":     true,
+			"rooms:write":    true,
+			"bookings:read":  true,
+			"bookings:write": true,
+			"bookings:approve": true,
+			"invoices:read":  true,
+			"invoices:write": true,
+			"clients:read":   true,
+			"clients:write":  true,
+			"reports:read":   true,
+			"cleaning:read":  true,
+			"cleaning:write": true,
 		}
 		return allowed[permission]
-	case RoleEmployee:
-		selfService := map[string]bool{
-			"own_profile:read":     true,
-			"own_profile:write":    true,
-			"leave_requests:write": true,
-			"leave_balances:read":  true,
-			"attendance:write":     true,
-			"payslips:read":        true,
-			"performance:self":     true,
-			"goals:write":          true,
+	case RoleReceptionist:
+		allowed := map[string]bool{
+			"rooms:read":     true,
+			"bookings:read":  true,
+			"bookings:write": true,
+			"invoices:read":  true,
+			"clients:read":   true,
+			"clients:write":  true,
 		}
-		return selfService[permission]
+		return allowed[permission]
+	case RoleCleaner:
+		allowed := map[string]bool{
+			"rooms:read":    true,
+			"cleaning:read": true,
+		}
+		return allowed[permission]
 	}
 	return false
 }

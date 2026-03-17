@@ -1,7 +1,7 @@
 -include .env
 export
 
-APP_NAME=hr-system
+APP_NAME=lodge-system
 MAIN=./cmd/api/main.go
 MIGRATE_DIR=./migrations
 DB_URL=postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)

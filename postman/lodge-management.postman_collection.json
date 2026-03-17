@@ -1,0 +1,809 @@
+{
+  "info": {
+    "name": "Lodge Management System",
+    "description": "API collection for the Lodge Management System backend. Phase 1 endpoints: Auth, Users, Password Policy, Workflow Engine.\n\nBase URL: {{base_url}}\nSet `token` variable after login — all authenticated requests use it automatically via collection auth.",
+    "_postman_id": "lodge-management-system-v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workflow_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "instance_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "task_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "step_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transition_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Public health check. Returns 200 OK when the server is running."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('token', res.token);",
+                  "  console.log('Token saved:', res.token.substring(0, 20) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@lodge.dev\",\n  \"password\": \"Admin@123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Authenticate with email and password. On success, the test script saves the token to the `token` collection variable automatically."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User (Me)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Returns the currently authenticated user's details decoded from the JWT."
+          },
+          "response": []
+        },
+        {
+          "name": "Register User (Admin only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"manager@lodge.dev\",\n  \"password\": \"Manager@123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Create a new user account. Requires admin role. The role can be assigned afterwards via `POST /admin/users/{id}/role`."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout"]
+            },
+            "description": "JWT is stateless — logout is handled client-side by discarding the token. This endpoint returns a confirmation message."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"Admin@123\",\n  \"new_password\": \"NewAdmin@456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "change-password"]
+            },
+            "description": "Change the authenticated user's own password. Validates against the active password policy (history, complexity)."
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Password Suggestion",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/generate-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "generate-password"]
+            },
+            "description": "Returns a randomly generated password that satisfies the active password policy."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "profile"]
+            },
+            "description": "Returns the authenticated user's profile. Available to all roles."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin — Users",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "20" },
+                { "key": "search", "value": "", "disabled": true, "description": "Filter by email (partial match)" },
+                { "key": "role_id", "value": "", "disabled": true, "description": "Filter by role UUID" },
+                { "key": "is_active", "value": "true", "disabled": true, "description": "Filter by active status: true | false" }
+              ]
+            },
+            "description": "Paginated list of all users. Supports optional filters: search (email), role_id, is_active."
+          },
+          "response": []
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}"]
+            },
+            "description": "Get a single user by their UUID. Set `user_id` variable first."
+          },
+          "response": []
+        },
+        {
+          "name": "Change User Role",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role_id\": \"<role-uuid>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}/role",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}", "role"]
+            },
+            "description": "Assign a role to a user. Role IDs can be obtained from the seeded roles table. Lodge roles: admin, manager, receptionist, cleaner."
+          },
+          "response": []
+        },
+        {
+          "name": "Lock User Account",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}/lock",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}", "lock"]
+            },
+            "description": "Permanently lock a user account until an admin explicitly unlocks it."
+          },
+          "response": []
+        },
+        {
+          "name": "Unlock User Account",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}/unlock",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}", "unlock"]
+            },
+            "description": "Unlock a locked user account and reset their failed login attempt counter."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset User Password",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}", "reset-password"]
+            },
+            "description": "Generate a temporary password for a user and send it to their email. Forces password change on next login."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}"]
+            },
+            "description": "Permanently delete a user. Use with caution."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin — Password Policy",
+      "item": [
+        {
+          "name": "Get Password Policy",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/password-policy",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "password-policy"]
+            },
+            "description": "Get the current global password policy configuration."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Password Policy",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_length\": 8,\n  \"require_uppercase\": true,\n  \"require_lowercase\": true,\n  \"require_numbers\": true,\n  \"require_special_chars\": true,\n  \"max_failed_attempts\": 5,\n  \"lockout_duration_mins\": 30,\n  \"password_expiry_days\": 90,\n  \"otp_length\": 6,\n  \"otp_expiry_mins\": 5,\n  \"session_timeout_mins\": 30\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/password-policy",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "password-policy"]
+            },
+            "description": "Update the global password policy. All fields optional — only provided fields are updated."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin — Workflow Engine",
+      "item": [
+        {
+          "name": "Get Available Workflow Types",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-types"]
+            },
+            "description": "Returns the list of supported workflow type constants (e.g. booking_approval)."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Workflow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('workflow_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Booking Approval\",\n  \"description\": \"Standard workflow for approving guest bookings\",\n  \"type\": \"booking_approval\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows"]
+            },
+            "description": "Create a new workflow template. Saves returned `id` to `workflow_id` variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Workflows",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows"]
+            },
+            "description": "List all workflow templates."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Workflow by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows/{{workflow_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}"]
+            },
+            "description": "Get a single workflow template by ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Workflow Structure",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows/{{workflow_id}}/structure",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}", "structure"]
+            },
+            "description": "Returns the complete workflow structure — all steps and transitions in one response."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Workflow",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Booking Approval (Updated)\",\n  \"description\": \"Updated description\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows/{{workflow_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}"]
+            },
+            "description": "Update a workflow template's name, description, or active status."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Workflow",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows/{{workflow_id}}/deactivate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}", "deactivate"]
+            },
+            "description": "Soft-delete: marks the workflow as inactive. Existing instances continue to completion."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Workflow",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows/{{workflow_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}"]
+            },
+            "description": "Permanently delete a workflow template and all its steps/transitions."
+          },
+          "response": []
+        },
+        {
+          "name": "Steps — Create Step",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('step_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workflow_id\": \"{{workflow_id}}\",\n  \"step_name\": \"Pending Review\",\n  \"step_order\": 2,\n  \"initial\": false,\n  \"final\": false,\n  \"allowed_roles\": [\"manager\"],\n  \"requires_all_approvers\": false,\n  \"min_approvals\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-steps",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-steps"]
+            },
+            "description": "Add a step to a workflow. `step_order` 1 = initial submission step, higher = subsequent approval steps. Set `initial: true` for step 1, `final: true` for the last approval step. Saves returned `id` to `step_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Steps — Get Step by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-steps/{{step_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-steps", "{{step_id}}"]
+            },
+            "description": "Get a single workflow step."
+          },
+          "response": []
+        },
+        {
+          "name": "Steps — Get All Steps for Workflow",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows/{{workflow_id}}/steps",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}", "steps"]
+            },
+            "description": "List all steps for a workflow, ordered by step_order."
+          },
+          "response": []
+        },
+        {
+          "name": "Steps — Update Step",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"step_name\": \"Manager Review\",\n  \"allowed_roles\": [\"manager\", \"admin\"],\n  \"min_approvals\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-steps/{{step_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-steps", "{{step_id}}"]
+            },
+            "description": "Update an existing workflow step."
+          },
+          "response": []
+        },
+        {
+          "name": "Steps — Delete Step",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-steps/{{step_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-steps", "{{step_id}}"]
+            },
+            "description": "Delete a workflow step. Also removes all transitions referencing this step."
+          },
+          "response": []
+        },
+        {
+          "name": "Steps — Get Valid Transitions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-steps/{{step_id}}/transitions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-steps", "{{step_id}}", "transitions"]
+            },
+            "description": "List all transitions that originate from this step."
+          },
+          "response": []
+        },
+        {
+          "name": "Transitions — Create Transition",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('transition_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workflow_id\": \"{{workflow_id}}\",\n  \"from_step_id\": \"<from-step-uuid>\",\n  \"to_step_id\": \"<to-step-uuid>\",\n  \"action_name\": \"approve\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-transitions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-transitions"]
+            },
+            "description": "Define a valid transition between two steps. `action_name` is what the user calls when performing the action (e.g. `approve`, `reject`, `confirm`). Saves returned `id` to `transition_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Transitions — Get All for Workflow",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflows/{{workflow_id}}/transitions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}", "transitions"]
+            },
+            "description": "List all transitions for a workflow."
+          },
+          "response": []
+        },
+        {
+          "name": "Transitions — Update Transition",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action_name\": \"approve\",\n  \"condition_type\": \"user_role\",\n  \"condition_value\": \"manager\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-transitions/{{transition_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-transitions", "{{transition_id}}"]
+            },
+            "description": "Update a workflow transition."
+          },
+          "response": []
+        },
+        {
+          "name": "Transitions — Delete Transition",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/workflow-transitions/{{transition_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "workflow-transitions", "{{transition_id}}"]
+            },
+            "description": "Delete a workflow transition."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflow — Task Inbox",
+      "item": [
+        {
+          "name": "Get My Tasks",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/workflow/my-tasks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workflow", "my-tasks"],
+              "query": [
+                { "key": "status", "value": "pending", "disabled": true, "description": "Filter by status: pending | in_progress | completed" }
+              ]
+            },
+            "description": "Get all workflow tasks assigned to the authenticated user. Optionally filter by status."
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Pending Tasks",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/workflow/my-tasks/pending",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workflow", "my-tasks", "pending"]
+            },
+            "description": "Shortcut to get only pending tasks for the authenticated user."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/workflow/tasks/{{task_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workflow", "tasks", "{{task_id}}"]
+            },
+            "description": "Get full details of a specific assigned task including the associated workflow instance context."
+          },
+          "response": []
+        },
+        {
+          "name": "Initiate Workflow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('instance_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workflow_type\": \"booking_approval\",\n  \"task_details\": {\n    \"task_id\": \"<booking-uuid>\",\n    \"task_type\": \"booking\",\n    \"task_description\": \"New booking request from John Doe\",\n    \"sender_details\": {\n      \"sender_id\": \"<user-uuid>\",\n      \"sender_name\": \"John Doe\"\n    }\n  },\n  \"priority\": \"medium\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/workflow/instances",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workflow", "instances"]
+            },
+            "description": "Start a new workflow instance for a given workflow type. Saves returned instance `id` to `instance_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Process Action on Instance",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\",\n  \"comments\": \"Looks good, approved.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/workflow/instances/{{instance_id}}/action",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workflow", "instances", "{{instance_id}}", "action"]
+            },
+            "description": "Perform an action on a workflow instance (e.g. `approve`, `reject`). The action must match a valid transition from the current step. Only users with a role listed in the step's `allowed_roles` can act."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Instance by Task ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/workflow/task/{{task_id}}/instance",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workflow", "task", "{{task_id}}", "instance"]
+            },
+            "description": "Find the workflow instance associated with a specific business task ID (e.g. a booking UUID)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Instance History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/workflow/instances/{{instance_id}}/history",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workflow", "instances", "{{instance_id}}", "history"]
+            },
+            "description": "Get the full audit trail of actions taken on a workflow instance."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

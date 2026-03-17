@@ -1,65 +1,32 @@
-# Seed User Credentials
+# Dev Seed Credentials
 
-This document lists all user accounts created by the seed script (`make seed`). These credentials are for **development and testing only**.
+> For development and testing only. Do not use in production.
 
-## Admin Users
+## System Users
 
-| Email | Password | Role | Description |
-|-------|----------|------|-------------|
-| admin@hr-system.com | `Admin@123` | Super Admin | Full system access |
-| hr.manager@hr-system.com | `HrManager@123` | HR Manager | Manage employees, leave, payroll, recruitment |
+| Email | Password | Role | How seeded |
+|---|---|---|---|
+| admin@lodge.dev | Admin@123 | admin | Seeded at startup by `main.go` (`SeedSuperAdmin`) |
+| manager@lodge.dev | Manager@123 | manager | Migration `000014_seed_dev_users` |
+| receptionist@lodge.dev | Reception@123 | receptionist | Migration `000014_seed_dev_users` |
+| cleaner@lodge.dev | Cleaner@123 | cleaner | Migration `000014_seed_dev_users` |
 
-## Manager Users
-
-| Email | Password | Role | Department |
-|-------|----------|------|------------|
-| eng.manager@hr-system.com | `Manager@123` | Manager | Engineering |
-| fin.manager@hr-system.com | `Manager@123` | Manager | Finance |
-| sales.manager@hr-system.com | `Manager@123` | Manager | Sales & Marketing |
-| ops.manager@hr-system.com | `Manager@123` | Manager | Operations |
-
-## Employee Users
-
-All employee accounts use the same password: **`Employee@123`**
-
-| Email | Employee Name | Department | Position |
-|-------|---------------|------------|----------|
-| alice.smith@hr-system.com | Alice Smith | Backend Engineering | Software Engineer II |
-| bob.jones@hr-system.com | Bob Jones | Backend Engineering | Senior Software Engineer |
-| carol.white@hr-system.com | Carol White | Backend Engineering | Software Engineer I |
-| david.brown@hr-system.com | David Brown | Frontend Engineering | Senior Frontend Engineer |
-| eve.davis@hr-system.com | Eve Davis | Frontend Engineering | Frontend Engineer |
-| frank.miller@hr-system.com | Frank Miller | Talent Acquisition (HR) | Talent Acquisition Specialist |
-| grace.wilson@hr-system.com | Grace Wilson | Payroll (HR) | Payroll Specialist |
-| henry.moore@hr-system.com | Henry Moore | Accounting (Finance) | Senior Accountant |
-| iris.taylor@hr-system.com | Iris Taylor | Sales | Account Executive |
-| jack.anderson@hr-system.com | Jack Anderson | Marketing (Sales) | Marketing Specialist |
-
-## Quick Reference
+## Running Migrations
 
 ```bash
-# Super Admin
-Email:    admin@hr-system.com
-Password: Admin@123
+# Apply all migrations
+make migrate-up
 
-# HR Manager
-Email:    hr.manager@hr-system.com
-Password: HrManager@123
+# Roll back all
+make migrate-down
 
-# Department Managers
-Email:    {eng|fin|sales|ops}.manager@hr-system.com
-Password: Manager@123
-
-# Regular Employees
-Email:    {firstname}.{lastname}@hr-system.com
-Password: Employee@123
+# Roll back one step
+migrate -path ./migrations -database "postgres://postgres:<password>@localhost:5432/lodge-management-system?sslmode=disable" down 1
 ```
 
-## Security Notes
+## Database
 
-⚠️ **WARNING:** These are development credentials only. In production:
-- Use strong, unique passwords for each user
-- Enforce password complexity requirements
-- Implement password rotation policies
-- Enable multi-factor authentication
-- Never commit real credentials to version control
+- **DB Name:** `lodge-management-system`
+- **Connection:** configured via `.env` (see `.env.example`)
+
+> **Note:** The `admin@lodge.dev` user is NOT created by a migration — it is seeded automatically every time the server starts via `SeedSuperAdmin` in `main.go`. Run `make migrate-up` first, then `make run`.

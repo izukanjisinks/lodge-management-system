@@ -46,9 +46,11 @@ CREATE INDEX idx_password_history_user_id ON password_history(user_id);
 -- Track failed login attempts and password change requirement on users
 ALTER TABLE users
     ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS is_locked             BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS locked_until          TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS last_login_at         TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS password_changed_at   TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS password_expires_at   TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS change_password        BOOLEAN NOT NULL DEFAULT FALSE;
 
 COMMENT ON TABLE password_policies IS 'Password policy configuration. NULL organization_id = global default.';

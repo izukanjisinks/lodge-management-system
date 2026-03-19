@@ -11,12 +11,13 @@ import (
 )
 
 type BookingService struct {
-	repo *repository.BookingRepository
-	room *repository.RoomRepository
+	repo     *repository.BookingRepository
+	room     *repository.RoomRepository
+	mealPlan *repository.MealPlanRepository
 }
 
-func NewBookingService(repo *repository.BookingRepository, room *repository.RoomRepository) *BookingService {
-	return &BookingService{repo: repo, room: room}
+func NewBookingService(repo *repository.BookingRepository, room *repository.RoomRepository, mealPlan *repository.MealPlanRepository) *BookingService {
+	return &BookingService{repo: repo, room: room, mealPlan: mealPlan}
 }
 
 func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
@@ -66,11 +67,20 @@ func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingReque
 		return nil, errors.New("client already has an active booking for this room on the selected dates")
 	}
 
+	// Validate meal plan exists if provided
+	if req.MealPlanID != nil {
+		_, err := s.mealPlan.GetByID(*req.MealPlanID)
+		if err != nil {
+			return nil, errors.New("meal plan not found")
+		}
+	}
+
 	b := &models.Booking{
 		UserID:          userID,
 		RoomID:          req.RoomID,
 		ClientID:        req.ClientID,
 		ClientType:      req.ClientType,
+		MealPlanID:      req.MealPlanID,
 		CheckIn:         req.CheckIn,
 		CheckOut:        req.CheckOut,
 		Guests:          req.Guests,
@@ -80,7 +90,8 @@ func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingReque
 	if err := s.repo.Create(b); err != nil {
 		return nil, err
 	}
-	return b, nil
+	// Fetch back to get client_name and meal_plan_name resolved via JOINs
+	return s.repo.GetByID(b.ID)
 }
 
 func (s *BookingService) GetByID(id uuid.UUID) (*models.Booking, error) {
@@ -113,6 +124,17 @@ func (s *BookingService) Update(id uuid.UUID, req *models.UpdateBookingRequest) 
 	}
 	if req.SpecialRequests != nil {
 		b.SpecialRequests = *req.SpecialRequests
+	}
+	if req.MealPlanID != nil {
+		if *req.MealPlanID == uuid.Nil {
+			b.MealPlanID = nil // explicitly removing the meal plan
+		} else {
+			_, err := s.mealPlan.GetByID(*req.MealPlanID)
+			if err != nil {
+				return nil, errors.New("meal plan not found")
+			}
+			b.MealPlanID = req.MealPlanID
+		}
 	}
 
 	if !b.CheckOut.After(b.CheckIn) {

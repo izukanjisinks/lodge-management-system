@@ -25,7 +25,18 @@ func (r *BookingRepository) Create(b *models.Booking) error {
 	now := time.Now()
 	b.CreatedAt = now
 	b.UpdatedAt = now
-	_, err := r.db.Exec(`
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	_, err = tx.Exec(`
 		INSERT INTO bookings
 		    (id, user_id, room_id, client_id, client_type, check_in, check_out, guests, status, special_requests, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
@@ -33,7 +44,22 @@ func (r *BookingRepository) Create(b *models.Booking) error {
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
 		b.CreatedAt, b.UpdatedAt,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if b.MealPlanID != nil {
+		_, err = tx.Exec(`
+			INSERT INTO booking_meal_plans (booking_id, meal_plan_id, guests)
+			VALUES ($1, $2, $3)`,
+			b.ID, *b.MealPlanID, b.Guests,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *BookingRepository) GetByID(id uuid.UUID) (*models.Booking, error) {
@@ -43,11 +69,14 @@ func (r *BookingRepository) GetByID(id uuid.UUID) (*models.Booking, error) {
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
+		       bmp.meal_plan_id, mp.name AS meal_plan_name,
 		       b.check_in, b.check_out, b.guests, b.status, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
-		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
+		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN booking_meal_plans  bmp ON bmp.booking_id = b.id
+		LEFT JOIN meal_plans          mp  ON mp.id = bmp.meal_plan_id
 		WHERE b.id = $1`, id)
 	return scanBooking(row)
 }
@@ -90,11 +119,14 @@ func (r *BookingRepository) List(status, clientType string, clientID *uuid.UUID,
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
+		       bmp.meal_plan_id, mp.name AS meal_plan_name,
 		       b.check_in, b.check_out, b.guests, b.status, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
-		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
+		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN booking_meal_plans  bmp ON bmp.booking_id = b.id
+		LEFT JOIN meal_plans          mp  ON mp.id = bmp.meal_plan_id
 		WHERE %s
 		ORDER BY b.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
@@ -116,13 +148,44 @@ func (r *BookingRepository) List(status, clientType string, clientID *uuid.UUID,
 
 func (r *BookingRepository) Update(b *models.Booking) error {
 	b.UpdatedAt = time.Now()
-	_, err := r.db.Exec(`
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	_, err = tx.Exec(`
 		UPDATE bookings
 		SET check_in=$1, check_out=$2, guests=$3, special_requests=$4, updated_at=$5
 		WHERE id=$6`,
 		b.CheckIn, b.CheckOut, b.Guests, b.SpecialRequests, b.UpdatedAt, b.ID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Replace meal plan — delete existing then insert new if provided
+	_, err = tx.Exec(`DELETE FROM booking_meal_plans WHERE booking_id=$1`, b.ID)
+	if err != nil {
+		return err
+	}
+	if b.MealPlanID != nil {
+		_, err = tx.Exec(`
+			INSERT INTO booking_meal_plans (booking_id, meal_plan_id, guests)
+			VALUES ($1, $2, $3)`,
+			b.ID, *b.MealPlanID, b.Guests,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 // UpdateStatusTx updates the booking status and the room's availability atomically.
@@ -227,9 +290,11 @@ type bookingScanner interface {
 
 func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
-	var clientName, specialRequests sql.NullString
+	var clientName, mealPlanName, specialRequests sql.NullString
+	var mealPlanID uuid.NullUUID
 	err := row.Scan(
 		&b.ID, &b.UserID, &b.RoomID, &b.ClientID, &b.ClientType, &clientName,
+		&mealPlanID, &mealPlanName,
 		&b.CheckIn, &b.CheckOut, &b.Guests, &b.Status, &specialRequests,
 		&b.CreatedAt, &b.UpdatedAt,
 	)
@@ -238,6 +303,12 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	}
 	if clientName.Valid {
 		b.ClientName = clientName.String
+	}
+	if mealPlanID.Valid {
+		b.MealPlanID = &mealPlanID.UUID
+	}
+	if mealPlanName.Valid {
+		b.MealPlanName = mealPlanName.String
 	}
 	if specialRequests.Valid {
 		b.SpecialRequests = specialRequests.String

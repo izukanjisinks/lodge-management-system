@@ -23,6 +23,7 @@
     { "key": "individual_client_id",  "value": "", "type": "string" },
     { "key": "corporate_client_id",   "value": "", "type": "string" },
     { "key": "booking_id",            "value": "", "type": "string" },
+    { "key": "meal_plan_id",          "value": "", "type": "string" },
     { "key": "workflow_id",   "value": "", "type": "string" },
     { "key": "instance_id",   "value": "", "type": "string" },
     { "key": "task_id",       "value": "", "type": "string" },
@@ -797,6 +798,103 @@
               "path": ["api", "v1", "bookings", "{{booking_id}}"]
             },
             "description": "Permanently delete a booking. Not allowed when status is checked_in. Requires admin or manager role."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Meal Plans",
+      "item": [
+        {
+          "name": "List Meal Plans",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/meal-plans?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "meal-plans"],
+              "query": [
+                { "key": "page",      "value": "1" },
+                { "key": "page_size", "value": "20" },
+                { "key": "is_active", "value": "true", "disabled": true, "description": "true | false" }
+              ]
+            },
+            "description": "Paginated list of all meal plans. Filter by is_active. Available to all authenticated staff."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Meal Plan by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/meal-plans/{{meal_plan_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
+            },
+            "description": "Get a single meal plan by UUID."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Meal Plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('meal_plan_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Full Board\",\n  \"price_per_person_per_night\": 85.00,\n  \"includes\": [\"Breakfast\", \"Lunch\", \"Dinner\"],\n  \"description\": \"Three meals a day included\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/meal-plans",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "meal-plans"]
+            },
+            "description": "Create a new meal plan. Requires admin or manager role. Saves returned `id` to `meal_plan_id` variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Meal Plan",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price_per_person_per_night\": 90.00,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/meal-plans/{{meal_plan_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
+            },
+            "description": "Update a meal plan. All fields optional. Requires admin or manager role."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Meal Plan",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/meal-plans/{{meal_plan_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
+            },
+            "description": "Permanently delete a meal plan. Requires admin or manager role."
           },
           "response": []
         }

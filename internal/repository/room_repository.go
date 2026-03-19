@@ -1,0 +1,183 @@
+package repository
+
+import (
+	"database/sql"
+	"fmt"
+	"strings"
+	"time"
+
+	"lodge-system/internal/database"
+	"lodge-system/internal/models"
+
+	"github.com/google/uuid"
+	"github.com/lib/pq"
+)
+
+type RoomRepository struct {
+	db *sql.DB
+}
+
+func NewRoomRepository() *RoomRepository {
+	return &RoomRepository{db: database.DB}
+}
+
+func (r *RoomRepository) Create(room *models.Room) error {
+	room.ID = uuid.New()
+	now := time.Now()
+	room.CreatedAt = now
+	room.UpdatedAt = now
+	_, err := r.db.Exec(`
+		INSERT INTO rooms (id, name, type, capacity, price_per_night, amenities, is_available, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		room.ID, room.Name, room.Type, room.Capacity, room.PricePerNight,
+		pq.Array(room.Amenities), room.IsAvailable, room.Description,
+		room.CreatedAt, room.UpdatedAt,
+	)
+	return err
+}
+
+func (r *RoomRepository) GetByID(id uuid.UUID) (*models.Room, error) {
+	row := r.db.QueryRow(`
+		SELECT id, name, type, capacity, price_per_night, amenities, is_available, description, created_at, updated_at
+		FROM rooms WHERE id = $1`, id)
+	return scanRoom(row)
+}
+
+func (r *RoomRepository) List(roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+	args := []interface{}{}
+	where := []string{}
+	i := 1
+
+	if roomType != "" {
+		where = append(where, fmt.Sprintf("type = $%d", i))
+		args = append(args, roomType)
+		i++
+	}
+	if isAvailable != nil {
+		where = append(where, fmt.Sprintf("is_available = $%d", i))
+		args = append(args, *isAvailable)
+		i++
+	}
+
+	whereStr := "1=1"
+	if len(where) > 0 {
+		whereStr = strings.Join(where, " AND ")
+	}
+
+	var total int
+	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM rooms WHERE %s`, whereStr), args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, pageSize, (page-1)*pageSize)
+	rows, err := r.db.Query(fmt.Sprintf(`
+		SELECT id, name, type, capacity, price_per_night, amenities, is_available, description, created_at, updated_at
+		FROM rooms WHERE %s
+		ORDER BY name ASC
+		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var rooms []models.Room
+	for rows.Next() {
+		room, err := scanRoom(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		rooms = append(rooms, *room)
+	}
+	return rooms, total, rows.Err()
+}
+
+// ListAvailable returns rooms not overlapping [checkIn, checkOut) with confirmed/checked_in bookings.
+func (r *RoomRepository) ListAvailable(checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
+	args := []interface{}{checkOut, checkIn}
+	extra := ""
+	if roomType != "" {
+		args = append(args, roomType)
+		extra = fmt.Sprintf(" AND type = $%d", len(args))
+	}
+
+	rows, err := r.db.Query(fmt.Sprintf(`
+		SELECT id, name, type, capacity, price_per_night, amenities, is_available, description, created_at, updated_at
+		FROM rooms
+		WHERE is_available = TRUE%s
+		  AND id NOT IN (
+		    SELECT room_id FROM bookings
+		    WHERE status IN ('confirmed', 'checked_in')
+		      AND check_in  < $1
+		      AND check_out > $2
+		  )
+		ORDER BY name ASC`, extra), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var rooms []models.Room
+	for rows.Next() {
+		room, err := scanRoom(rows)
+		if err != nil {
+			return nil, err
+		}
+		rooms = append(rooms, *room)
+	}
+	return rooms, rows.Err()
+}
+
+func (r *RoomRepository) Update(room *models.Room) error {
+	room.UpdatedAt = time.Now()
+	_, err := r.db.Exec(`
+		UPDATE rooms SET name=$1, type=$2, capacity=$3, price_per_night=$4,
+		       amenities=$5, is_available=$6, description=$7, updated_at=$8
+		WHERE id=$9`,
+		room.Name, room.Type, room.Capacity, room.PricePerNight,
+		pq.Array(room.Amenities), room.IsAvailable, room.Description,
+		room.UpdatedAt, room.ID,
+	)
+	return err
+}
+
+func (r *RoomRepository) SetAvailability(id uuid.UUID, available bool) error {
+	_, err := r.db.Exec(`UPDATE rooms SET is_available=$1, updated_at=$2 WHERE id=$3`,
+		available, time.Now(), id)
+	return err
+}
+
+func (r *RoomRepository) Delete(id uuid.UUID) error {
+	res, err := r.db.Exec(`DELETE FROM rooms WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("room not found")
+	}
+	return nil
+}
+
+type roomScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanRoom(row roomScanner) (*models.Room, error) {
+	var room models.Room
+	var description sql.NullString
+	err := row.Scan(
+		&room.ID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
+		pq.Array(&room.Amenities), &room.IsAvailable, &description,
+		&room.CreatedAt, &room.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if description.Valid {
+		room.Description = description.String
+	}
+	if room.Amenities == nil {
+		room.Amenities = []string{}
+	}
+	return &room, nil
+}

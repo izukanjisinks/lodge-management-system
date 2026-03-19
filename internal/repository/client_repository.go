@@ -1,0 +1,270 @@
+package repository
+
+import (
+	"database/sql"
+	"fmt"
+	"strings"
+	"time"
+
+	"lodge-system/internal/database"
+	"lodge-system/internal/models"
+
+	"github.com/google/uuid"
+)
+
+type ClientRepository struct {
+	db *sql.DB
+}
+
+func NewClientRepository() *ClientRepository {
+	return &ClientRepository{db: database.DB}
+}
+
+// ─── Individual ───────────────────────────────────────────────────────────────
+
+func (r *ClientRepository) CreateIndividual(c *models.IndividualClient) error {
+	query := `
+		INSERT INTO individual_profiles
+		    (id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+
+	c.ID = uuid.New()
+	now := time.Now()
+	c.CreatedAt = now
+	c.UpdatedAt = now
+
+	_, err := r.db.Exec(query,
+		c.ID, c.FullName, c.Email, c.Phone, c.IDPassportNumber,
+		c.Nationality, c.Status, c.Notes, c.CreatedAt, c.UpdatedAt,
+	)
+	return err
+}
+
+func (r *ClientRepository) GetIndividualByID(id uuid.UUID) (*models.IndividualClient, error) {
+	query := `
+		SELECT id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at
+		FROM individual_profiles
+		WHERE id = $1`
+
+	return r.scanIndividual(r.db.QueryRow(query, id))
+}
+
+func (r *ClientRepository) ListIndividual(search, status string, page, pageSize int) ([]models.IndividualClient, int, error) {
+	where, args, i := r.buildClientWhere(search, status)
+
+	var total int
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM individual_profiles WHERE %s`, where)
+	if err := r.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, pageSize, (page-1)*pageSize)
+	query := fmt.Sprintf(`
+		SELECT id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at
+		FROM individual_profiles
+		WHERE %s
+		ORDER BY created_at DESC
+		LIMIT $%d OFFSET $%d`, where, i, i+1)
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var clients []models.IndividualClient
+	for rows.Next() {
+		c, err := r.scanIndividual(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		clients = append(clients, *c)
+	}
+	return clients, total, rows.Err()
+}
+
+func (r *ClientRepository) UpdateIndividual(c *models.IndividualClient) error {
+	query := `
+		UPDATE individual_profiles
+		SET full_name=$1, email=$2, phone=$3, id_passport_number=$4,
+		    nationality=$5, status=$6, notes=$7, updated_at=$8
+		WHERE id=$9`
+
+	c.UpdatedAt = time.Now()
+	_, err := r.db.Exec(query,
+		c.FullName, c.Email, c.Phone, c.IDPassportNumber,
+		c.Nationality, c.Status, c.Notes, c.UpdatedAt, c.ID,
+	)
+	return err
+}
+
+func (r *ClientRepository) DeleteIndividual(id uuid.UUID) error {
+	query := `DELETE FROM individual_profiles WHERE id=$1`
+
+	res, err := r.db.Exec(query, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("individual client not found")
+	}
+	return nil
+}
+
+// ─── Corporate ────────────────────────────────────────────────────────────────
+
+func (r *ClientRepository) CreateCorporate(c *models.CorporateClient) error {
+	query := `
+		INSERT INTO corporate_profiles
+		    (id, company_name, contact_person, email, phone, company_reg_number, industry, status, notes, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
+
+	c.ID = uuid.New()
+	now := time.Now()
+	c.CreatedAt = now
+	c.UpdatedAt = now
+
+	_, err := r.db.Exec(query,
+		c.ID, c.CompanyName, c.ContactPerson, c.Email, c.Phone,
+		c.CompanyRegNumber, c.Industry, c.Status, c.Notes, c.CreatedAt, c.UpdatedAt,
+	)
+	return err
+}
+
+func (r *ClientRepository) GetCorporateByID(id uuid.UUID) (*models.CorporateClient, error) {
+	query := `
+		SELECT id, company_name, contact_person, email, phone, company_reg_number, industry, status, notes, created_at, updated_at
+		FROM corporate_profiles
+		WHERE id = $1`
+
+	return r.scanCorporate(r.db.QueryRow(query, id))
+}
+
+func (r *ClientRepository) ListCorporate(search, status string, page, pageSize int) ([]models.CorporateClient, int, error) {
+	where, args, i := r.buildClientWhere(search, status)
+
+	var total int
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM corporate_profiles WHERE %s`, where)
+	if err := r.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, pageSize, (page-1)*pageSize)
+	query := fmt.Sprintf(`
+		SELECT id, company_name, contact_person, email, phone, company_reg_number, industry, status, notes, created_at, updated_at
+		FROM corporate_profiles
+		WHERE %s
+		ORDER BY created_at DESC
+		LIMIT $%d OFFSET $%d`, where, i, i+1)
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var clients []models.CorporateClient
+	for rows.Next() {
+		c, err := r.scanCorporate(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		clients = append(clients, *c)
+	}
+	return clients, total, rows.Err()
+}
+
+func (r *ClientRepository) UpdateCorporate(c *models.CorporateClient) error {
+	query := `
+		UPDATE corporate_profiles
+		SET company_name=$1, contact_person=$2, email=$3, phone=$4,
+		    company_reg_number=$5, industry=$6, status=$7, notes=$8, updated_at=$9
+		WHERE id=$10`
+
+	c.UpdatedAt = time.Now()
+	_, err := r.db.Exec(query,
+		c.CompanyName, c.ContactPerson, c.Email, c.Phone,
+		c.CompanyRegNumber, c.Industry, c.Status, c.Notes, c.UpdatedAt, c.ID,
+	)
+	return err
+}
+
+func (r *ClientRepository) DeleteCorporate(id uuid.UUID) error {
+	query := `DELETE FROM corporate_profiles WHERE id=$1`
+
+	res, err := r.db.Exec(query, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("corporate client not found")
+	}
+	return nil
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// buildClientWhere builds a WHERE clause with optional search and status filters.
+// Returns the clause string, the args slice, and the next available arg index.
+func (r *ClientRepository) buildClientWhere(search, status string) (string, []interface{}, int) {
+	conditions := []string{}
+	args := []interface{}{}
+	i := 1
+
+	if search != "" {
+		conditions = append(conditions, fmt.Sprintf("(email ILIKE $%d OR full_name ILIKE $%d OR company_name ILIKE $%d)", i, i, i))
+		args = append(args, "%"+search+"%")
+		i++
+	}
+	if status != "" {
+		conditions = append(conditions, fmt.Sprintf("status = $%d", i))
+		args = append(args, status)
+		i++
+	}
+
+	where := "1=1"
+	if len(conditions) > 0 {
+		where = strings.Join(conditions, " AND ")
+	}
+	return where, args, i
+}
+
+func (r *ClientRepository) scanIndividual(row rowScanner) (*models.IndividualClient, error) {
+	var c models.IndividualClient
+	var nationality, notes sql.NullString
+
+	err := row.Scan(
+		&c.ID, &c.FullName, &c.Email, &c.Phone, &c.IDPassportNumber,
+		&nationality, &c.Status, &notes, &c.CreatedAt, &c.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if nationality.Valid {
+		c.Nationality = nationality.String
+	}
+	if notes.Valid {
+		c.Notes = notes.String
+	}
+	return &c, nil
+}
+
+func (r *ClientRepository) scanCorporate(row rowScanner) (*models.CorporateClient, error) {
+	var c models.CorporateClient
+	var industry, notes sql.NullString
+
+	err := row.Scan(
+		&c.ID, &c.CompanyName, &c.ContactPerson, &c.Email, &c.Phone,
+		&c.CompanyRegNumber, &industry, &c.Status, &notes, &c.CreatedAt, &c.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if industry.Valid {
+		c.Industry = industry.String
+	}
+	if notes.Valid {
+		c.Notes = notes.String
+	}
+	return &c, nil
+}

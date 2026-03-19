@@ -24,6 +24,7 @@
     { "key": "corporate_client_id",   "value": "", "type": "string" },
     { "key": "booking_id",            "value": "", "type": "string" },
     { "key": "meal_plan_id",          "value": "", "type": "string" },
+    { "key": "invoice_id",            "value": "", "type": "string" },
     { "key": "workflow_id",   "value": "", "type": "string" },
     { "key": "instance_id",   "value": "", "type": "string" },
     { "key": "task_id",       "value": "", "type": "string" },
@@ -895,6 +896,85 @@
               "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
             },
             "description": "Permanently delete a meal plan. Requires admin or manager role."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Invoices",
+      "item": [
+        {
+          "name": "List Invoices",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/invoices?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "invoices"],
+              "query": [
+                { "key": "page",      "value": "1" },
+                { "key": "page_size", "value": "20" },
+                { "key": "status",    "value": "", "disabled": true, "description": "draft | issued | paid | overdue | cancelled" }
+              ]
+            },
+            "description": "Paginated list of all invoices. Filterable by status. Requires admin or manager role."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Invoice by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('invoice_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/invoices/{{invoice_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "invoices", "{{invoice_id}}"]
+            },
+            "description": "Get a single invoice by UUID. Requires admin, manager, or receptionist role."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Invoice by Booking ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/invoices/booking/{{booking_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "invoices", "booking", "{{booking_id}}"]
+            },
+            "description": "Fetch the invoice for a given booking. Useful when you already have a booking_id and want its invoice without a separate lookup. Available to all authenticated staff."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Invoice Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"issued\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/invoices/{{invoice_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "invoices", "{{invoice_id}}", "status"]
+            },
+            "description": "Advance an invoice through its lifecycle. Valid transitions:\n- draft → issued\n- draft → cancelled\n- issued → paid (include paid_date)\n- issued → overdue\n- issued → cancelled\n- overdue → paid (include paid_date)\n- overdue → cancelled\n\nRequires admin or manager role."
           },
           "response": []
         }

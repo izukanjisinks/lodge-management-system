@@ -11,6 +11,7 @@ func RegisterRoutes(
 	clientHandler *handlers.ClientHandler,
 	bookingHandler *handlers.BookingHandler,
 	mealPlanHandler *handlers.MealPlanHandler,
+	invoiceHandler *handlers.InvoiceHandler,
 	workflowHandler *handlers.WorkflowHandler,
 	workflowAdminHandler *handlers.WorkflowAdminHandler,
 ) {
@@ -21,6 +22,7 @@ func RegisterRoutes(
 	RegisterClientRoutes(clientHandler)
 	RegisterBookingRoutes(bookingHandler)
 	RegisterMealPlanRoutes(mealPlanHandler)
+	RegisterInvoiceRoutes(invoiceHandler)
 	RegisterWorkflowRoutes(workflowHandler)
 	RegisterWorkflowAdminRoutes(workflowAdminHandler)
 }

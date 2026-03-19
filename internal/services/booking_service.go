@@ -14,10 +14,16 @@ type BookingService struct {
 	repo     *repository.BookingRepository
 	room     *repository.RoomRepository
 	mealPlan *repository.MealPlanRepository
+	invoice  *InvoiceService
 }
 
 func NewBookingService(repo *repository.BookingRepository, room *repository.RoomRepository, mealPlan *repository.MealPlanRepository) *BookingService {
 	return &BookingService{repo: repo, room: room, mealPlan: mealPlan}
+}
+
+// SetInvoiceService injects the invoice service after construction to avoid a circular dependency.
+func (s *BookingService) SetInvoiceService(invoice *InvoiceService) {
+	s.invoice = invoice
 }
 
 func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
@@ -181,6 +187,15 @@ func (s *BookingService) UpdateStatus(id uuid.UUID, newStatus string) (*models.B
 	if err := s.repo.UpdateStatusTx(id, newStatus); err != nil {
 		return nil, err
 	}
+
+	// Auto-generate invoice when booking is confirmed
+	if newStatus == models.BookingStatusConfirmed && s.invoice != nil {
+		if err := s.invoice.GenerateForBooking(id); err != nil {
+			// Log but don't fail the status update — invoice can be regenerated
+			fmt.Printf("warning: failed to generate invoice for booking %s: %v\n", id, err)
+		}
+	}
+
 	return s.repo.GetByID(id)
 }
 

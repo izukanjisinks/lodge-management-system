@@ -1,0 +1,174 @@
+package services
+
+import (
+	"errors"
+	"fmt"
+
+	"lodge-system/internal/models"
+	"lodge-system/internal/repository"
+
+	"github.com/google/uuid"
+)
+
+type BookingService struct {
+	repo *repository.BookingRepository
+	room *repository.RoomRepository
+}
+
+func NewBookingService(repo *repository.BookingRepository, room *repository.RoomRepository) *BookingService {
+	return &BookingService{repo: repo, room: room}
+}
+
+func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
+	if req.RoomID == uuid.Nil {
+		return nil, errors.New("room_id is required")
+	}
+	if req.ClientID == uuid.Nil {
+		return nil, errors.New("client_id is required")
+	}
+	if req.ClientType != models.BookingClientTypeIndividual && req.ClientType != models.BookingClientTypeCorporate {
+		return nil, errors.New("client_type must be 'individual' or 'corporate'")
+	}
+	if req.CheckIn.IsZero() || req.CheckOut.IsZero() {
+		return nil, errors.New("check_in and check_out are required")
+	}
+	if !req.CheckOut.After(req.CheckIn) {
+		return nil, errors.New("check_out must be after check_in")
+	}
+	if req.Guests <= 0 {
+		return nil, errors.New("guests must be greater than 0")
+	}
+
+	// Validate room exists and guests fit capacity
+	room, err := s.room.GetByID(req.RoomID)
+	if err != nil {
+		return nil, errors.New("room not found")
+	}
+	if req.Guests > room.Capacity {
+		return nil, fmt.Errorf("guests (%d) exceed room capacity (%d)", req.Guests, room.Capacity)
+	}
+
+	// Check for date conflicts with existing pending/confirmed/checked_in bookings
+	available, err := s.repo.IsRoomAvailable(req.RoomID, req.CheckIn, req.CheckOut, nil)
+	if err != nil {
+		return nil, err
+	}
+	if !available {
+		return nil, errors.New("room is not available for the selected dates")
+	}
+
+	// Prevent the same client from booking the same room twice for overlapping dates
+	duplicate, err := s.repo.HasActiveBookingForClient(req.ClientID, req.RoomID, req.CheckIn, req.CheckOut)
+	if err != nil {
+		return nil, err
+	}
+	if duplicate {
+		return nil, errors.New("client already has an active booking for this room on the selected dates")
+	}
+
+	b := &models.Booking{
+		UserID:          userID,
+		RoomID:          req.RoomID,
+		ClientID:        req.ClientID,
+		ClientType:      req.ClientType,
+		CheckIn:         req.CheckIn,
+		CheckOut:        req.CheckOut,
+		Guests:          req.Guests,
+		Status:          models.BookingStatusPending,
+		SpecialRequests: req.SpecialRequests,
+	}
+	if err := s.repo.Create(b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func (s *BookingService) GetByID(id uuid.UUID) (*models.Booking, error) {
+	return s.repo.GetByID(id)
+}
+
+func (s *BookingService) List(status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+	return s.repo.List(status, clientType, clientID, page, pageSize)
+}
+
+func (s *BookingService) Update(id uuid.UUID, req *models.UpdateBookingRequest) (*models.Booking, error) {
+	b, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("booking not found")
+	}
+
+	// Only pending bookings can be edited
+	if b.Status != models.BookingStatusPending {
+		return nil, errors.New("only pending bookings can be updated")
+	}
+
+	if req.CheckIn != nil {
+		b.CheckIn = *req.CheckIn
+	}
+	if req.CheckOut != nil {
+		b.CheckOut = *req.CheckOut
+	}
+	if req.Guests != nil {
+		b.Guests = *req.Guests
+	}
+	if req.SpecialRequests != nil {
+		b.SpecialRequests = *req.SpecialRequests
+	}
+
+	if !b.CheckOut.After(b.CheckIn) {
+		return nil, errors.New("check_out must be after check_in")
+	}
+	if b.Guests <= 0 {
+		return nil, errors.New("guests must be greater than 0")
+	}
+
+	// Re-check room availability excluding this booking
+	available, err := s.repo.IsRoomAvailable(b.RoomID, b.CheckIn, b.CheckOut, &id)
+	if err != nil {
+		return nil, err
+	}
+	if !available {
+		return nil, errors.New("room is not available for the selected dates")
+	}
+
+	if err := s.repo.Update(b); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(id)
+}
+
+func (s *BookingService) UpdateStatus(id uuid.UUID, newStatus string) (*models.Booking, error) {
+	b, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("booking not found")
+	}
+
+	// Validate transition
+	allowed := models.ValidBookingTransitions[b.Status]
+	valid := false
+	for _, s := range allowed {
+		if s == newStatus {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return nil, fmt.Errorf("cannot transition booking from '%s' to '%s'", b.Status, newStatus)
+	}
+
+	if err := s.repo.UpdateStatusTx(id, newStatus); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(id)
+}
+
+func (s *BookingService) Delete(id uuid.UUID) error {
+	b, err := s.repo.GetByID(id)
+	if err != nil {
+		return errors.New("booking not found")
+	}
+	if b.Status == models.BookingStatusCheckedIn {
+		return errors.New("cannot delete a booking that is currently checked in")
+	}
+	return s.repo.Delete(id)
+}

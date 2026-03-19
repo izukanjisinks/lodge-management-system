@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Lodge Management System",
-    "description": "API collection for the Lodge Management System backend. Phase 1 + Phase 2 endpoints: Auth, Users, Rooms, Password Policy, Workflow Engine.\n\nBase URL: {{base_url}}\nSet `token` variable after login — all authenticated requests use it automatically via collection auth.",
+    "description": "API collection for the Lodge Management System backend. Phase 1 + Phase 2 endpoints: Auth, Users, Rooms, Clients, Bookings, Password Policy, Workflow Engine.\n\nBase URL: {{base_url}}\nSet `token` variable after login — all authenticated requests use it automatically via collection auth.",
     "_postman_id": "lodge-management-system-v1",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -22,6 +22,7 @@
     { "key": "room_id",               "value": "", "type": "string" },
     { "key": "individual_client_id",  "value": "", "type": "string" },
     { "key": "corporate_client_id",   "value": "", "type": "string" },
+    { "key": "booking_id",            "value": "", "type": "string" },
     { "key": "workflow_id",   "value": "", "type": "string" },
     { "key": "instance_id",   "value": "", "type": "string" },
     { "key": "task_id",       "value": "", "type": "string" },
@@ -679,6 +680,123 @@
               "path": ["api", "v1", "clients", "corporate", "{{corporate_client_id}}"]
             },
             "description": "Delete a corporate client by ID. Requires admin or manager role."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "List Bookings",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "bookings"],
+              "query": [
+                { "key": "page",        "value": "1" },
+                { "key": "page_size",   "value": "20" },
+                { "key": "status",      "value": "", "disabled": true, "description": "pending | confirmed | checked_in | checked_out | cancelled" },
+                { "key": "client_type", "value": "", "disabled": true, "description": "individual | corporate" },
+                { "key": "client_id",   "value": "", "disabled": true, "description": "Filter by client UUID" }
+              ]
+            },
+            "description": "Paginated list of all bookings. Filterable by status, client_type, and client_id. Available to all authenticated staff."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Booking by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "bookings", "{{booking_id}}"]
+            },
+            "description": "Get a single booking by UUID."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('booking_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"room_id\": \"{{room_id}}\",\n  \"client_id\": \"{{individual_client_id}}\",\n  \"client_type\": \"individual\",\n  \"check_in\": \"2026-04-01T00:00:00Z\",\n  \"check_out\": \"2026-04-05T00:00:00Z\",\n  \"guests\": 2,\n  \"special_requests\": \"Non-smoking room, early check-in if possible\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "bookings"]
+            },
+            "description": "Create a new booking in pending status. Validates room capacity, date range, and checks for overlapping confirmed/checked_in bookings. Requires admin, manager, or receptionist role. Saves returned `id` to `booking_id` variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Booking",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"check_in\": \"2026-04-02T00:00:00Z\",\n  \"check_out\": \"2026-04-06T00:00:00Z\",\n  \"guests\": 1,\n  \"special_requests\": \"Late check-out requested\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "bookings", "{{booking_id}}"]
+            },
+            "description": "Update a booking's dates, guests, or special requests. Only allowed while the booking is in pending status. All fields are optional. Requires admin, manager, or receptionist role."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Booking Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"confirmed\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "bookings", "{{booking_id}}", "status"]
+            },
+            "description": "Advance a booking through its lifecycle. Valid transitions:\n- pending → confirmed (locks the room)\n- pending → cancelled (frees the room)\n- confirmed → checked_in\n- confirmed → cancelled (frees the room)\n- checked_in → checked_out (frees the room)\n\nRequires admin or manager role."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Booking",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "bookings", "{{booking_id}}"]
+            },
+            "description": "Permanently delete a booking. Not allowed when status is checked_in. Requires admin or manager role."
           },
           "response": []
         }

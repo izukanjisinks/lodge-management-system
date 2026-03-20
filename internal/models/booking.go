@@ -32,6 +32,7 @@ type Booking struct {
 	ID              uuid.UUID  `json:"id"`
 	UserID          uuid.UUID  `json:"user_id"`
 	RoomID          uuid.UUID  `json:"room_id"`
+	RoomName        string     `json:"room_name"`
 	ClientID        uuid.UUID  `json:"client_id"`
 	ClientType      string     `json:"client_type"`
 	ClientName      string     `json:"client_name"`
@@ -40,6 +41,10 @@ type Booking struct {
 	CheckIn         time.Time  `json:"check_in"`
 	CheckOut        time.Time  `json:"check_out"`
 	Guests          int        `json:"guests"`
+	Nights          int        `json:"nights"`
+	RoomCost        float64    `json:"room_cost"`
+	MealCost        float64    `json:"meal_cost"`
+	TotalAmount     float64    `json:"total_amount"`
 	Status          string     `json:"status"`
 	SpecialRequests string     `json:"special_requests,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`

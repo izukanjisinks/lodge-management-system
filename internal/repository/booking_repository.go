@@ -64,15 +64,23 @@ func (r *BookingRepository) Create(b *models.Booking) error {
 
 func (r *BookingRepository) GetByID(id uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
-		SELECT b.id, b.user_id, b.room_id, b.client_id, b.client_type,
+		SELECT b.id, b.user_id, b.room_id, r.name AS room_name,
+		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
 		       bmp.meal_plan_id, mp.name AS meal_plan_name,
-		       b.check_in, b.check_out, b.guests, b.status, b.special_requests,
+		       b.check_in, b.check_out, b.guests,
+		       GREATEST(b.check_out - b.check_in, 1) AS nights,
+		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
+		       COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS meal_cost,
+		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night +
+		           COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS total_amount,
+		       b.status, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
+		JOIN rooms                    r   ON r.id = b.room_id
 		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
 		LEFT JOIN booking_meal_plans  bmp ON bmp.booking_id = b.id
@@ -114,15 +122,23 @@ func (r *BookingRepository) List(status, clientType string, clientID *uuid.UUID,
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT b.id, b.user_id, b.room_id, b.client_id, b.client_type,
+		SELECT b.id, b.user_id, b.room_id, r.name AS room_name,
+		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
 		       bmp.meal_plan_id, mp.name AS meal_plan_name,
-		       b.check_in, b.check_out, b.guests, b.status, b.special_requests,
+		       b.check_in, b.check_out, b.guests,
+		       GREATEST(b.check_out - b.check_in, 1) AS nights,
+		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
+		       COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS meal_cost,
+		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night +
+		           COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS total_amount,
+		       b.status, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
+		JOIN rooms                    r   ON r.id = b.room_id
 		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
 		LEFT JOIN booking_meal_plans  bmp ON bmp.booking_id = b.id
@@ -290,16 +306,22 @@ type bookingScanner interface {
 
 func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
-	var clientName, mealPlanName, specialRequests sql.NullString
+	var roomName, clientName, mealPlanName, specialRequests sql.NullString
 	var mealPlanID uuid.NullUUID
 	err := row.Scan(
-		&b.ID, &b.UserID, &b.RoomID, &b.ClientID, &b.ClientType, &clientName,
+		&b.ID, &b.UserID, &b.RoomID, &roomName,
+		&b.ClientID, &b.ClientType, &clientName,
 		&mealPlanID, &mealPlanName,
-		&b.CheckIn, &b.CheckOut, &b.Guests, &b.Status, &specialRequests,
+		&b.CheckIn, &b.CheckOut, &b.Guests,
+		&b.Nights, &b.RoomCost, &b.MealCost, &b.TotalAmount,
+		&b.Status, &specialRequests,
 		&b.CreatedAt, &b.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if roomName.Valid {
+		b.RoomName = roomName.String
 	}
 	if clientName.Valid {
 		b.ClientName = clientName.String

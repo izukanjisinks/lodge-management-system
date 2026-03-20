@@ -37,6 +37,7 @@ func main() {
 	bookingRepo := repository.NewBookingRepository()
 	mealPlanRepo := repository.NewMealPlanRepository()
 	invoiceRepo := repository.NewInvoiceRepository()
+	dashboardRepo := repository.NewDashboardRepository()
 
 	workflowRepo := repository.NewWorkflowRepository()
 	instanceRepo := repository.NewWorkflowInstanceRepository()
@@ -87,12 +88,13 @@ func main() {
 	bookingHandler := handlers.NewBookingHandler(bookingSvc)
 	mealPlanHandler := handlers.NewMealPlanHandler(services.NewMealPlanService(mealPlanRepo))
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)
+	dashboardHandler := handlers.NewDashboardHandler(services.NewDashboardService(dashboardRepo))
 	workflowHandler := handlers.NewWorkflowHandler(workflowService)
 	workflowAdminHandler := handlers.NewWorkflowAdminHandler(workflowRepo)
 	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyService, userService)
 
 	// Register routes
-	routes.RegisterRoutes(authHandler, userHandler, roomHandler, clientHandler, bookingHandler, mealPlanHandler, invoiceHandler, workflowHandler, workflowAdminHandler)
+	routes.RegisterRoutes(authHandler, userHandler, roomHandler, clientHandler, bookingHandler, mealPlanHandler, invoiceHandler, dashboardHandler, workflowHandler, workflowAdminHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally

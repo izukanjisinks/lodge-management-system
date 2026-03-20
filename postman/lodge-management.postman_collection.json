@@ -981,6 +981,24 @@
       ]
     },
     {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Staff Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/dashboard/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dashboard", "stats"]
+            },
+            "description": "Returns all data needed for the staff dashboard in a single request:\n- stat_cards: new bookings this month, today's check-ins, today's check-outs\n- room_summary: occupied / reserved / available / not_ready counts\n- revenue_by_month: last 12 months of paid/issued invoice totals\n- reservations_by_day: last 14 days of booked vs cancelled counts\n- recent_bookings: latest 5 bookings with client name, room, dates, status\n\nRequires admin, manager, or receptionist role."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Admin — Workflow Engine",
       "item": [
         {

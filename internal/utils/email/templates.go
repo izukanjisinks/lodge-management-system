@@ -82,7 +82,7 @@ func emailWrapper(title, headerStyle, bodyContent string) string {
 
           <tr>
             <td style="background-color:%s; padding:18px 32px; text-align:center; font-size:12px; color:%s; font-family:%s; border-top:1px solid %s;">
-              This is an automated message from Lodge Management. Please do not reply to this email.
+              This is an automated message from The Sanctuary system. Please do not reply to this email.
             </td>
           </tr>
 

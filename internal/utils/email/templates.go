@@ -227,3 +227,23 @@ func GenericTaskAssignedTemplate(recipientName, taskName, taskDescription string
 	return emailWrapper("New Task Assigned", header, body)
 }
 
+// GuestWelcomeTemplate generates the welcome email sent to guests who self-register on The Sanctuary website.
+func GuestWelcomeTemplate(fullName string) string {
+	header := headerGradient(colorPrimary, colorPrimaryLight)
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Dear %s,</p>
+              <p>Welcome to <strong>The Sanctuary</strong> — we're delighted to have you.</p>
+              <p>Your account is ready. You can now browse our rooms, choose a meal plan, and make reservations at any time from our website.</p>
+              %s
+              <p style="margin-top:28px;">We look forward to hosting you.</p>
+              <p style="margin-bottom:0; margin-top:28px;">
+                Warm regards,<br/>
+                <strong style="color:%s;">The Sanctuary Lodge</strong>
+              </p>`,
+		fullName,
+		alertBox(colorSuccessBox, colorSuccessBorder, colorAccent,
+			"Your profile is complete and your first reservation is just a few clicks away."),
+		colorPrimary,
+	)
+	return emailWrapper("Welcome to The Sanctuary", header, body)
+}

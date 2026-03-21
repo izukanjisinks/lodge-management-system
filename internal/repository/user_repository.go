@@ -33,6 +33,20 @@ func (r *UserRepository) Create(user *models.User) error {
 	return err
 }
 
+// CreateTx inserts a user within an existing transaction.
+func (r *UserRepository) CreateTx(tx *sql.Tx, user *models.User) error {
+	query := `
+		INSERT INTO users (user_id, full_name, email, password, role_id, is_active, change_password, password_changed_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+	user.UserID = uuid.New()
+	now := time.Now()
+	user.CreatedAt = now
+	user.UpdatedAt = now
+	_, err := tx.Exec(query,
+		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.IsActive, false, now, user.CreatedAt, user.UpdatedAt)
+	return err
+}
+
 func (r *UserRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 	query := `
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,

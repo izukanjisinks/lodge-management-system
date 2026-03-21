@@ -1,0 +1,134 @@
+package services
+
+import (
+	"errors"
+	"fmt"
+
+	"lodge-system/internal/models"
+	"lodge-system/internal/repository"
+
+	"github.com/google/uuid"
+)
+
+type GuestBookingService struct {
+	bookingRepo  *repository.BookingRepository
+	roomRepo     *repository.RoomRepository
+	mealPlanRepo *repository.MealPlanRepository
+	guestAuth    *GuestAuthService
+}
+
+func NewGuestBookingService(
+	bookingRepo *repository.BookingRepository,
+	roomRepo *repository.RoomRepository,
+	mealPlanRepo *repository.MealPlanRepository,
+	guestAuth *GuestAuthService,
+) *GuestBookingService {
+	return &GuestBookingService{
+		bookingRepo:  bookingRepo,
+		roomRepo:     roomRepo,
+		mealPlanRepo: mealPlanRepo,
+		guestAuth:    guestAuth,
+	}
+}
+
+// Create makes a booking on behalf of the logged-in guest.
+// client_id and client_type are resolved automatically from the JWT user.
+func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
+	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	if err != nil {
+		return nil, errors.New("guest profile not found — please complete your registration")
+	}
+
+	room, err := s.roomRepo.GetByID(req.RoomID)
+	if err != nil {
+		return nil, errors.New("room not found")
+	}
+	if req.Guests > room.Capacity {
+		return nil, fmt.Errorf("room capacity is %d, requested %d guests", room.Capacity, req.Guests)
+	}
+	if req.CheckOut.Before(req.CheckIn) || req.CheckOut.Equal(req.CheckIn) {
+		return nil, errors.New("check_out must be after check_in")
+	}
+
+	available, err := s.bookingRepo.IsRoomAvailable(req.RoomID, req.CheckIn, req.CheckOut, nil)
+	if err != nil {
+		return nil, err
+	}
+	if !available {
+		return nil, errors.New("room is not available for the selected dates")
+	}
+
+	if req.MealPlanID != nil {
+		if _, err := s.mealPlanRepo.GetByID(*req.MealPlanID); err != nil {
+			return nil, errors.New("meal plan not found")
+		}
+	}
+
+	b := &models.Booking{
+		UserID:          userID,
+		RoomID:          req.RoomID,
+		ClientID:        profile.ID,
+		ClientType:      models.BookingClientTypeIndividual,
+		MealPlanID:      req.MealPlanID,
+		CheckIn:         req.CheckIn,
+		CheckOut:        req.CheckOut,
+		Guests:          req.Guests,
+		Status:          models.BookingStatusPending,
+		SpecialRequests: req.SpecialRequests,
+	}
+
+	if err := s.bookingRepo.Create(b); err != nil {
+		return nil, err
+	}
+
+	return s.bookingRepo.GetByID(b.ID)
+}
+
+// ListForGuest returns all bookings belonging to the logged-in guest.
+func (s *GuestBookingService) ListForGuest(userID uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	if err != nil {
+		return nil, 0, errors.New("guest profile not found")
+	}
+
+	return s.bookingRepo.List("", models.BookingClientTypeIndividual, &profile.ID, page, pageSize)
+}
+
+// GetByID returns a single booking, scoped to the guest — 403 if it doesn't belong to them.
+func (s *GuestBookingService) GetByID(userID uuid.UUID, bookingID uuid.UUID) (*models.Booking, error) {
+	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	if err != nil {
+		return nil, errors.New("guest profile not found")
+	}
+
+	b, err := s.bookingRepo.GetByID(bookingID)
+	if err != nil {
+		return nil, errors.New("booking not found")
+	}
+	if b.ClientID != profile.ID {
+		return nil, errors.New("forbidden")
+	}
+	return b, nil
+}
+
+// Cancel transitions a guest's booking to cancelled — only allowed from pending or confirmed.
+func (s *GuestBookingService) Cancel(userID uuid.UUID, bookingID uuid.UUID) error {
+	b, err := s.GetByID(userID, bookingID)
+	if err != nil {
+		return err
+	}
+
+	allowed := models.ValidBookingTransitions[b.Status]
+	canCancel := false
+	for _, s := range allowed {
+		if s == models.BookingStatusCancelled {
+			canCancel = true
+			break
+		}
+	}
+	if !canCancel {
+		return fmt.Errorf("cannot cancel a booking with status %q", b.Status)
+	}
+
+	return s.bookingRepo.UpdateStatusTx(bookingID, models.BookingStatusCancelled)
+}

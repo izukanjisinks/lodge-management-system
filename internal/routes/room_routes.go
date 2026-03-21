@@ -8,15 +8,15 @@ import (
 )
 
 func RegisterRoomRoutes(h *handlers.RoomHandler) {
-	// Read — all authenticated staff
+	// Read — public (website guests browse rooms without logging in)
 	http.HandleFunc("GET /api/v1/rooms",
-		withAuth(h.List))
+		withPublic(h.List))
 
 	http.HandleFunc("GET /api/v1/rooms/available",
-		withAuth(h.ListAvailable))
+		withPublic(h.ListAvailable))
 
 	http.HandleFunc("GET /api/v1/rooms/{id}",
-		withAuth(h.GetByID))
+		withPublic(h.GetByID))
 
 	// Write — admin and manager only
 	http.HandleFunc("POST /api/v1/rooms",

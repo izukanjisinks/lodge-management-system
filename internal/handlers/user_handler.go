@@ -124,7 +124,8 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.UpdateUserFull(id, req.FullName, req.Email, req.Password, req.Role, req.Status)
+	callerID, _ := middleware.GetUserIDFromContext(r.Context())
+	user, err := h.service.UpdateUserFull(id, callerID, req.FullName, req.Email, req.Password, req.Role, req.Status)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

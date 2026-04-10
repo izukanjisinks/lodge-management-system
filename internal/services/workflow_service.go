@@ -18,6 +18,7 @@ type WorkflowService struct {
 	taskRepo     *repository.AssignedTaskRepository
 	historyRepo  *repository.WorkflowHistoryRepository
 	userRepo     *repository.UserRepository
+	clientRepo   *repository.ClientRepository
 	emailService *email.EmailService
 }
 
@@ -27,6 +28,7 @@ func NewWorkflowService(
 	taskRepo *repository.AssignedTaskRepository,
 	historyRepo *repository.WorkflowHistoryRepository,
 	userRepo *repository.UserRepository,
+	clientRepo *repository.ClientRepository,
 	emailService *email.EmailService,
 ) *WorkflowService {
 	return &WorkflowService{
@@ -35,6 +37,7 @@ func NewWorkflowService(
 		taskRepo:     taskRepo,
 		historyRepo:  historyRepo,
 		userRepo:     userRepo,
+		clientRepo:   clientRepo,
 		emailService: emailService,
 	}
 }
@@ -205,6 +208,8 @@ func (s *WorkflowService) ProcessAction(
 			if entityStatus != "" {
 				if err := s.workflowRepo.UpdateEntityStatus(instance.TaskDetails.TaskType, instance.TaskDetails.TaskID, entityStatus); err != nil {
 					fmt.Printf("warning: failed to update %s status after workflow outcome: %v\n", instance.TaskDetails.TaskType, err)
+				} else {
+					go s.notifyGuestBookingOutcome(instance.TaskDetails, entityStatus)
 				}
 			}
 		}
@@ -322,6 +327,41 @@ func (s *WorkflowService) checkPermission(userID string, step *models.WorkflowSt
 }
 
 // notifyTaskAssignment sends an email when a task is assigned
+// notifyGuestBookingOutcome emails the guest when their booking is approved or rejected.
+func (s *WorkflowService) notifyGuestBookingOutcome(details models.TaskDetails, entityStatus string) {
+	if s.emailService == nil || s.clientRepo == nil {
+		return
+	}
+
+	clientID, err := uuid.Parse(details.SenderDetails.SenderID)
+	if err != nil {
+		fmt.Printf("warning: invalid client ID in task details: %v\n", err)
+		return
+	}
+
+	profile, err := s.clientRepo.GetIndividualByID(clientID)
+	if err != nil {
+		fmt.Printf("warning: could not find guest profile for booking outcome email: %v\n", err)
+		return
+	}
+
+	var subject, htmlBody string
+	switch entityStatus {
+	case models.BookingStatusConfirmed:
+		subject = "Your Booking is Confirmed — The Sanctuary"
+		htmlBody = email.BookingApprovedTemplate(profile.FullName, details.TaskID, details.TaskDescription)
+	case models.BookingStatusCancelled:
+		subject = "Booking Update — The Sanctuary"
+		htmlBody = email.BookingRejectedTemplate(profile.FullName, details.TaskID, details.TaskDescription)
+	default:
+		return
+	}
+
+	if err := s.emailService.SendEmail([]string{profile.Email}, subject, htmlBody); err != nil {
+		fmt.Printf("warning: failed to send booking outcome email to %s: %v\n", profile.Email, err)
+	}
+}
+
 func (s *WorkflowService) notifyTaskAssignment(task *models.AssignedTask, assignee *models.User, instance *models.WorkflowInstance) {
 	defer func() {
 		if r := recover(); r != nil {

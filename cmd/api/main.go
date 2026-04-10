@@ -61,7 +61,7 @@ func main() {
 
 	userService.SetEmailService(emailService)
 
-	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, emailService)
+	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, clientRepo, emailService)
 
 	// Seed predefined roles
 	if err := roleService.InitializePredefinedRoles(); err != nil {

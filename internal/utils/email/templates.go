@@ -255,6 +255,55 @@ func BookingTaskAssignedTemplate(recipientName, bookingID, description, senderNa
 	return emailWrapper("Booking Approval Required", header, body)
 }
 
+// BookingApprovedTemplate notifies a guest that their booking has been confirmed.
+func BookingApprovedTemplate(guestName, bookingID, details string) string {
+	header := headerGradient(colorAccent, colorAccentLight)
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Dear %s,</p>
+              <p>Great news — your booking at <strong>The Sanctuary</strong> has been <strong>approved</strong> and is now confirmed.</p>
+              %s
+              %s
+              <p>We look forward to welcoming you. If you have any questions, please don't hesitate to get in touch.</p>
+              <p style="margin-bottom:0; margin-top:28px;">
+                Warm regards,<br/>
+                <strong style="color:%s;">The Sanctuary Lodge</strong>
+              </p>`,
+		guestName,
+		infoTable(colorSuccessBox, colorSuccessBorder,
+			infoRow("Booking ID:", bookingID),
+			infoRow("Details:", details),
+			infoRow("Status:", "Confirmed"),
+		),
+		alertBox(colorSuccessBox, colorSuccessBorder, colorAccent,
+			"Your reservation is confirmed. Please check in at the front desk on your arrival date."),
+		colorPrimary,
+	)
+	return emailWrapper("Booking Confirmed — The Sanctuary", header, body)
+}
+
+// BookingRejectedTemplate notifies a guest that their booking has not been approved.
+func BookingRejectedTemplate(guestName, bookingID, details string) string {
+	header := headerGradient(colorDangerLight, colorDanger)
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Dear %s,</p>
+              <p>We regret to inform you that your booking request at <strong>The Sanctuary</strong> could not be approved at this time.</p>
+              %s
+              <p>Please feel free to contact us directly or make a new reservation for alternative dates — we would love to host you.</p>
+              <p style="margin-bottom:0; margin-top:28px;">
+                Warm regards,<br/>
+                <strong style="color:%s;">The Sanctuary Lodge</strong>
+              </p>`,
+		guestName,
+		infoTable(colorWarningBox, colorWarningBorder,
+			infoRow("Booking ID:", bookingID),
+			infoRow("Details:", details),
+			infoRow("Status:", "Not Approved"),
+		),
+		colorPrimary,
+	)
+	return emailWrapper("Booking Update — The Sanctuary", header, body)
+}
+
 // GuestWelcomeTemplate generates the welcome email sent to guests who self-register on The Sanctuary website.
 func GuestWelcomeTemplate(fullName string) string {
 	header := headerGradient(colorPrimary, colorPrimaryLight)

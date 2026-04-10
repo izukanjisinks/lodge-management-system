@@ -15,6 +15,7 @@ type GuestBookingService struct {
 	roomRepo     *repository.RoomRepository
 	mealPlanRepo *repository.MealPlanRepository
 	guestAuth    *GuestAuthService
+	workflow     *WorkflowService
 }
 
 func NewGuestBookingService(
@@ -29,6 +30,11 @@ func NewGuestBookingService(
 		mealPlanRepo: mealPlanRepo,
 		guestAuth:    guestAuth,
 	}
+}
+
+// SetWorkflowService injects the workflow service after construction to avoid a circular dependency.
+func (s *GuestBookingService) SetWorkflowService(workflow *WorkflowService) {
+	s.workflow = workflow
 }
 
 // Create makes a booking on behalf of the logged-in guest.
@@ -81,7 +87,37 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		return nil, err
 	}
 
-	return s.bookingRepo.GetByID(b.ID)
+	created, err := s.bookingRepo.GetByID(b.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.workflow != nil {
+		go func() {
+			taskDetails := models.TaskDetails{
+				TaskID:          created.ID.String(),
+				TaskType:        "booking",
+				TaskDescription: fmt.Sprintf("Review booking request for %s — %s to %s (%d guest(s))", created.ClientName, created.CheckIn.Format("2006-01-02"), created.CheckOut.Format("2006-01-02"), created.Guests),
+				SenderDetails: models.SenderDetails{
+					SenderID:   created.ClientID.String(),
+					SenderName: created.ClientName,
+					Position:   created.ClientType,
+					Department: "Guest",
+				},
+			}
+			if _, err := s.workflow.InitiateWorkflow(
+				models.WorkflowTypeBookingApproval,
+				taskDetails,
+				userID.String(),
+				"medium",
+				nil,
+			); err != nil {
+				fmt.Printf("warning: failed to initiate booking approval workflow for booking %s: %v\n", created.ID, err)
+			}
+		}()
+	}
+
+	return created, nil
 }
 
 // ListForGuest returns all bookings belonging to the logged-in guest.

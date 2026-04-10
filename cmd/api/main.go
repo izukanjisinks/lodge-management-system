@@ -96,6 +96,7 @@ func main() {
 	guestAuthSvc := services.NewGuestAuthService(userRepo, roleRepo, clientRepo)
 	guestAuthSvc.SetEmailService(emailService)
 	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, mealPlanRepo, guestAuthSvc)
+	guestBookingSvc.SetWorkflowService(workflowService)
 	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, userService)
 	guestBookingHandler := handlers.NewGuestBookingHandler(guestBookingSvc)
 

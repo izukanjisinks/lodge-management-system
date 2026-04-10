@@ -227,6 +227,34 @@ func GenericTaskAssignedTemplate(recipientName, taskName, taskDescription string
 	return emailWrapper("New Task Assigned", header, body)
 }
 
+// BookingTaskAssignedTemplate generates a rich email for staff when a booking approval task is assigned to them.
+// description is the pre-formatted task description built by BookingService (e.g. "Review booking for John Mwale — 2026-05-01 to 2026-05-05 (2 guest(s))").
+// senderName / senderType are the guest name and client type (individual/corporate).
+func BookingTaskAssignedTemplate(recipientName, bookingID, description, senderName, senderType string) string {
+	header := headerGradient(colorPrimary, colorPrimaryLight)
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Hello %s,</p>
+              <p>A new booking request has been submitted and requires your review.</p>
+              %s
+              %s
+              <p>Please log in to the Lodge Management System to approve or reject this booking.</p>
+              %s
+              %s`,
+		recipientName,
+		infoTable(colorInfoBox, colorInfoBorder,
+			infoRow("Booking ID:", bookingID),
+			infoRow("Guest:", senderName),
+			infoRow("Client Type:", senderType),
+			infoRow("Details:", description),
+		),
+		alertBox(colorWarningBox, colorWarningBorder, "#92400e",
+			"<strong>Action required:</strong> This booking remains pending until you approve or reject it."),
+		loginButton(),
+		signature(),
+	)
+	return emailWrapper("Booking Approval Required", header, body)
+}
+
 // GuestWelcomeTemplate generates the welcome email sent to guests who self-register on The Sanctuary website.
 func GuestWelcomeTemplate(fullName string) string {
 	header := headerGradient(colorPrimary, colorPrimaryLight)

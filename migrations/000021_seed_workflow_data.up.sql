@@ -76,11 +76,12 @@ LIMIT 1;
 -- ---------------------------------------------------------------------------
 -- Workflow definition: Booking Approval Workflow
 -- ---------------------------------------------------------------------------
-INSERT INTO workflows (id, name, description, is_active, created_by)
+INSERT INTO workflows (id, name, description, workflow_type, is_active, created_by)
 VALUES (
     gen_random_uuid(),
     'Booking Approval Workflow',
     'Standard booking approval process for all guest reservations.',
+    'BOOKING_APPROVAL',
     TRUE,
     v_admin_id
 )

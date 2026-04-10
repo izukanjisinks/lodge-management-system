@@ -26,6 +26,7 @@ func (s *BookingService) SetInvoiceService(invoice *InvoiceService) {
 	s.invoice = invoice
 }
 
+
 func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
 	if req.RoomID == uuid.Nil {
 		return nil, errors.New("room_id is required")
@@ -96,6 +97,7 @@ func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingReque
 	if err := s.repo.Create(b); err != nil {
 		return nil, err
 	}
+
 	// Fetch back to get client_name and meal_plan_name resolved via JOINs
 	return s.repo.GetByID(b.ID)
 }

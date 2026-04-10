@@ -7,13 +7,15 @@ type WorkflowType string
 
 // Workflow type constants
 const (
-	WorkflowTypeLeaveRequest WorkflowType = "LEAVE_REQUEST"
+	WorkflowTypeLeaveRequest    WorkflowType = "LEAVE_REQUEST"
+	WorkflowTypeBookingApproval WorkflowType = "BOOKING_APPROVAL"
 )
 
 // GetAllWorkflowTypes returns all available workflow types
 func GetAllWorkflowTypes() []WorkflowType {
 	return []WorkflowType{
 		WorkflowTypeLeaveRequest,
+		WorkflowTypeBookingApproval,
 	}
 }
 
@@ -31,6 +33,11 @@ func GetWorkflowTypeInfo() []WorkflowTypeInfo {
 			Type:        WorkflowTypeLeaveRequest,
 			Name:        "Leave Request",
 			Description: "Workflow for managing employee leave requests and approvals",
+		},
+		{
+			Type:        WorkflowTypeBookingApproval,
+			Name:        "Booking Approval",
+			Description: "Workflow for reviewing and approving guest booking requests",
 		},
 	}
 }

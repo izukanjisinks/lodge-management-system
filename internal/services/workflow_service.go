@@ -190,6 +190,24 @@ func (s *WorkflowService) ProcessAction(
 		if err := s.instanceRepo.Complete(instanceID); err != nil {
 			return fmt.Errorf("failed to complete instance: %w", err)
 		}
+
+		// Update the real entity status based on workflow outcome
+		if instance.TaskDetails.TaskType != "" && instance.TaskDetails.TaskID != "" {
+			var entityStatus string
+			switch instance.TaskDetails.TaskType {
+			case "booking":
+				if isCompletingFinalStep {
+					entityStatus = models.BookingStatusConfirmed
+				} else {
+					entityStatus = models.BookingStatusCancelled
+				}
+			}
+			if entityStatus != "" {
+				if err := s.workflowRepo.UpdateEntityStatus(instance.TaskDetails.TaskType, instance.TaskDetails.TaskID, entityStatus); err != nil {
+					fmt.Printf("warning: failed to update %s status after workflow outcome: %v\n", instance.TaskDetails.TaskType, err)
+				}
+			}
+		}
 	} else {
 		assigneeID, err := s.determineAssignee(nextStep, instance.TaskDetails)
 		if err != nil {
@@ -315,12 +333,25 @@ func (s *WorkflowService) notifyTaskAssignment(task *models.AssignedTask, assign
 		return
 	}
 
-	subject := fmt.Sprintf("New Task Assigned: %s", task.StepName)
-	var description string
-	if task.TaskDetails != nil {
-		description = task.TaskDetails.TaskDescription
+	var subject, htmlBody string
+
+	if task.TaskDetails != nil && task.TaskDetails.TaskType == "booking" {
+		subject = fmt.Sprintf("Booking Approval Required — %s", task.TaskDetails.SenderDetails.SenderName)
+		htmlBody = email.BookingTaskAssignedTemplate(
+			assignee.FullName,
+			task.TaskDetails.TaskID,
+			task.TaskDetails.TaskDescription,
+			task.TaskDetails.SenderDetails.SenderName,
+			task.TaskDetails.SenderDetails.Position,
+		)
+	} else {
+		subject = fmt.Sprintf("New Task Assigned: %s", task.StepName)
+		description := ""
+		if task.TaskDetails != nil {
+			description = task.TaskDetails.TaskDescription
+		}
+		htmlBody = email.GenericTaskAssignedTemplate(assignee.FullName, task.StepName, description)
 	}
-	htmlBody := email.GenericTaskAssignedTemplate(assignee.Email, task.StepName, description)
 
 	if err := s.emailService.SendEmail([]string{assignee.Email}, subject, htmlBody); err != nil {
 		fmt.Printf("Warning: Failed to send task assignment email: %v\n", err)

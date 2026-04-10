@@ -95,6 +95,20 @@ func (s *RoomService) Update(id uuid.UUID, updates *models.Room) (*models.Room, 
 	return s.repo.GetByID(id)
 }
 
+func (s *RoomService) UpdateImages(id uuid.UUID, images []string) (*models.Room, error) {
+	_, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("room not found")
+	}
+	if images == nil {
+		images = []string{}
+	}
+	if err := s.repo.UpdateImages(id, images); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(id)
+}
+
 func (s *RoomService) SetAvailability(id uuid.UUID, available bool) error {
 	_, err := s.repo.GetByID(id)
 	if err != nil {

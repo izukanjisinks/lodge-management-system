@@ -25,6 +25,9 @@ func RegisterRoomRoutes(h *handlers.RoomHandler) {
 	http.HandleFunc("PUT /api/v1/rooms/{id}",
 		withAuthAndRole(h.Update, models.RoleAdmin, models.RoleManager))
 
+	http.HandleFunc("PUT /api/v1/rooms/{id}/images",
+		withAuthAndRole(h.UpdateImages, models.RoleAdmin, models.RoleManager))
+
 	http.HandleFunc("PATCH /api/v1/rooms/{id}/availability",
 		withAuthAndRole(h.SetAvailability, models.RoleAdmin, models.RoleManager))
 

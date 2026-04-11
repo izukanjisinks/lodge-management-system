@@ -1,10 +1,10 @@
 -- Seed development/test users for the Lodge Management System
 -- Passwords shown in comments. DO NOT use these credentials in production.
 --
--- admin@lodge.dev      → Admin@123       (seeded at startup by main.go)
--- manager@lodge.dev    → Manager@123
+-- admin@lodge.dev        → Admin@123
+-- manager@lodge.dev      → Manager@123
 -- receptionist@lodge.dev → Reception@123
--- cleaner@lodge.dev    → Cleaner@123
+-- cleaner@lodge.dev      → Cleaner@123
 
 DO $$
 DECLARE
@@ -24,6 +24,11 @@ IF v_role_admin IS NULL THEN
 END IF;
 
 INSERT INTO users (email, password, role_id, is_active) VALUES
+    -- Admin@123  (bcrypt cost 10)
+    ('admin@lodge.dev',
+     '$2a$10$CQCThSSuQ1J9o84X3C/1juRXCdfHXniFg8Pcj8.CLSk9UURxIVcEG',
+     v_role_admin, TRUE),
+
     -- Manager@123  (bcrypt cost 10)
     ('manager@lodge.dev',
      '$2a$10$FwbvszWKQiWWGeoM1rQu3uqJbsougE9wWd4pTMJynzpxK1Sav4apy',

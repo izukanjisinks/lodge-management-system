@@ -69,13 +69,6 @@ func main() {
 	}
 	log.Println("Roles initialized")
 
-	// Seed default admin
-	if err := userService.SeedSuperAdmin("admin@lodge.dev", "Admin@123"); err != nil {
-		log.Printf("Warning: failed to seed admin: %v", err)
-	} else {
-		log.Println("Admin ready (admin@lodge.dev)")
-	}
-
 	// Handlers
 	authHandler := handlers.NewAuthHandler(userService)
 	userHandler := handlers.NewUserHandler(userService)

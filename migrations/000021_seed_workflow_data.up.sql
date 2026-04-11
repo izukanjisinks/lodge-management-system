@@ -46,7 +46,8 @@ SELECT user_id INTO v_manager_id      FROM users WHERE email = 'manager@lodge.de
 SELECT user_id INTO v_receptionist_id FROM users WHERE email = 'receptionist@lodge.dev' LIMIT 1;
 
 IF v_admin_id IS NULL THEN
-    RAISE EXCEPTION 'Admin user not found — ensure migration 000014 has run first';
+    RAISE NOTICE 'Dev users not found — skipping workflow seed data (migration 000021)';
+    RETURN;
 END IF;
 
 -- ---------------------------------------------------------------------------
@@ -76,12 +77,11 @@ LIMIT 1;
 -- ---------------------------------------------------------------------------
 -- Workflow definition: Booking Approval Workflow
 -- ---------------------------------------------------------------------------
-INSERT INTO workflows (id, name, description, workflow_type, is_active, created_by)
+INSERT INTO workflows (id, name, description, is_active, created_by)
 VALUES (
     gen_random_uuid(),
     'Booking Approval Workflow',
     'Standard booking approval process for all guest reservations.',
-    'BOOKING_APPROVAL',
     TRUE,
     v_admin_id
 )

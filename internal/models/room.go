@@ -29,6 +29,7 @@ type Room struct {
 	Capacity      int       `json:"capacity"`
 	PricePerNight float64   `json:"price_per_night"`
 	Amenities     []string  `json:"amenities"`
+	Images        []string  `json:"images"`
 	IsAvailable   bool      `json:"is_available"`
 	Description   string    `json:"description,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`

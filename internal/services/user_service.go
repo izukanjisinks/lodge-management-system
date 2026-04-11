@@ -7,7 +7,7 @@ import (
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
-	"lodge-system/internal/utils/email"
+		"lodge-system/internal/utils/email"
 	"lodge-system/internal/utils/password"
 	"lodge-system/pkg/utils"
 
@@ -213,7 +213,9 @@ func (s *UserService) UpdateUser(updates *models.User) (*models.User, error) {
 }
 
 // UpdateUserFull handles the frontend PUT /users/{id} payload: full_name, email, role name, status, optional password.
-func (s *UserService) UpdateUserFull(id uuid.UUID, fullName, email, pwd, roleName, status string) (*models.User, error) {
+// callerID is the ID of the user making the request — used to decide whether to send a password-change notification email.
+// If callerID == id (self-edit) no email is sent; if an admin changes someone else's password the user is notified.
+func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName, newEmail, pwd, roleName, status string) (*models.User, error) {
 	user, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return nil, errors.New("user not found")
@@ -223,15 +225,15 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, fullName, email, pwd, roleNam
 		user.FullName = fullName
 	}
 
-	if email != "" && email != user.Email {
-		exists, err := s.repo.EmailExists(email)
+	if newEmail != "" && newEmail != user.Email {
+		exists, err := s.repo.EmailExists(newEmail)
 		if err != nil {
 			return nil, err
 		}
 		if exists {
 			return nil, errors.New("email already in use")
 		}
-		user.Email = email
+		user.Email = newEmail
 	}
 
 	if roleName != "" {
@@ -262,6 +264,16 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, fullName, email, pwd, roleNam
 		if s.passwordPolicyService != nil {
 			user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
 			_ = s.passwordPolicyService.RecordPasswordChange(id, hashed)
+		}
+
+		// Notify the user only when an admin/manager changed their password, not when self-editing
+		if s.emailService != nil && callerID != id {
+			go func(toEmail, rawPwd string) {
+				body := email.PasswordResetTemplate(rawPwd)
+				if err := s.emailService.SendEmail([]string{toEmail}, "Your Password Has Been Reset", body); err != nil {
+					fmt.Printf("warning: failed to send password reset email to %s: %v\n", toEmail, err)
+				}
+			}(user.Email, pwd)
 		}
 	}
 

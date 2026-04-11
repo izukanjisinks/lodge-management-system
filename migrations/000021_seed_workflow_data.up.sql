@@ -46,7 +46,8 @@ SELECT user_id INTO v_manager_id      FROM users WHERE email = 'manager@lodge.de
 SELECT user_id INTO v_receptionist_id FROM users WHERE email = 'receptionist@lodge.dev' LIMIT 1;
 
 IF v_admin_id IS NULL THEN
-    RAISE EXCEPTION 'Admin user not found — ensure migration 000014 has run first';
+    RAISE NOTICE 'Dev users not found — skipping workflow seed data (migration 000021)';
+    RETURN;
 END IF;
 
 -- ---------------------------------------------------------------------------

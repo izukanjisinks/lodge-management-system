@@ -57,8 +57,10 @@ SELECT user_id INTO v_admin_id        FROM users WHERE email = 'admin@lodge.dev'
 SELECT user_id INTO v_manager_id      FROM users WHERE email = 'manager@lodge.dev'      LIMIT 1;
 SELECT user_id INTO v_receptionist_id FROM users WHERE email = 'receptionist@lodge.dev' LIMIT 1;
 
+-- Skip seed entirely if dev users are not present (e.g. production/fresh Docker deploy)
 IF v_admin_id IS NULL THEN
-    RAISE EXCEPTION 'Admin user not found — ensure migration 000014 has run first';
+    RAISE NOTICE 'Dev users not found — skipping demo seed data (migration 000020)';
+    RETURN;
 END IF;
 
 -- ---------------------------------------------------------------------------

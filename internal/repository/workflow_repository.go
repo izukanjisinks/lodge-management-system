@@ -767,7 +767,7 @@ func (r *WorkflowRepository) GetFirstActionStep(workflowID string) (*models.Work
 		INNER JOIN workflow_steps initial ON wt.from_step_id = initial.id
 		WHERE ws.workflow_id = $1
 		  AND initial.initial = true
-		  AND wt.action_name = 'submit'
+		ORDER BY ws.step_order ASC
 		LIMIT 1
 	`
 
@@ -799,4 +799,26 @@ func (r *WorkflowRepository) GetFirstActionStep(workflowID string) (*models.Work
 	}
 
 	return &step, initialStepID, nil
+}
+
+// UpdateEntityStatus updates the status of the real entity that a workflow instance tracks.
+// Called by ProcessAction when a workflow reaches a terminal state (approved or rejected).
+func (r *WorkflowRepository) UpdateEntityStatus(entityType, entityID, status string) error {
+	var query string
+
+	switch entityType {
+	case "booking":
+		query = `UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2`
+	default:
+		return fmt.Errorf("unsupported entity type: %s", entityType)
+	}
+
+	res, err := r.db.Exec(query, status, entityID)
+	if err != nil {
+		return fmt.Errorf("failed to update %s status: %w", entityType, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("%s not found: %s", entityType, entityID)
+	}
+	return nil
 }

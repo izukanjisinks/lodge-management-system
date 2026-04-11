@@ -18,6 +18,7 @@ type WorkflowService struct {
 	taskRepo     *repository.AssignedTaskRepository
 	historyRepo  *repository.WorkflowHistoryRepository
 	userRepo     *repository.UserRepository
+	clientRepo   *repository.ClientRepository
 	emailService *email.EmailService
 }
 
@@ -27,6 +28,7 @@ func NewWorkflowService(
 	taskRepo *repository.AssignedTaskRepository,
 	historyRepo *repository.WorkflowHistoryRepository,
 	userRepo *repository.UserRepository,
+	clientRepo *repository.ClientRepository,
 	emailService *email.EmailService,
 ) *WorkflowService {
 	return &WorkflowService{
@@ -35,6 +37,7 @@ func NewWorkflowService(
 		taskRepo:     taskRepo,
 		historyRepo:  historyRepo,
 		userRepo:     userRepo,
+		clientRepo:   clientRepo,
 		emailService: emailService,
 	}
 }
@@ -190,6 +193,26 @@ func (s *WorkflowService) ProcessAction(
 		if err := s.instanceRepo.Complete(instanceID); err != nil {
 			return fmt.Errorf("failed to complete instance: %w", err)
 		}
+
+		// Update the real entity status based on workflow outcome
+		if instance.TaskDetails.TaskType != "" && instance.TaskDetails.TaskID != "" {
+			var entityStatus string
+			switch instance.TaskDetails.TaskType {
+			case "booking":
+				if isCompletingFinalStep {
+					entityStatus = models.BookingStatusConfirmed
+				} else {
+					entityStatus = models.BookingStatusCancelled
+				}
+			}
+			if entityStatus != "" {
+				if err := s.workflowRepo.UpdateEntityStatus(instance.TaskDetails.TaskType, instance.TaskDetails.TaskID, entityStatus); err != nil {
+					fmt.Printf("warning: failed to update %s status after workflow outcome: %v\n", instance.TaskDetails.TaskType, err)
+				} else {
+					go s.notifyGuestBookingOutcome(instance.TaskDetails, entityStatus)
+				}
+			}
+		}
 	} else {
 		assigneeID, err := s.determineAssignee(nextStep, instance.TaskDetails)
 		if err != nil {
@@ -304,6 +327,41 @@ func (s *WorkflowService) checkPermission(userID string, step *models.WorkflowSt
 }
 
 // notifyTaskAssignment sends an email when a task is assigned
+// notifyGuestBookingOutcome emails the guest when their booking is approved or rejected.
+func (s *WorkflowService) notifyGuestBookingOutcome(details models.TaskDetails, entityStatus string) {
+	if s.emailService == nil || s.clientRepo == nil {
+		return
+	}
+
+	clientID, err := uuid.Parse(details.SenderDetails.SenderID)
+	if err != nil {
+		fmt.Printf("warning: invalid client ID in task details: %v\n", err)
+		return
+	}
+
+	profile, err := s.clientRepo.GetIndividualByID(clientID)
+	if err != nil {
+		fmt.Printf("warning: could not find guest profile for booking outcome email: %v\n", err)
+		return
+	}
+
+	var subject, htmlBody string
+	switch entityStatus {
+	case models.BookingStatusConfirmed:
+		subject = "Your Booking is Confirmed — The Sanctuary"
+		htmlBody = email.BookingApprovedTemplate(profile.FullName, details.TaskID, details.TaskDescription)
+	case models.BookingStatusCancelled:
+		subject = "Booking Update — The Sanctuary"
+		htmlBody = email.BookingRejectedTemplate(profile.FullName, details.TaskID, details.TaskDescription)
+	default:
+		return
+	}
+
+	if err := s.emailService.SendEmail([]string{profile.Email}, subject, htmlBody); err != nil {
+		fmt.Printf("warning: failed to send booking outcome email to %s: %v\n", profile.Email, err)
+	}
+}
+
 func (s *WorkflowService) notifyTaskAssignment(task *models.AssignedTask, assignee *models.User, instance *models.WorkflowInstance) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -315,12 +373,25 @@ func (s *WorkflowService) notifyTaskAssignment(task *models.AssignedTask, assign
 		return
 	}
 
-	subject := fmt.Sprintf("New Task Assigned: %s", task.StepName)
-	var description string
-	if task.TaskDetails != nil {
-		description = task.TaskDetails.TaskDescription
+	var subject, htmlBody string
+
+	if task.TaskDetails != nil && task.TaskDetails.TaskType == "booking" {
+		subject = fmt.Sprintf("Booking Approval Required — %s", task.TaskDetails.SenderDetails.SenderName)
+		htmlBody = email.BookingTaskAssignedTemplate(
+			assignee.FullName,
+			task.TaskDetails.TaskID,
+			task.TaskDetails.TaskDescription,
+			task.TaskDetails.SenderDetails.SenderName,
+			task.TaskDetails.SenderDetails.Position,
+		)
+	} else {
+		subject = fmt.Sprintf("New Task Assigned: %s", task.StepName)
+		description := ""
+		if task.TaskDetails != nil {
+			description = task.TaskDetails.TaskDescription
+		}
+		htmlBody = email.GenericTaskAssignedTemplate(assignee.FullName, task.StepName, description)
 	}
-	htmlBody := email.GenericTaskAssignedTemplate(assignee.Email, task.StepName, description)
 
 	if err := s.emailService.SendEmail([]string{assignee.Email}, subject, htmlBody); err != nil {
 		fmt.Printf("Warning: Failed to send task assignment email: %v\n", err)

@@ -1423,6 +1423,154 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Guest — Auth",
+      "item": [
+        {
+          "name": "Register (Guest Self-Registration)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "register"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"John Mwale\",\n  \"email\": \"john.mwale@example.com\",\n  \"password\": \"Password123!\",\n  \"phone\": \"+260971234567\",\n  \"id_passport_number\": \"NRC123456/78/1\",\n  \"nationality\": \"Zambian\"\n}"
+            },
+            "description": "Public endpoint. Creates a user account (role=guest) and a linked individual profile atomically. Returns a JWT immediately so the guest is logged in after registration."
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Guest)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.mwale@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "description": "Guests use the same login endpoint as staff. The JWT payload includes role=guest which the website uses to route to the guest dashboard."
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "me"]
+            },
+            "description": "Returns the authenticated guest's user account and linked individual profile."
+          },
+          "response": []
+        },
+        {
+          "name": "Update My Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "me"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"John Mwale\",\n  \"phone\": \"+260971234567\",\n  \"id_passport_number\": \"NRC123456/78/1\",\n  \"nationality\": \"Zambian\"\n}"
+            },
+            "description": "Updates the guest's own profile fields. Email cannot be changed here. Returns the updated profile."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Guest — Bookings",
+      "item": [
+        {
+          "name": "Create Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/bookings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "bookings"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"room_id\": \"{{room_id}}\",\n  \"check_in\": \"2026-05-01\",\n  \"check_out\": \"2026-05-05\",\n  \"guests\": 2,\n  \"meal_plan_id\": \"{{meal_plan_id}}\",\n  \"special_requests\": \"Late check-in after 10 PM\"\n}"
+            },
+            "description": "Creates a booking for the authenticated guest. client_id is resolved automatically from the JWT — no need to pass it. Returns the full booking with computed nights, room_cost, meal_cost, and total_amount."
+          },
+          "response": []
+        },
+        {
+          "name": "List My Bookings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/bookings?page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "bookings"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            },
+            "description": "Returns a paginated list of the authenticated guest's own bookings only."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Booking by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/bookings/{{booking_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "bookings", "{{booking_id}}"]
+            },
+            "description": "Returns a single booking. Returns 403 if the booking does not belong to the authenticated guest."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/bookings/{{booking_id}}/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "bookings", "{{booking_id}}", "cancel"]
+            },
+            "description": "Cancels the guest's own booking. Only allowed when status is pending or confirmed. Returns 403 if the booking belongs to another guest."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

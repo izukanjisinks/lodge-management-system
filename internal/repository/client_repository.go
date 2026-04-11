@@ -40,6 +40,51 @@ func (r *ClientRepository) CreateIndividual(c *models.IndividualClient) error {
 	return err
 }
 
+// CreateIndividualTx inserts an individual profile within an existing transaction.
+func (r *ClientRepository) CreateIndividualTx(tx *sql.Tx, c *models.IndividualClient, userID uuid.UUID) error {
+	query := `
+		INSERT INTO individual_profiles
+		    (id, user_id, full_name, email, phone, id_passport_number, nationality, status, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9)`
+
+	c.ID = uuid.New()
+	now := time.Now()
+	c.CreatedAt = now
+	c.UpdatedAt = now
+
+	_, err := tx.Exec(query,
+		c.ID, userID, c.FullName, c.Email, c.Phone,
+		c.IDPassportNumber, c.Nationality, now, now,
+	)
+	return err
+}
+
+// GetIndividualByUserID returns the individual profile linked to a user account.
+func (r *ClientRepository) GetIndividualByUserID(userID uuid.UUID) (*models.IndividualClient, error) {
+	query := `
+		SELECT id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at
+		FROM individual_profiles
+		WHERE user_id = $1`
+	return r.scanIndividual(r.db.QueryRow(query, userID))
+}
+
+// UpdateIndividualByUserID updates the profile fields a guest is allowed to change.
+func (r *ClientRepository) UpdateIndividualByUserID(userID uuid.UUID, c *models.IndividualClient) error {
+	query := `
+		UPDATE individual_profiles
+		SET full_name=$1, phone=$2, id_passport_number=$3, nationality=$4, updated_at=$5
+		WHERE user_id=$6`
+	c.UpdatedAt = time.Now()
+	res, err := r.db.Exec(query, c.FullName, c.Phone, c.IDPassportNumber, c.Nationality, c.UpdatedAt, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("guest profile not found")
+	}
+	return nil
+}
+
 func (r *ClientRepository) GetIndividualByID(id uuid.UUID) (*models.IndividualClient, error) {
 	query := `
 		SELECT id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at

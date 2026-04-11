@@ -11,6 +11,7 @@ const (
 	RoleManager      = "manager"
 	RoleReceptionist = "receptionist"
 	RoleCleaner      = "cleaner"
+	RoleGuest        = "guest"
 )
 
 type Role struct {
@@ -27,5 +28,6 @@ func GetPredefinedRoles() []Role {
 		{Name: RoleManager, Description: "Oversees operations — approves bookings, views reports, manages rooms"},
 		{Name: RoleReceptionist, Description: "Front-desk staff — handles bookings, clients, and invoices"},
 		{Name: RoleCleaner, Description: "Housekeeping staff — views assigned rooms and cleaning schedule"},
+		{Name: RoleGuest, Description: "Guest user — limited access to view available rooms and make bookings via website"},
 	}
 }

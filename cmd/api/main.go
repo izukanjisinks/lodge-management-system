@@ -61,20 +61,13 @@ func main() {
 
 	userService.SetEmailService(emailService)
 
-	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, emailService)
+	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, clientRepo, emailService)
 
 	// Seed predefined roles
 	if err := roleService.InitializePredefinedRoles(); err != nil {
 		log.Fatalf("Failed to initialize roles: %v", err)
 	}
 	log.Println("Roles initialized")
-
-	// Seed default admin
-	if err := userService.SeedSuperAdmin("admin@lodge.dev", "Admin@123"); err != nil {
-		log.Printf("Warning: failed to seed admin: %v", err)
-	} else {
-		log.Println("Admin ready (admin@lodge.dev)")
-	}
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(userService)
@@ -93,8 +86,30 @@ func main() {
 	workflowAdminHandler := handlers.NewWorkflowAdminHandler(workflowRepo)
 	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyService, userService)
 
+	guestAuthSvc := services.NewGuestAuthService(userRepo, roleRepo, clientRepo)
+	guestAuthSvc.SetEmailService(emailService)
+	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, mealPlanRepo, guestAuthSvc)
+	guestBookingSvc.SetWorkflowService(workflowService)
+	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, userService)
+	guestBookingHandler := handlers.NewGuestBookingHandler(guestBookingSvc)
+
+	reviewRepo := repository.NewReviewRepository()
+	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
+
 	// Register routes
-	routes.RegisterRoutes(authHandler, userHandler, roomHandler, clientHandler, bookingHandler, mealPlanHandler, invoiceHandler, dashboardHandler, workflowHandler, workflowAdminHandler)
+	routes.RegisterRoutes(authHandler,
+		userHandler,
+		roomHandler,
+		clientHandler,
+		bookingHandler,
+		mealPlanHandler,
+		invoiceHandler,
+		dashboardHandler,
+		workflowHandler,
+		workflowAdminHandler,
+		guestAuthHandler,
+		guestBookingHandler,
+		reviewHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally

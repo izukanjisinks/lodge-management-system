@@ -27,10 +27,10 @@ func (r *RoomRepository) Create(room *models.Room) error {
 	room.CreatedAt = now
 	room.UpdatedAt = now
 	_, err := r.db.Exec(`
-		INSERT INTO rooms (id, name, type, capacity, price_per_night, amenities, is_available, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		INSERT INTO rooms (id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		room.ID, room.Name, room.Type, room.Capacity, room.PricePerNight,
-		pq.Array(room.Amenities), room.IsAvailable, room.Description,
+		pq.Array(room.Amenities), pq.Array(room.Images), room.IsAvailable, room.Description,
 		room.CreatedAt, room.UpdatedAt,
 	)
 	return err
@@ -38,7 +38,7 @@ func (r *RoomRepository) Create(room *models.Room) error {
 
 func (r *RoomRepository) GetByID(id uuid.UUID) (*models.Room, error) {
 	row := r.db.QueryRow(`
-		SELECT id, name, type, capacity, price_per_night, amenities, is_available, description, created_at, updated_at
+		SELECT id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms WHERE id = $1`, id)
 	return scanRoom(row)
 }
@@ -71,7 +71,7 @@ func (r *RoomRepository) List(roomType string, isAvailable *bool, page, pageSize
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, name, type, capacity, price_per_night, amenities, is_available, description, created_at, updated_at
+		SELECT id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
@@ -101,7 +101,7 @@ func (r *RoomRepository) ListAvailable(checkIn, checkOut time.Time, roomType str
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, name, type, capacity, price_per_night, amenities, is_available, description, created_at, updated_at
+		SELECT id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms
 		WHERE is_available = TRUE%s
 		  AND id NOT IN (
@@ -140,6 +140,12 @@ func (r *RoomRepository) Update(room *models.Room) error {
 	return err
 }
 
+func (r *RoomRepository) UpdateImages(id uuid.UUID, images []string) error {
+	_, err := r.db.Exec(`UPDATE rooms SET images=$1, updated_at=$2 WHERE id=$3`,
+		pq.Array(images), time.Now(), id)
+	return err
+}
+
 func (r *RoomRepository) SetAvailability(id uuid.UUID, available bool) error {
 	_, err := r.db.Exec(`UPDATE rooms SET is_available=$1, updated_at=$2 WHERE id=$3`,
 		available, time.Now(), id)
@@ -167,7 +173,7 @@ func scanRoom(row roomScanner) (*models.Room, error) {
 	var description sql.NullString
 	err := row.Scan(
 		&room.ID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
-		pq.Array(&room.Amenities), &room.IsAvailable, &description,
+		pq.Array(&room.Amenities), pq.Array(&room.Images), &room.IsAvailable, &description,
 		&room.CreatedAt, &room.UpdatedAt,
 	)
 	if err != nil {
@@ -178,6 +184,9 @@ func scanRoom(row roomScanner) (*models.Room, error) {
 	}
 	if room.Amenities == nil {
 		room.Amenities = []string{}
+	}
+	if room.Images == nil {
+		room.Images = []string{}
 	}
 	return &room, nil
 }

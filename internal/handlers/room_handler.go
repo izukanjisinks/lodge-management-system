@@ -126,6 +126,30 @@ func (h *RoomHandler) Update(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, room)
 }
 
+func (h *RoomHandler) UpdateImages(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+
+	var req struct {
+		Images []string `json:"images"`
+	}
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	room, err := h.service.UpdateImages(id, req.Images)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, room)
+}
+
 func (h *RoomHandler) SetAvailability(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

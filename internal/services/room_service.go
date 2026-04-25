@@ -34,6 +34,9 @@ func (s *RoomService) Create(room *models.Room) error {
 	if room.Amenities == nil {
 		room.Amenities = []string{}
 	}
+	if room.Images == nil {
+		room.Images = []string{}
+	}
 	room.IsAvailable = true
 	return s.repo.Create(room)
 }

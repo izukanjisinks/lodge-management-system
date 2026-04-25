@@ -19,15 +19,14 @@ func NewDashboardRepository() *DashboardRepository {
 func (r *DashboardRepository) StatCards() (models.DashboardStatCards, error) {
 	var s models.DashboardStatCards
 	today := time.Now().Format("2006-01-02")
-	monthStart := time.Now().Format("2006-01") + "-01"
 
 	err := r.db.QueryRow(`
 		SELECT
-		    COUNT(*) FILTER (WHERE created_at >= $1::date) AS new_bookings_this_month,
-		    COUNT(*) FILTER (WHERE check_in::date = $2::date AND status IN ('confirmed','checked_in')) AS checkins_today,
-		    COUNT(*) FILTER (WHERE check_out::date = $2::date AND status = 'checked_in') AS checkouts_today
+		    COUNT(*) FILTER (WHERE status = 'pending') AS new_bookings_this_month,
+		    COUNT(*) FILTER (WHERE check_in::date = $1::date AND status IN ('confirmed','checked_in')) AS checkins_today,
+		    COUNT(*) FILTER (WHERE check_out::date = $1::date AND status = 'checked_in') AS checkouts_today
 		FROM bookings`,
-		monthStart, today,
+		today,
 	).Scan(&s.NewBookingsThisMonth, &s.CheckInsToday, &s.CheckOutsToday)
 	return s, err
 }

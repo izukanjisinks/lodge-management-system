@@ -27,7 +27,7 @@ func (s *BookingService) SetInvoiceService(invoice *InvoiceService) {
 }
 
 
-func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
+func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
 	if req.RoomID == uuid.Nil {
 		return nil, errors.New("room_id is required")
 	}
@@ -94,7 +94,7 @@ func (s *BookingService) Create(userID uuid.UUID, req *models.CreateBookingReque
 		Status:          models.BookingStatusPending,
 		SpecialRequests: req.SpecialRequests,
 	}
-	if err := s.repo.Create(b); err != nil {
+	if err := s.repo.Create(b, orgID); err != nil {
 		return nil, err
 	}
 
@@ -106,8 +106,8 @@ func (s *BookingService) GetByID(id uuid.UUID) (*models.Booking, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *BookingService) List(status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
-	return s.repo.List(status, clientType, clientID, page, pageSize)
+func (s *BookingService) List(orgID uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+	return s.repo.List(orgID, status, clientType, clientID, page, pageSize)
 }
 
 func (s *BookingService) Update(id uuid.UUID, req *models.UpdateBookingRequest) (*models.Booking, error) {
@@ -167,7 +167,7 @@ func (s *BookingService) Update(id uuid.UUID, req *models.UpdateBookingRequest) 
 	return s.repo.GetByID(id)
 }
 
-func (s *BookingService) UpdateStatus(id uuid.UUID, newStatus string) (*models.Booking, error) {
+func (s *BookingService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, newStatus string) (*models.Booking, error) {
 	b, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("booking not found")
@@ -192,7 +192,7 @@ func (s *BookingService) UpdateStatus(id uuid.UUID, newStatus string) (*models.B
 
 	// Auto-generate invoice when booking is confirmed
 	if newStatus == models.BookingStatusConfirmed && s.invoice != nil {
-		if err := s.invoice.GenerateForBooking(id); err != nil {
+		if err := s.invoice.GenerateForBooking(id, orgID); err != nil {
 			// Log but don't fail the status update — invoice can be regenerated
 			fmt.Printf("warning: failed to generate invoice for booking %s: %v\n", id, err)
 		}

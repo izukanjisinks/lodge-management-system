@@ -7,6 +7,8 @@ import (
 	"lodge-system/internal/models"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
+
+	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
@@ -58,6 +60,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		OrgID    string `json:"org_id,omitempty"`
 	}
 	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -68,7 +71,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.userService.Login(req.Email, req.Password)
+	orgID := uuid.Nil
+	if req.OrgID != "" {
+		if parsed, err := uuid.Parse(req.OrgID); err == nil {
+			orgID = parsed
+		}
+	}
+
+	result, err := h.userService.LoginWithOrg(req.Email, req.Password, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusUnauthorized, err.Error())
 		return

@@ -21,7 +21,7 @@ func NewInvoiceRepository() *InvoiceRepository {
 }
 
 // Create inserts the invoice and all its line items in a single transaction.
-func (r *InvoiceRepository) Create(inv *models.Invoice) error {
+func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 	inv.ID = uuid.New()
 	now := time.Now()
 	inv.CreatedAt = now
@@ -39,12 +39,12 @@ func (r *InvoiceRepository) Create(inv *models.Invoice) error {
 
 	_, err = tx.Exec(`
 		INSERT INTO invoices
-		    (id, invoice_number, booking_id, subtotal, tax_rate, tax, total, status, issued_at, due_date, notes, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		    (id, invoice_number, booking_id, subtotal, tax_rate, tax, total, status, issued_at, due_date, notes, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		inv.ID, inv.InvoiceNumber, inv.BookingID,
 		inv.Subtotal, inv.TaxRate, inv.TaxAmount, inv.Total,
 		inv.Status, inv.IssuedDate, inv.DueDate, inv.Notes,
-		inv.CreatedAt, inv.UpdatedAt,
+		orgID, inv.CreatedAt, inv.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -78,10 +78,10 @@ func (r *InvoiceRepository) GetByBookingID(bookingID uuid.UUID) (*models.Invoice
 	return r.fetchOne(`WHERE i.booking_id = $1`, bookingID)
 }
 
-func (r *InvoiceRepository) List(status string, page, pageSize int) ([]models.Invoice, int, error) {
-	where := []string{}
-	args := []interface{}{}
-	i := 1
+func (r *InvoiceRepository) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
+	args := []interface{}{orgID}
+	where := []string{"i.org_id = $1"}
+	i := 2
 
 	if status != "" {
 		where = append(where, fmt.Sprintf("i.status = $%d", i))
@@ -89,10 +89,7 @@ func (r *InvoiceRepository) List(status string, page, pageSize int) ([]models.In
 		i++
 	}
 
-	whereStr := "1=1"
-	if len(where) > 0 {
-		whereStr = strings.Join(where, " AND ")
-	}
+	whereStr := strings.Join(where, " AND ")
 
 	var total int
 	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM invoices i WHERE %s`, whereStr), args...).Scan(&total); err != nil {

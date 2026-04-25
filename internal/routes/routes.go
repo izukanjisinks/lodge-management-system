@@ -18,6 +18,9 @@ func RegisterRoutes(
 	guestAuthHandler *handlers.GuestAuthHandler,
 	guestBookingHandler *handlers.GuestBookingHandler,
 	reviewHandler *handlers.ReviewHandler,
+	backofficeAuthHandler *handlers.BackofficeAuthHandler,
+	backofficeUserHandler *handlers.BackofficeUserHandler,
+	backofficeOrgHandler *handlers.BackofficeOrganizationHandler,
 ) {
 	RegisterPublicRoutes(authHandler)
 	RegisterAuthRoutes(authHandler)
@@ -32,4 +35,5 @@ func RegisterRoutes(
 	RegisterWorkflowAdminRoutes(workflowAdminHandler)
 	RegisterGuestRoutes(guestAuthHandler, guestBookingHandler)
 	RegisterReviewRoutes(reviewHandler)
+	RegisterBackofficeRoutes(backofficeAuthHandler, backofficeUserHandler, backofficeOrgHandler)
 }

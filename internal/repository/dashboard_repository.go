@@ -6,6 +6,8 @@ import (
 
 	"lodge-system/internal/database"
 	"lodge-system/internal/models"
+
+	"github.com/google/uuid"
 )
 
 type DashboardRepository struct {
@@ -16,7 +18,7 @@ func NewDashboardRepository() *DashboardRepository {
 	return &DashboardRepository{db: database.DB}
 }
 
-func (r *DashboardRepository) StatCards() (models.DashboardStatCards, error) {
+func (r *DashboardRepository) StatCards(orgID uuid.UUID) (models.DashboardStatCards, error) {
 	var s models.DashboardStatCards
 	today := time.Now().Format("2006-01-02")
 
@@ -25,13 +27,14 @@ func (r *DashboardRepository) StatCards() (models.DashboardStatCards, error) {
 		    COUNT(*) FILTER (WHERE status = 'pending') AS new_bookings_this_month,
 		    COUNT(*) FILTER (WHERE check_in::date = $1::date AND status IN ('confirmed','checked_in')) AS checkins_today,
 		    COUNT(*) FILTER (WHERE check_out::date = $1::date AND status = 'checked_in') AS checkouts_today
-		FROM bookings`,
-		today,
+		FROM bookings
+		WHERE org_id = $2`,
+		today, orgID,
 	).Scan(&s.NewBookingsThisMonth, &s.CheckInsToday, &s.CheckOutsToday)
 	return s, err
 }
 
-func (r *DashboardRepository) RoomSummary() (models.DashboardRoomSummary, error) {
+func (r *DashboardRepository) RoomSummary(orgID uuid.UUID) (models.DashboardRoomSummary, error) {
 	var s models.DashboardRoomSummary
 	err := r.db.QueryRow(`
 		SELECT
@@ -51,22 +54,25 @@ func (r *DashboardRepository) RoomSummary() (models.DashboardRoomSummary, error)
 		        SELECT 1 FROM bookings b
 		        WHERE b.room_id = r.id AND b.status IN ('confirmed','checked_in')
 		    )) AS not_ready
-		FROM rooms r`,
+		FROM rooms r
+		WHERE r.org_id = $1`,
+		orgID,
 	).Scan(&s.Occupied, &s.Reserved, &s.Available, &s.NotReady)
 	return s, err
 }
 
-func (r *DashboardRepository) RevenueByMonth(months int) ([]models.DashboardRevenuePoint, error) {
+func (r *DashboardRepository) RevenueByMonth(orgID uuid.UUID, months int) ([]models.DashboardRevenuePoint, error) {
 	rows, err := r.db.Query(`
 		SELECT
 		    TO_CHAR(DATE_TRUNC('month', i.created_at), 'YYYY-MM') AS month,
 		    COALESCE(SUM(i.total), 0) AS revenue
 		FROM invoices i
-		WHERE i.status IN ('issued', 'paid')
-		  AND i.created_at >= DATE_TRUNC('month', NOW()) - ($1 - 1) * INTERVAL '1 month'
+		WHERE i.org_id = $1
+		  AND i.status IN ('issued', 'paid')
+		  AND i.created_at >= DATE_TRUNC('month', NOW()) - ($2 - 1) * INTERVAL '1 month'
 		GROUP BY DATE_TRUNC('month', i.created_at)
 		ORDER BY DATE_TRUNC('month', i.created_at) ASC`,
-		months,
+		orgID, months,
 	)
 	if err != nil {
 		return nil, err
@@ -87,7 +93,7 @@ func (r *DashboardRepository) RevenueByMonth(months int) ([]models.DashboardReve
 	return points, rows.Err()
 }
 
-func (r *DashboardRepository) ReservationsByDay(days int) ([]models.DashboardReservationPoint, error) {
+func (r *DashboardRepository) ReservationsByDay(orgID uuid.UUID, days int) ([]models.DashboardReservationPoint, error) {
 	rows, err := r.db.Query(`
 		SELECT
 		    TO_CHAR(day::date, 'YYYY-MM-DD') AS day,
@@ -98,10 +104,10 @@ func (r *DashboardRepository) ReservationsByDay(days int) ([]models.DashboardRes
 		    CURRENT_DATE,
 		    '1 day'::interval
 		) AS day
-		LEFT JOIN bookings b ON b.created_at::date = day::date
+		LEFT JOIN bookings b ON b.created_at::date = day::date AND b.org_id = $2
 		GROUP BY day
 		ORDER BY day ASC`,
-		days,
+		days, orgID,
 	)
 	if err != nil {
 		return nil, err
@@ -122,7 +128,7 @@ func (r *DashboardRepository) ReservationsByDay(days int) ([]models.DashboardRes
 	return points, rows.Err()
 }
 
-func (r *DashboardRepository) RecentBookings(limit int) ([]models.DashboardRecentBooking, error) {
+func (r *DashboardRepository) RecentBookings(orgID uuid.UUID, limit int) ([]models.DashboardRecentBooking, error) {
 	rows, err := r.db.Query(`
 		SELECT
 		    b.id,
@@ -139,9 +145,10 @@ func (r *DashboardRepository) RecentBookings(limit int) ([]models.DashboardRecen
 		JOIN rooms r                  ON r.id = b.room_id
 		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		WHERE b.org_id = $1
 		ORDER BY b.created_at DESC
-		LIMIT $1`,
-		limit,
+		LIMIT $2`,
+		orgID, limit,
 	)
 	if err != nil {
 		return nil, err

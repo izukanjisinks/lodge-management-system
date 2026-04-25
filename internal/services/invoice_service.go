@@ -32,7 +32,7 @@ func NewInvoiceService(
 
 // GenerateForBooking auto-creates an invoice when a booking is confirmed.
 // It is called inside the booking status transition — not exposed as an HTTP endpoint.
-func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID) error {
+func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID) error {
 	// Idempotent — don't create a second invoice if one already exists
 	existing, _ := s.repo.GetByBookingID(bookingID)
 	if existing != nil {
@@ -111,7 +111,7 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID) error {
 		DueDate:       &dueDate,
 	}
 
-	return s.repo.Create(inv)
+	return s.repo.Create(inv, orgID)
 }
 
 func (s *InvoiceService) GetByID(id uuid.UUID) (*models.Invoice, error) {
@@ -130,8 +130,8 @@ func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID) (*models.Invoice, e
 	return inv, nil
 }
 
-func (s *InvoiceService) List(status string, page, pageSize int) ([]models.Invoice, int, error) {
-	return s.repo.List(status, page, pageSize)
+func (s *InvoiceService) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
+	return s.repo.List(orgID, status, page, pageSize)
 }
 
 func (s *InvoiceService) UpdateStatus(id uuid.UUID, req *models.UpdateInvoiceStatusRequest) (*models.Invoice, error) {

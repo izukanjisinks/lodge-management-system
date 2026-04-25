@@ -20,16 +20,16 @@ func NewMealPlanRepository() *MealPlanRepository {
 	return &MealPlanRepository{db: database.DB}
 }
 
-func (r *MealPlanRepository) Create(m *models.MealPlan) error {
+func (r *MealPlanRepository) Create(m *models.MealPlan, orgID uuid.UUID) error {
 	m.ID = uuid.New()
 	now := time.Now()
 	m.CreatedAt = now
 	m.UpdatedAt = now
 	_, err := r.db.Exec(`
-		INSERT INTO meal_plans (id, name, price_per_person_per_night, includes, description, is_active, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		INSERT INTO meal_plans (id, name, price_per_person_per_night, includes, description, is_active, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
 		m.ID, m.Name, m.PricePerPersonPerNight, pq.Array(m.Includes),
-		m.Description, m.IsActive, m.CreatedAt, m.UpdatedAt,
+		m.Description, m.IsActive, orgID, m.CreatedAt, m.UpdatedAt,
 	)
 	return err
 }
@@ -41,13 +41,13 @@ func (r *MealPlanRepository) GetByID(id uuid.UUID) (*models.MealPlan, error) {
 	return scanMealPlan(row)
 }
 
-func (r *MealPlanRepository) List(isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {
-	where := "1=1"
-	args := []interface{}{}
-	i := 1
+func (r *MealPlanRepository) List(orgID uuid.UUID, isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {
+	args := []interface{}{orgID}
+	where := "org_id = $1"
+	i := 2
 
 	if isActive != nil {
-		where = fmt.Sprintf("is_active = $%d", i)
+		where += fmt.Sprintf(" AND is_active = $%d", i)
 		args = append(args, *isActive)
 		i++
 	}

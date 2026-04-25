@@ -40,7 +40,7 @@ func (s *GuestBookingService) SetWorkflowService(workflow *WorkflowService) {
 // Create makes a booking on behalf of the logged-in guest.
 // client_id and client_type are resolved automatically from the JWT user.
 func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
-	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	profile, err := s.guestAuth.GetProfileByGuestID(userID)
 	if err != nil {
 		return nil, errors.New("guest profile not found — please complete your registration")
 	}
@@ -83,7 +83,11 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		SpecialRequests: req.SpecialRequests,
 	}
 
-	if err := s.bookingRepo.Create(b); err != nil {
+	orgID := uuid.Nil
+	if room.OrgID != nil {
+		orgID = *room.OrgID
+	}
+	if err := s.bookingRepo.Create(b, orgID); err != nil {
 		return nil, err
 	}
 
@@ -111,6 +115,7 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 				userID.String(),
 				"medium",
 				nil,
+				orgID.String(),
 			); err != nil {
 				fmt.Printf("warning: failed to initiate booking approval workflow for booking %s: %v\n", created.ID, err)
 			}
@@ -122,17 +127,17 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 
 // ListForGuest returns all bookings belonging to the logged-in guest.
 func (s *GuestBookingService) ListForGuest(userID uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
-	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	profile, err := s.guestAuth.GetProfileByGuestID(userID)
 	if err != nil {
 		return nil, 0, errors.New("guest profile not found")
 	}
 
-	return s.bookingRepo.List("", models.BookingClientTypeIndividual, &profile.ID, page, pageSize)
+	return s.bookingRepo.List(uuid.Nil, "", models.BookingClientTypeIndividual, &profile.ID, page, pageSize)
 }
 
 // GetByID returns a single booking, scoped to the guest — 403 if it doesn't belong to them.
 func (s *GuestBookingService) GetByID(userID uuid.UUID, bookingID uuid.UUID) (*models.Booking, error) {
-	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	profile, err := s.guestAuth.GetProfileByGuestID(userID)
 	if err != nil {
 		return nil, errors.New("guest profile not found")
 	}

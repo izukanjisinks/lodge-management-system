@@ -21,32 +21,32 @@ func NewRoomRepository() *RoomRepository {
 	return &RoomRepository{db: database.DB}
 }
 
-func (r *RoomRepository) Create(room *models.Room) error {
+func (r *RoomRepository) Create(room *models.Room, orgID uuid.UUID) error {
 	room.ID = uuid.New()
 	now := time.Now()
 	room.CreatedAt = now
 	room.UpdatedAt = now
 	_, err := r.db.Exec(`
-		INSERT INTO rooms (id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		INSERT INTO rooms (id, name, type, capacity, price_per_night, amenities, images, is_available, description, org_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		room.ID, room.Name, room.Type, room.Capacity, room.PricePerNight,
 		pq.Array(room.Amenities), pq.Array(room.Images), room.IsAvailable, room.Description,
-		room.CreatedAt, room.UpdatedAt,
+		orgID, room.CreatedAt, room.UpdatedAt,
 	)
 	return err
 }
 
 func (r *RoomRepository) GetByID(id uuid.UUID) (*models.Room, error) {
 	row := r.db.QueryRow(`
-		SELECT id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms WHERE id = $1`, id)
 	return scanRoom(row)
 }
 
-func (r *RoomRepository) List(roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
-	args := []interface{}{}
-	where := []string{}
-	i := 1
+func (r *RoomRepository) List(orgID uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+	args := []interface{}{orgID}
+	where := []string{"org_id = $1"}
+	i := 2
 
 	if roomType != "" {
 		where = append(where, fmt.Sprintf("type = $%d", i))
@@ -59,10 +59,7 @@ func (r *RoomRepository) List(roomType string, isAvailable *bool, page, pageSize
 		i++
 	}
 
-	whereStr := "1=1"
-	if len(where) > 0 {
-		whereStr = strings.Join(where, " AND ")
-	}
+	whereStr := strings.Join(where, " AND ")
 
 	var total int
 	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM rooms WHERE %s`, whereStr), args...).Scan(&total); err != nil {
@@ -71,7 +68,7 @@ func (r *RoomRepository) List(roomType string, isAvailable *bool, page, pageSize
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
@@ -91,9 +88,8 @@ func (r *RoomRepository) List(roomType string, isAvailable *bool, page, pageSize
 	return rooms, total, rows.Err()
 }
 
-// ListAvailable returns rooms not overlapping [checkIn, checkOut) with confirmed/checked_in bookings.
-func (r *RoomRepository) ListAvailable(checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
-	args := []interface{}{checkOut, checkIn}
+func (r *RoomRepository) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
+	args := []interface{}{checkOut, checkIn, orgID}
 	extra := ""
 	if roomType != "" {
 		args = append(args, roomType)
@@ -101,9 +97,9 @@ func (r *RoomRepository) ListAvailable(checkIn, checkOut time.Time, roomType str
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms
-		WHERE is_available = TRUE%s
+		WHERE is_available = TRUE AND org_id = $3%s
 		  AND id NOT IN (
 		    SELECT room_id FROM bookings
 		    WHERE status IN ('confirmed', 'checked_in')
@@ -170,14 +166,19 @@ type roomScanner interface {
 
 func scanRoom(row roomScanner) (*models.Room, error) {
 	var room models.Room
+	var orgID sql.NullString
 	var description sql.NullString
 	err := row.Scan(
-		&room.ID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
+		&room.ID, &orgID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
 		pq.Array(&room.Amenities), pq.Array(&room.Images), &room.IsAvailable, &description,
 		&room.CreatedAt, &room.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if orgID.Valid {
+		parsed, _ := uuid.Parse(orgID.String)
+		room.OrgID = &parsed
 	}
 	if description.Valid {
 		room.Description = description.String

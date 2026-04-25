@@ -1,0 +1,23 @@
+DROP INDEX IF EXISTS idx_assigned_tasks_org_id;
+DROP INDEX IF EXISTS idx_workflow_instances_org_id;
+DROP INDEX IF EXISTS idx_workflows_org_id;
+DROP INDEX IF EXISTS idx_invoices_org_id;
+DROP INDEX IF EXISTS idx_meal_plans_org_id;
+DROP INDEX IF EXISTS idx_corporate_profiles_org_id;
+DROP INDEX IF EXISTS idx_individual_profiles_org_id;
+DROP INDEX IF EXISTS idx_bookings_org_id;
+DROP INDEX IF EXISTS idx_rooms_org_id;
+DROP INDEX IF EXISTS idx_roles_org_id;
+DROP INDEX IF EXISTS idx_users_org_id;
+
+ALTER TABLE assigned_tasks      DROP COLUMN IF EXISTS org_id;
+ALTER TABLE workflow_instances  DROP COLUMN IF EXISTS org_id;
+ALTER TABLE workflows           DROP COLUMN IF EXISTS org_id;
+ALTER TABLE invoices            DROP COLUMN IF EXISTS org_id;
+ALTER TABLE meal_plans          DROP COLUMN IF EXISTS org_id;
+ALTER TABLE corporate_profiles  DROP COLUMN IF EXISTS org_id;
+ALTER TABLE individual_profiles DROP COLUMN IF EXISTS org_id;
+ALTER TABLE bookings            DROP COLUMN IF EXISTS org_id;
+ALTER TABLE rooms               DROP COLUMN IF EXISTS org_id;
+ALTER TABLE roles               DROP COLUMN IF EXISTS org_id;
+ALTER TABLE users               DROP COLUMN IF EXISTS org_id;

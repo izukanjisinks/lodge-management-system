@@ -20,7 +20,7 @@ func NewBookingRepository() *BookingRepository {
 	return &BookingRepository{db: database.DB}
 }
 
-func (r *BookingRepository) Create(b *models.Booking) error {
+func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 	b.ID = uuid.New()
 	now := time.Now()
 	b.CreatedAt = now
@@ -38,11 +38,11 @@ func (r *BookingRepository) Create(b *models.Booking) error {
 
 	_, err = tx.Exec(`
 		INSERT INTO bookings
-		    (id, user_id, room_id, client_id, client_type, check_in, check_out, guests, status, special_requests, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		    (id, user_id, room_id, client_id, client_type, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		b.ID, b.UserID, b.RoomID, b.ClientID, b.ClientType,
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
-		b.CreatedAt, b.UpdatedAt,
+		orgID, b.CreatedAt, b.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -89,11 +89,16 @@ func (r *BookingRepository) GetByID(id uuid.UUID) (*models.Booking, error) {
 	return scanBooking(row)
 }
 
-func (r *BookingRepository) List(status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
 	args := []interface{}{}
 	where := []string{}
 	i := 1
 
+	if orgID != uuid.Nil {
+		where = append(where, fmt.Sprintf("b.org_id = $%d", i))
+		args = append(args, orgID)
+		i++
+	}
 	if status != "" {
 		where = append(where, fmt.Sprintf("b.status = $%d", i))
 		args = append(args, status)

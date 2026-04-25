@@ -87,27 +87,31 @@ func (r *WorkflowRepository) GetByName(name string) (*models.Workflow, error) {
 	return &wf, nil
 }
 
-// GetByType retrieves a workflow template by its type
-func (r *WorkflowRepository) GetByType(workflowType models.WorkflowType) (*models.Workflow, error) {
-	query := `
-		SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
-		FROM workflows
-		WHERE workflow_type = $1 AND is_active = true
-		LIMIT 1
-	`
-
+// GetByType retrieves a workflow template by its type, scoped to org when provided.
+func (r *WorkflowRepository) GetByType(workflowType models.WorkflowType, orgID string) (*models.Workflow, error) {
 	var wf models.Workflow
 	var wfTypeStr sql.NullString
-	err := r.db.QueryRow(query, string(workflowType)).Scan(
-		&wf.ID,
-		&wf.Name,
-		&wf.Description,
-		&wfTypeStr,
-		&wf.IsActive,
-		&wf.CreatedBy,
-		&wf.CreatedAt,
-		&wf.UpdatedAt,
-	)
+	var err error
+
+	if orgID != "" {
+		err = r.db.QueryRow(`
+			SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
+			FROM workflows
+			WHERE workflow_type = $1 AND is_active = true AND org_id = $2
+			LIMIT 1`, string(workflowType), orgID).Scan(
+			&wf.ID, &wf.Name, &wf.Description, &wfTypeStr,
+			&wf.IsActive, &wf.CreatedBy, &wf.CreatedAt, &wf.UpdatedAt,
+		)
+	} else {
+		err = r.db.QueryRow(`
+			SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
+			FROM workflows
+			WHERE workflow_type = $1 AND is_active = true
+			LIMIT 1`, string(workflowType)).Scan(
+			&wf.ID, &wf.Name, &wf.Description, &wfTypeStr,
+			&wf.IsActive, &wf.CreatedBy, &wf.CreatedAt, &wf.UpdatedAt,
+		)
+	}
 
 	if err != nil {
 		return nil, err
@@ -121,16 +125,21 @@ func (r *WorkflowRepository) GetByType(workflowType models.WorkflowType) (*model
 	return &wf, nil
 }
 
-// GetAllActive retrieves all active workflow templates
-func (r *WorkflowRepository) GetAllActive() ([]models.Workflow, error) {
-	query := `
-		SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
-		FROM workflows
-		WHERE is_active = true
-		ORDER BY name
-	`
-
-	rows, err := r.db.Query(query)
+// GetAllActive retrieves all active workflow templates. When orgID is non-empty it filters to that org.
+func (r *WorkflowRepository) GetAllActive(orgID string) ([]models.Workflow, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if orgID != "" {
+		rows, err = r.db.Query(`
+			SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
+			FROM workflows WHERE is_active = true AND org_id = $1 ORDER BY name`, orgID)
+	} else {
+		rows, err = r.db.Query(`
+			SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
+			FROM workflows WHERE is_active = true ORDER BY name`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -165,29 +174,33 @@ func (r *WorkflowRepository) GetAllActive() ([]models.Workflow, error) {
 	return workflows, nil
 }
 
-// GetAllActiveWithCounts retrieves all active workflow templates with step and transition counts
-func (r *WorkflowRepository) GetAllActiveWithCounts() ([]models.WorkflowWithCounts, error) {
-	query := `
+// GetAllActiveWithCounts retrieves all active workflow templates with step and transition counts.
+// When orgID is non-empty it filters to that org.
+func (r *WorkflowRepository) GetAllActiveWithCounts(orgID string) ([]models.WorkflowWithCounts, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	base := `
 		SELECT
-			w.id,
-			w.name,
-			w.description,
-			w.workflow_type,
-			w.is_active,
-			w.created_by,
-			w.created_at,
-			w.updated_at,
+			w.id, w.name, w.description, w.workflow_type, w.is_active, w.created_by,
+			w.created_at, w.updated_at,
 			COALESCE(COUNT(DISTINCT ws.id), 0) as step_count,
 			COALESCE(COUNT(DISTINCT wt.id), 0) as transition_count
 		FROM workflows w
 		LEFT JOIN workflow_steps ws ON w.id = ws.workflow_id
-		LEFT JOIN workflow_transitions wt ON w.id = wt.workflow_id
+		LEFT JOIN workflow_transitions wt ON w.id = wt.workflow_id`
+	if orgID != "" {
+		rows, err = r.db.Query(base+`
+		WHERE w.is_active = true AND w.org_id = $1
+		GROUP BY w.id, w.name, w.description, w.workflow_type, w.is_active, w.created_by, w.created_at, w.updated_at
+		ORDER BY w.name`, orgID)
+	} else {
+		rows, err = r.db.Query(base + `
 		WHERE w.is_active = true
 		GROUP BY w.id, w.name, w.description, w.workflow_type, w.is_active, w.created_by, w.created_at, w.updated_at
-		ORDER BY w.name
-	`
-
-	rows, err := r.db.Query(query)
+		ORDER BY w.name`)
+	}
 	if err != nil {
 		return nil, err
 	}

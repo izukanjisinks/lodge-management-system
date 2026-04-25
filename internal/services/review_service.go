@@ -30,7 +30,7 @@ func (s *ReviewService) Submit(userID uuid.UUID, req *models.SubmitReviewRequest
 	}
 
 	// Resolve the guest's profile
-	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	profile, err := s.guestAuth.GetProfileByGuestID(userID)
 	if err != nil {
 		return nil, errors.New("guest profile not found")
 	}

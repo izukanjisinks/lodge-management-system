@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
@@ -20,6 +21,7 @@ func NewRoomHandler(service *services.RoomService) *RoomHandler {
 }
 
 func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	pag := utils.ParsePagination(r)
 	roomType := r.URL.Query().Get("type")
 
@@ -29,7 +31,7 @@ func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
 		isAvailable = &b
 	}
 
-	rooms, total, err := h.service.List(roomType, isAvailable, pag.Page, pag.PageSize)
+	rooms, total, err := h.service.List(orgID, roomType, isAvailable, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -44,6 +46,7 @@ func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RoomHandler) ListAvailable(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	checkInStr := r.URL.Query().Get("check_in")
 	checkOutStr := r.URL.Query().Get("check_out")
 	roomType := r.URL.Query().Get("type")
@@ -64,7 +67,7 @@ func (h *RoomHandler) ListAvailable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rooms, err := h.service.ListAvailable(checkIn, checkOut, roomType)
+	rooms, err := h.service.ListAvailable(orgID, checkIn, checkOut, roomType)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -90,13 +93,14 @@ func (h *RoomHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RoomHandler) Create(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	var room models.Room
 	if err := utils.DecodeJson(r, &room); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if err := h.service.Create(&room); err != nil {
+	if err := h.service.Create(&room, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}

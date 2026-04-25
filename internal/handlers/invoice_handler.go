@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
@@ -19,10 +20,11 @@ func NewInvoiceHandler(service *services.InvoiceService) *InvoiceHandler {
 }
 
 func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	pag := utils.ParsePagination(r)
 	status := r.URL.Query().Get("status")
 
-	invoices, total, err := h.service.List(status, pag.Page, pag.PageSize)
+	invoices, total, err := h.service.List(orgID, status, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

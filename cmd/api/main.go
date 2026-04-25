@@ -86,12 +86,29 @@ func main() {
 	workflowAdminHandler := handlers.NewWorkflowAdminHandler(workflowRepo)
 	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyService, userService)
 
-	guestAuthSvc := services.NewGuestAuthService(userRepo, roleRepo, clientRepo)
+	guestRepo := repository.NewGuestRepository()
+	guestAuthSvc := services.NewGuestAuthService(guestRepo)
 	guestAuthSvc.SetEmailService(emailService)
 	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, mealPlanRepo, guestAuthSvc)
 	guestBookingSvc.SetWorkflowService(workflowService)
-	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, userService)
+	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc)
 	guestBookingHandler := handlers.NewGuestBookingHandler(guestBookingSvc)
+
+	backofficeUserRepo := repository.NewBackofficeUserRepository()
+	orgRepo := repository.NewOrganizationRepository()
+
+	backofficeAuthSvc := services.NewBackofficeAuthService(backofficeUserRepo)
+	backofficeAuthSvc.SetEmailService(emailService)
+
+	backofficeUserSvc := services.NewBackofficeUserService(backofficeUserRepo)
+	backofficeUserSvc.SetEmailService(emailService)
+
+	backofficeOrgSvc := services.NewBackofficeOrganizationService(orgRepo, userRepo, roleRepo)
+	backofficeOrgSvc.SetEmailService(emailService)
+
+	backofficeAuthHandler := handlers.NewBackofficeAuthHandler(backofficeAuthSvc)
+	backofficeUserHandler := handlers.NewBackofficeUserHandler(backofficeUserSvc)
+	backofficeOrgHandler := handlers.NewBackofficeOrganizationHandler(backofficeOrgSvc)
 
 	reviewRepo := repository.NewReviewRepository()
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
@@ -109,7 +126,10 @@ func main() {
 		workflowAdminHandler,
 		guestAuthHandler,
 		guestBookingHandler,
-		reviewHandler)
+		reviewHandler,
+		backofficeAuthHandler,
+		backofficeUserHandler,
+		backofficeOrgHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally

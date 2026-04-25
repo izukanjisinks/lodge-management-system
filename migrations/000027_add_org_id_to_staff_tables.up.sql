@@ -1,0 +1,23 @@
+ALTER TABLE users               ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE roles               ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE rooms               ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE bookings            ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE individual_profiles ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE corporate_profiles  ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE meal_plans          ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE invoices            ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE workflows           ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE workflow_instances  ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+ALTER TABLE assigned_tasks      ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id);
+
+CREATE INDEX idx_users_org_id               ON users(org_id);
+CREATE INDEX idx_roles_org_id               ON roles(org_id);
+CREATE INDEX idx_rooms_org_id               ON rooms(org_id);
+CREATE INDEX idx_bookings_org_id            ON bookings(org_id);
+CREATE INDEX idx_individual_profiles_org_id ON individual_profiles(org_id);
+CREATE INDEX idx_corporate_profiles_org_id  ON corporate_profiles(org_id);
+CREATE INDEX idx_meal_plans_org_id          ON meal_plans(org_id);
+CREATE INDEX idx_invoices_org_id            ON invoices(org_id);
+CREATE INDEX idx_workflows_org_id           ON workflows(org_id);
+CREATE INDEX idx_workflow_instances_org_id  ON workflow_instances(org_id);
+CREATE INDEX idx_assigned_tasks_org_id      ON assigned_tasks(org_id);

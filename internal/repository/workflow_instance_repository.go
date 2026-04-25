@@ -26,8 +26,8 @@ func (r *WorkflowInstanceRepository) Create(instance *models.WorkflowInstance) e
 	query := `
 		INSERT INTO workflow_instances (
 			id, workflow_id, current_step_id, status, task_details,
-			created_by, due_date, priority
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			created_by, due_date, priority, org_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING created_at, updated_at
 	`
 
@@ -37,6 +37,11 @@ func (r *WorkflowInstanceRepository) Create(instance *models.WorkflowInstance) e
 	taskDetailsJSON, err := json.Marshal(instance.TaskDetails)
 	if err != nil {
 		return fmt.Errorf("failed to marshal task_details: %w", err)
+	}
+
+	var orgID interface{}
+	if instance.OrgID != "" {
+		orgID = instance.OrgID
 	}
 
 	return r.db.QueryRow(
@@ -49,6 +54,7 @@ func (r *WorkflowInstanceRepository) Create(instance *models.WorkflowInstance) e
 		instance.CreatedBy,
 		instance.DueDate,
 		instance.Priority,
+		orgID,
 	).Scan(&instance.CreatedAt, &instance.UpdatedAt)
 }
 
@@ -130,8 +136,18 @@ func (r *WorkflowInstanceRepository) GetByTaskID(taskID string) (*models.Workflo
 	return &instance, nil
 }
 
-// GetByCreator retrieves all workflow instances created by a user
-func (r *WorkflowInstanceRepository) GetByCreator(creatorID string) ([]models.WorkflowInstance, error) {
+// GetByCreator retrieves all workflow instances created by a user, scoped to org when provided.
+func (r *WorkflowInstanceRepository) GetByCreator(orgID, creatorID string) ([]models.WorkflowInstance, error) {
+	if orgID != "" {
+		query := `
+			SELECT id, workflow_id, current_step_id, status, task_details,
+			       created_by, created_at, updated_at, completed_at, due_date, priority
+			FROM workflow_instances
+			WHERE created_by = $1 AND org_id = $2
+			ORDER BY created_at DESC
+		`
+		return r.queryInstances(query, creatorID, orgID)
+	}
 	query := `
 		SELECT id, workflow_id, current_step_id, status, task_details,
 		       created_by, created_at, updated_at, completed_at, due_date, priority
@@ -139,12 +155,21 @@ func (r *WorkflowInstanceRepository) GetByCreator(creatorID string) ([]models.Wo
 		WHERE created_by = $1
 		ORDER BY created_at DESC
 	`
-
 	return r.queryInstances(query, creatorID)
 }
 
-// GetByStatus retrieves workflow instances by status
-func (r *WorkflowInstanceRepository) GetByStatus(status string) ([]models.WorkflowInstance, error) {
+// GetByStatus retrieves workflow instances by status, scoped to org when provided.
+func (r *WorkflowInstanceRepository) GetByStatus(orgID, status string) ([]models.WorkflowInstance, error) {
+	if orgID != "" {
+		query := `
+			SELECT id, workflow_id, current_step_id, status, task_details,
+			       created_by, created_at, updated_at, completed_at, due_date, priority
+			FROM workflow_instances
+			WHERE status = $1 AND org_id = $2
+			ORDER BY created_at DESC
+		`
+		return r.queryInstances(query, status, orgID)
+	}
 	query := `
 		SELECT id, workflow_id, current_step_id, status, task_details,
 		       created_by, created_at, updated_at, completed_at, due_date, priority
@@ -152,7 +177,6 @@ func (r *WorkflowInstanceRepository) GetByStatus(status string) ([]models.Workfl
 		WHERE status = $1
 		ORDER BY created_at DESC
 	`
-
 	return r.queryInstances(query, status)
 }
 

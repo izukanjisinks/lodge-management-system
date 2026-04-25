@@ -98,6 +98,7 @@ type WorkflowTransition struct {
 // This tracks the overall progress of one specific case (e.g., one leave request)
 type WorkflowInstance struct {
 	ID            string      `json:"id"`
+	OrgID         string      `json:"org_id,omitempty"`
 	WorkflowID    string      `json:"workflow_id"`    // References the Workflow template
 	CurrentStepID string      `json:"current_step_id"` // Where is this instance currently?
 	Status        string      `json:"status"`          // "pending", "in_progress", "completed", "rejected", "cancelled"
@@ -114,6 +115,7 @@ type WorkflowInstance struct {
 // Multiple tasks can exist for the same instance (e.g., parallel approvals)
 type AssignedTask struct {
 	ID          string       `json:"id"`
+	OrgID       string       `json:"org_id,omitempty"`
 	InstanceID  string       `json:"instance_id"` // References WorkflowInstance
 	StepID      string       `json:"step_id"`     // Which step is this task for?
 	StepName    string       `json:"step_name"`   // Denormalized for easy display

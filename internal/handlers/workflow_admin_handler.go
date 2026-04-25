@@ -23,7 +23,8 @@ func NewWorkflowAdminHandler(workflowRepo *repository.WorkflowRepository) *Workf
 
 // GetAllWorkflows retrieves all active workflow templates with counts
 func (h *WorkflowAdminHandler) GetAllWorkflows(w http.ResponseWriter, r *http.Request) {
-	workflows, err := h.workflowRepo.GetAllActiveWithCounts()
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	workflows, err := h.workflowRepo.GetAllActiveWithCounts(orgID.String())
 	if err != nil {
 		http.Error(w, "Failed to retrieve workflows", http.StatusInternalServerError)
 		return

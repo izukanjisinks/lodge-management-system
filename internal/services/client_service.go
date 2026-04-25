@@ -19,7 +19,7 @@ func NewClientService(repo *repository.ClientRepository) *ClientService {
 
 // ─── Individual ───────────────────────────────────────────────────────────────
 
-func (s *ClientService) CreateIndividual(c *models.IndividualClient) error {
+func (s *ClientService) CreateIndividual(orgID uuid.UUID, c *models.IndividualClient) error {
 	if c.FullName == "" {
 		return errors.New("full_name is required")
 	}
@@ -35,21 +35,21 @@ func (s *ClientService) CreateIndividual(c *models.IndividualClient) error {
 	if c.Status == "" {
 		c.Status = models.ClientStatusActive
 	}
-	return s.repo.CreateIndividual(c)
+	return s.repo.CreateIndividual(c, orgID)
 }
 
 func (s *ClientService) GetIndividualByID(id uuid.UUID) (*models.IndividualClient, error) {
 	return s.repo.GetIndividualByID(id)
 }
 
-func (s *ClientService) ListIndividual(search, status string, page, pageSize int) ([]models.IndividualClient, int, error) {
+func (s *ClientService) ListIndividual(orgID uuid.UUID, search, status string, page, pageSize int) ([]models.IndividualClient, int, error) {
 	if page <= 0 {
 		page = 1
 	}
 	if pageSize <= 0 {
 		pageSize = 20
 	}
-	return s.repo.ListIndividual(search, status, page, pageSize)
+	return s.repo.ListIndividual(orgID, search, status, page, pageSize)
 }
 
 func (s *ClientService) UpdateIndividual(id uuid.UUID, updates *models.IndividualClient) (*models.IndividualClient, error) {
@@ -88,7 +88,7 @@ func (s *ClientService) DeleteIndividual(id uuid.UUID) error {
 
 // ─── Corporate ────────────────────────────────────────────────────────────────
 
-func (s *ClientService) CreateCorporate(c *models.CorporateClient) error {
+func (s *ClientService) CreateCorporate(orgID uuid.UUID, c *models.CorporateClient) error {
 	if c.CompanyName == "" {
 		return errors.New("company_name is required")
 	}
@@ -107,21 +107,21 @@ func (s *ClientService) CreateCorporate(c *models.CorporateClient) error {
 	if c.Status == "" {
 		c.Status = models.ClientStatusActive
 	}
-	return s.repo.CreateCorporate(c)
+	return s.repo.CreateCorporate(c, orgID)
 }
 
 func (s *ClientService) GetCorporateByID(id uuid.UUID) (*models.CorporateClient, error) {
 	return s.repo.GetCorporateByID(id)
 }
 
-func (s *ClientService) ListCorporate(search, status string, page, pageSize int) ([]models.CorporateClient, int, error) {
+func (s *ClientService) ListCorporate(orgID uuid.UUID, search, status string, page, pageSize int) ([]models.CorporateClient, int, error) {
 	if page <= 0 {
 		page = 1
 	}
 	if pageSize <= 0 {
 		pageSize = 20
 	}
-	return s.repo.ListCorporate(search, status, page, pageSize)
+	return s.repo.ListCorporate(orgID, search, status, page, pageSize)
 }
 
 func (s *ClientService) UpdateCorporate(id uuid.UUID, updates *models.CorporateClient) (*models.CorporateClient, error) {

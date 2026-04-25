@@ -3,9 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
-	"time"
 
-	"lodge-system/internal/database"
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
 	"lodge-system/internal/utils/email"
@@ -14,48 +12,25 @@ import (
 	"github.com/google/uuid"
 )
 
-type GuestRegisterRequest struct {
-	FullName         string `json:"full_name"`
-	Email            string `json:"email"`
-	Password         string `json:"password"`
-	Phone            string `json:"phone"`
-	IDPassportNumber string `json:"id_passport_number"`
-	Nationality      string `json:"nationality"`
-}
-
-type GuestUpdateProfileRequest struct {
-	FullName         string `json:"full_name"`
-	Phone            string `json:"phone"`
-	IDPassportNumber string `json:"id_passport_number"`
-	Nationality      string `json:"nationality"`
-}
-
 type GuestAuthService struct {
-	userRepo     *repository.UserRepository
-	roleRepo     *repository.RoleRepository
-	clientRepo   *repository.ClientRepository
+	guestRepo  *repository.GuestRepository
 	emailService *email.EmailService
 }
 
-func NewGuestAuthService(
-	userRepo *repository.UserRepository,
-	roleRepo *repository.RoleRepository,
-	clientRepo *repository.ClientRepository,
-) *GuestAuthService {
-	return &GuestAuthService{userRepo: userRepo, roleRepo: roleRepo, clientRepo: clientRepo}
+func NewGuestAuthService(guestRepo *repository.GuestRepository) *GuestAuthService {
+	return &GuestAuthService{guestRepo: guestRepo}
 }
 
-func (s *GuestAuthService) SetEmailService(emailService *email.EmailService) {
-	s.emailService = emailService
+func (s *GuestAuthService) SetEmailService(svc *email.EmailService) {
+	s.emailService = svc
 }
 
-// Register creates a users row (role=guest) and a linked individual_profiles row atomically.
-func (s *GuestAuthService) Register(req *GuestRegisterRequest) (*models.User, error) {
-	if req.FullName == "" || req.Email == "" || req.Password == "" || req.Phone == "" {
-		return nil, errors.New("full_name, email, password, and phone are required")
+func (s *GuestAuthService) Register(req *models.GuestRegisterRequest) (*models.Guest, error) {
+	if req.FullName == "" || req.Email == "" || req.Password == "" {
+		return nil, errors.New("full_name, email, and password are required")
 	}
 
-	exists, err := s.userRepo.EmailExists(req.Email)
+	exists, err := s.guestRepo.EmailExists(req.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -68,52 +43,16 @@ func (s *GuestAuthService) Register(req *GuestRegisterRequest) (*models.User, er
 		return nil, err
 	}
 
-	role, err := s.roleRepo.GetRoleByName(models.RoleGuest)
-	if err != nil {
-		return nil, fmt.Errorf("guest role not found: %w", err)
+	guest := &models.Guest{
+		FullName:  req.FullName,
+		Email:     req.Email,
+		Password:  hashed,
+		Phone:     req.Phone,
+		IsActive:  true,
 	}
 
-	now := time.Now()
-	user := &models.User{
-		FullName:          req.FullName,
-		Email:             req.Email,
-		Password:          hashed,
-		RoleID:            &role.RoleID,
-		RoleName:          models.RoleGuest,
-		Role:              role,
-		IsActive:          true,
-		PasswordChangedAt: &now,
-	}
-
-	profile := &models.IndividualClient{
-		FullName:         req.FullName,
-		Email:            req.Email,
-		Phone:            req.Phone,
-		IDPassportNumber: req.IDPassportNumber,
-		Nationality:      req.Nationality,
-		Status:           models.ClientStatusActive,
-	}
-
-	tx, err := database.DB.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
-
-	if err = s.userRepo.CreateTx(tx, user); err != nil {
-		return nil, fmt.Errorf("failed to create user account: %w", err)
-	}
-
-	if err = s.clientRepo.CreateIndividualTx(tx, profile, user.UserID); err != nil {
-		return nil, fmt.Errorf("failed to create guest profile: %w", err)
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, err
+	if err := s.guestRepo.Create(guest); err != nil {
+		return nil, fmt.Errorf("failed to create guest account: %w", err)
 	}
 
 	if s.emailService != nil {
@@ -125,36 +64,54 @@ func (s *GuestAuthService) Register(req *GuestRegisterRequest) (*models.User, er
 		}()
 	}
 
-	return user, nil
+	return guest, nil
 }
 
-// GetProfileByUserID resolves the individual_profiles record for a logged-in guest.
-func (s *GuestAuthService) GetProfileByUserID(userID uuid.UUID) (*models.IndividualClient, error) {
-	return s.clientRepo.GetIndividualByUserID(userID)
-}
-
-// UpdateProfile updates the editable fields on a guest's individual profile.
-func (s *GuestAuthService) UpdateProfile(userID uuid.UUID, req *GuestUpdateProfileRequest) (*models.IndividualClient, error) {
-	profile, err := s.clientRepo.GetIndividualByUserID(userID)
+func (s *GuestAuthService) Login(emailAddr, password string) (*models.Guest, string, error) {
+	guest, err := s.guestRepo.GetByEmail(emailAddr)
 	if err != nil {
-		return nil, errors.New("guest profile not found")
+		return nil, "", errors.New("invalid credentials")
+	}
+
+	if !guest.IsActive {
+		return nil, "", errors.New("account is inactive")
+	}
+
+	if err := utils.ComparePasswords(guest.Password, password); err != nil {
+		return nil, "", errors.New("invalid credentials")
+	}
+
+	token, err := utils.GenerateGuestToken(guest.Email, guest.ID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return guest, token, nil
+}
+
+func (s *GuestAuthService) GetByID(id uuid.UUID) (*models.Guest, error) {
+	return s.guestRepo.GetByID(id)
+}
+
+func (s *GuestAuthService) GetProfileByGuestID(guestID uuid.UUID) (*models.IndividualClient, error) {
+	return s.guestRepo.GetIndividualProfileByGuestID(guestID)
+}
+
+func (s *GuestAuthService) UpdateProfile(id uuid.UUID, req *models.GuestUpdateRequest) (*models.Guest, error) {
+	guest, err := s.guestRepo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("guest not found")
 	}
 
 	if req.FullName != "" {
-		profile.FullName = req.FullName
+		guest.FullName = req.FullName
 	}
 	if req.Phone != "" {
-		profile.Phone = req.Phone
-	}
-	if req.IDPassportNumber != "" {
-		profile.IDPassportNumber = req.IDPassportNumber
-	}
-	if req.Nationality != "" {
-		profile.Nationality = req.Nationality
+		guest.Phone = req.Phone
 	}
 
-	if err := s.clientRepo.UpdateIndividualByUserID(userID, profile); err != nil {
+	if err := s.guestRepo.Update(guest); err != nil {
 		return nil, err
 	}
-	return s.clientRepo.GetIndividualByUserID(userID)
+	return s.guestRepo.GetByID(id)
 }

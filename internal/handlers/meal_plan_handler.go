@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
@@ -19,6 +20,7 @@ func NewMealPlanHandler(service *services.MealPlanService) *MealPlanHandler {
 }
 
 func (h *MealPlanHandler) List(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	pag := utils.ParsePagination(r)
 
 	var isActive *bool
@@ -27,7 +29,7 @@ func (h *MealPlanHandler) List(w http.ResponseWriter, r *http.Request) {
 		isActive = &b
 	}
 
-	plans, total, err := h.service.List(isActive, pag.Page, pag.PageSize)
+	plans, total, err := h.service.List(orgID, isActive, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -58,13 +60,14 @@ func (h *MealPlanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MealPlanHandler) Create(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	var req models.CreateMealPlanRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	plan, err := h.service.Create(&req)
+	plan, err := h.service.Create(orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

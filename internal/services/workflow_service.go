@@ -42,15 +42,17 @@ func NewWorkflowService(
 	}
 }
 
-// InitiateWorkflow starts a new workflow instance using workflow type
+// InitiateWorkflow starts a new workflow instance using workflow type.
+// orgID scopes the workflow template lookup and stamps the instance.
 func (s *WorkflowService) InitiateWorkflow(
 	workflowType models.WorkflowType,
 	taskDetails models.TaskDetails,
 	initiatorID string,
 	priority string,
 	dueDate interface{},
+	orgID string,
 ) (*models.WorkflowInstance, error) {
-	workflow, err := s.workflowRepo.GetByType(workflowType)
+	workflow, err := s.workflowRepo.GetByType(workflowType, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("workflow not found for type %s: %w", workflowType, err)
 	}
@@ -61,6 +63,7 @@ func (s *WorkflowService) InitiateWorkflow(
 	}
 
 	instance := &models.WorkflowInstance{
+		OrgID:         orgID,
 		WorkflowID:    workflow.ID,
 		CurrentStepID: firstActionStep.ID,
 		Status:        "in_progress",
@@ -73,12 +76,13 @@ func (s *WorkflowService) InitiateWorkflow(
 		return nil, fmt.Errorf("failed to create instance: %w", err)
 	}
 
-	assigneeID, err := s.determineAssignee(firstActionStep, taskDetails)
+	assigneeID, err := s.determineAssignee(orgID, firstActionStep, taskDetails)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine assignee: %w", err)
 	}
 
 	task := &models.AssignedTask{
+		OrgID:      orgID,
 		InstanceID: instance.ID,
 		StepID:     firstActionStep.ID,
 		StepName:   firstActionStep.StepName,
@@ -214,12 +218,13 @@ func (s *WorkflowService) ProcessAction(
 			}
 		}
 	} else {
-		assigneeID, err := s.determineAssignee(nextStep, instance.TaskDetails)
+		assigneeID, err := s.determineAssignee(instance.OrgID, nextStep, instance.TaskDetails)
 		if err != nil {
 			return fmt.Errorf("failed to determine assignee: %w", err)
 		}
 
 		newTask := &models.AssignedTask{
+			OrgID:      instance.OrgID,
 			InstanceID: instanceID,
 			StepID:     nextStep.ID,
 			StepName:   nextStep.StepName,
@@ -267,12 +272,12 @@ func (s *WorkflowService) ProcessAction(
 	return nil
 }
 
-// GetMyTasks retrieves all tasks assigned to a user
-func (s *WorkflowService) GetMyTasks(userID string, statusFilter string) ([]models.AssignedTask, error) {
+// GetMyTasks retrieves all tasks assigned to a user, scoped to org.
+func (s *WorkflowService) GetMyTasks(orgID, userID string, statusFilter string) ([]models.AssignedTask, error) {
 	if statusFilter != "" {
-		return s.taskRepo.GetByAssignee(userID, statusFilter)
+		return s.taskRepo.GetByAssignee(orgID, userID, statusFilter)
 	}
-	return s.taskRepo.GetByAssignee(userID)
+	return s.taskRepo.GetByAssignee(orgID, userID)
 }
 
 // GetInstanceHistory retrieves the complete history of a workflow instance
@@ -285,14 +290,17 @@ func (s *WorkflowService) GetInstanceByTaskID(taskID string) (*models.WorkflowIn
 	return s.instanceRepo.GetByTaskID(taskID)
 }
 
-// determineAssignee finds the user with the required role who has the fewest pending tasks
-func (s *WorkflowService) determineAssignee(step *models.WorkflowStep, taskDetails models.TaskDetails) (string, error) {
+// determineAssignee finds the user with the required role who has the fewest pending tasks,
+// scoped to the given org so tasks are never assigned cross-org.
+func (s *WorkflowService) determineAssignee(orgID string, step *models.WorkflowStep, taskDetails models.TaskDetails) (string, error) {
 	if len(step.AllowedRoles) == 0 {
 		return "", errors.New("no allowed roles defined for step")
 	}
 
+	orgUUID, _ := uuid.Parse(orgID)
+
 	for _, roleName := range step.AllowedRoles {
-		user, err := s.userRepo.GetUserWithFewestTasksByRole(roleName)
+		user, err := s.userRepo.GetUserWithFewestTasksByRole(orgUUID, roleName)
 		if err == nil && user != nil {
 			return user.UserID.String(), nil
 		}

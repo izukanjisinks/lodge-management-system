@@ -25,3 +25,15 @@ func withAuthAndRole(handler http.HandlerFunc, roles ...string) http.HandlerFunc
 func withPublic(handler http.HandlerFunc) http.HandlerFunc {
 	return handler
 }
+
+func withGuestAuth(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		middleware.GuestJWTAuth(http.HandlerFunc(handler)).ServeHTTP(w, r)
+	}
+}
+
+func withBackofficeAuth(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		middleware.BackofficeJWTAuth(http.HandlerFunc(handler)).ServeHTTP(w, r)
+	}
+}

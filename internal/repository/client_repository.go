@@ -22,11 +22,11 @@ func NewClientRepository() *ClientRepository {
 
 // ─── Individual ───────────────────────────────────────────────────────────────
 
-func (r *ClientRepository) CreateIndividual(c *models.IndividualClient) error {
+func (r *ClientRepository) CreateIndividual(c *models.IndividualClient, orgID uuid.UUID) error {
 	query := `
 		INSERT INTO individual_profiles
-		    (id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+		    (id, full_name, email, phone, id_passport_number, nationality, status, notes, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
 
 	c.ID = uuid.New()
 	now := time.Now()
@@ -35,7 +35,7 @@ func (r *ClientRepository) CreateIndividual(c *models.IndividualClient) error {
 
 	_, err := r.db.Exec(query,
 		c.ID, c.FullName, c.Email, c.Phone, c.IDPassportNumber,
-		c.Nationality, c.Status, c.Notes, c.CreatedAt, c.UpdatedAt,
+		c.Nationality, c.Status, c.Notes, orgID, c.CreatedAt, c.UpdatedAt,
 	)
 	return err
 }
@@ -94,8 +94,8 @@ func (r *ClientRepository) GetIndividualByID(id uuid.UUID) (*models.IndividualCl
 	return r.scanIndividual(r.db.QueryRow(query, id))
 }
 
-func (r *ClientRepository) ListIndividual(search, status string, page, pageSize int) ([]models.IndividualClient, int, error) {
-	where, args, i := r.buildClientWhere(search, status)
+func (r *ClientRepository) ListIndividual(orgID uuid.UUID, search, status string, page, pageSize int) ([]models.IndividualClient, int, error) {
+	where, args, i := r.buildClientWhere(orgID, search, status)
 
 	var total int
 	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM individual_profiles WHERE %s`, where)
@@ -158,11 +158,11 @@ func (r *ClientRepository) DeleteIndividual(id uuid.UUID) error {
 
 // ─── Corporate ────────────────────────────────────────────────────────────────
 
-func (r *ClientRepository) CreateCorporate(c *models.CorporateClient) error {
+func (r *ClientRepository) CreateCorporate(c *models.CorporateClient, orgID uuid.UUID) error {
 	query := `
 		INSERT INTO corporate_profiles
-		    (id, company_name, contact_person, email, phone, company_reg_number, industry, status, notes, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
+		    (id, company_name, contact_person, email, phone, company_reg_number, industry, status, notes, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`
 
 	c.ID = uuid.New()
 	now := time.Now()
@@ -171,7 +171,7 @@ func (r *ClientRepository) CreateCorporate(c *models.CorporateClient) error {
 
 	_, err := r.db.Exec(query,
 		c.ID, c.CompanyName, c.ContactPerson, c.Email, c.Phone,
-		c.CompanyRegNumber, c.Industry, c.Status, c.Notes, c.CreatedAt, c.UpdatedAt,
+		c.CompanyRegNumber, c.Industry, c.Status, c.Notes, orgID, c.CreatedAt, c.UpdatedAt,
 	)
 	return err
 }
@@ -185,8 +185,8 @@ func (r *ClientRepository) GetCorporateByID(id uuid.UUID) (*models.CorporateClie
 	return r.scanCorporate(r.db.QueryRow(query, id))
 }
 
-func (r *ClientRepository) ListCorporate(search, status string, page, pageSize int) ([]models.CorporateClient, int, error) {
-	where, args, i := r.buildClientWhere(search, status)
+func (r *ClientRepository) ListCorporate(orgID uuid.UUID, search, status string, page, pageSize int) ([]models.CorporateClient, int, error) {
+	where, args, i := r.buildClientWhere(orgID, search, status)
 
 	var total int
 	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM corporate_profiles WHERE %s`, where)
@@ -251,10 +251,10 @@ func (r *ClientRepository) DeleteCorporate(id uuid.UUID) error {
 
 // buildClientWhere builds a WHERE clause with optional search and status filters.
 // Returns the clause string, the args slice, and the next available arg index.
-func (r *ClientRepository) buildClientWhere(search, status string) (string, []interface{}, int) {
-	conditions := []string{}
-	args := []interface{}{}
-	i := 1
+func (r *ClientRepository) buildClientWhere(orgID uuid.UUID, search, status string) (string, []interface{}, int) {
+	args := []interface{}{orgID}
+	conditions := []string{"org_id = $1"}
+	i := 2
 
 	if search != "" {
 		conditions = append(conditions, fmt.Sprintf("(email ILIKE $%d OR full_name ILIKE $%d OR company_name ILIKE $%d)", i, i, i))
@@ -267,11 +267,7 @@ func (r *ClientRepository) buildClientWhere(search, status string) (string, []in
 		i++
 	}
 
-	where := "1=1"
-	if len(conditions) > 0 {
-		where = strings.Join(conditions, " AND ")
-	}
-	return where, args, i
+	return strings.Join(conditions, " AND "), args, i
 }
 
 func (r *ClientRepository) scanIndividual(row rowScanner) (*models.IndividualClient, error) {

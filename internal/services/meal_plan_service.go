@@ -17,7 +17,7 @@ func NewMealPlanService(repo *repository.MealPlanRepository) *MealPlanService {
 	return &MealPlanService{repo: repo}
 }
 
-func (s *MealPlanService) Create(req *models.CreateMealPlanRequest) (*models.MealPlan, error) {
+func (s *MealPlanService) Create(orgID uuid.UUID, req *models.CreateMealPlanRequest) (*models.MealPlan, error) {
 	if req.Name == "" {
 		return nil, errors.New("name is required")
 	}
@@ -35,7 +35,7 @@ func (s *MealPlanService) Create(req *models.CreateMealPlanRequest) (*models.Mea
 		Description:            req.Description,
 		IsActive:               req.IsActive,
 	}
-	if err := s.repo.Create(m); err != nil {
+	if err := s.repo.Create(m, orgID); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -45,8 +45,8 @@ func (s *MealPlanService) GetByID(id uuid.UUID) (*models.MealPlan, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *MealPlanService) List(isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {
-	return s.repo.List(isActive, page, pageSize)
+func (s *MealPlanService) List(orgID uuid.UUID, isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {
+	return s.repo.List(orgID, isActive, page, pageSize)
 }
 
 func (s *MealPlanService) Update(id uuid.UUID, req *models.UpdateMealPlanRequest) (*models.MealPlan, error) {

@@ -18,7 +18,7 @@ func NewRoomService(repo *repository.RoomRepository) *RoomService {
 	return &RoomService{repo: repo}
 }
 
-func (s *RoomService) Create(room *models.Room) error {
+func (s *RoomService) Create(room *models.Room, orgID uuid.UUID) error {
 	if room.Name == "" {
 		return errors.New("room name is required")
 	}
@@ -38,21 +38,21 @@ func (s *RoomService) Create(room *models.Room) error {
 		room.Images = []string{}
 	}
 	room.IsAvailable = true
-	return s.repo.Create(room)
+	return s.repo.Create(room, orgID)
 }
 
 func (s *RoomService) GetByID(id uuid.UUID) (*models.Room, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *RoomService) List(roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+func (s *RoomService) List(orgID uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	if roomType != "" && !models.ValidRoomTypes[roomType] {
 		return nil, 0, errors.New("invalid room type filter")
 	}
-	return s.repo.List(roomType, isAvailable, page, pageSize)
+	return s.repo.List(orgID, roomType, isAvailable, page, pageSize)
 }
 
-func (s *RoomService) ListAvailable(checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
+func (s *RoomService) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
 	if checkIn.IsZero() || checkOut.IsZero() {
 		return nil, errors.New("check_in and check_out are required")
 	}
@@ -62,7 +62,7 @@ func (s *RoomService) ListAvailable(checkIn, checkOut time.Time, roomType string
 	if roomType != "" && !models.ValidRoomTypes[roomType] {
 		return nil, errors.New("invalid room type filter")
 	}
-	return s.repo.ListAvailable(checkIn, checkOut, roomType)
+	return s.repo.ListAvailable(orgID, checkIn, checkOut, roomType)
 }
 
 func (s *RoomService) Update(id uuid.UUID, updates *models.Room) (*models.Room, error) {

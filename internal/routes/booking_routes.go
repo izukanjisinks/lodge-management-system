@@ -24,9 +24,9 @@ func RegisterBookingRoutes(h *handlers.BookingHandler) {
 
 	// Status transitions — admin and manager only
 	http.HandleFunc("PATCH /api/v1/bookings/{id}/status",
-		withAuthAndRole(h.UpdateStatus, models.RoleAdmin, models.RoleManager))
+		withAuthAndRole(h.UpdateStatus, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
 	// Delete — admin and manager only
 	http.HandleFunc("DELETE /api/v1/bookings/{id}",
-		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleManager))
+		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 }

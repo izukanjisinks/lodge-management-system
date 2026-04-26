@@ -60,6 +60,68 @@ func (h *MealPlanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, plan)
 }
 
+// GuestList handles GET /api/v1/guest/meal-plans — public, requires ?org_id= query param
+func (h *MealPlanHandler) GuestList(w http.ResponseWriter, r *http.Request) {
+	orgIDStr := r.URL.Query().Get("org_id")
+	if orgIDStr == "" {
+		utils.RespondError(w, http.StatusBadRequest, "org_id query param is required")
+		return
+	}
+	orgID, err := uuid.Parse(orgIDStr)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
+		return
+	}
+
+	pag := utils.ParsePagination(r)
+
+	var isActive *bool
+	if v := r.URL.Query().Get("is_active"); v != "" {
+		b := v == "true"
+		isActive = &b
+	}
+
+	plans, total, err := h.service.List(orgID, isActive, pag.Page, pag.PageSize)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
+		Data:     plans,
+		Page:     pag.Page,
+		PageSize: pag.PageSize,
+		Total:    total,
+	})
+}
+
+// GuestGetByID handles GET /api/v1/guest/meal-plans/{id} — public, requires ?org_id= query param
+func (h *MealPlanHandler) GuestGetByID(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid meal plan ID")
+		return
+	}
+	orgIDStr := r.URL.Query().Get("org_id")
+	if orgIDStr == "" {
+		utils.RespondError(w, http.StatusBadRequest, "org_id query param is required")
+		return
+	}
+	orgID, err := uuid.Parse(orgIDStr)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
+		return
+	}
+
+	plan, err := h.service.GetByID(id, orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "Meal plan not found")
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, plan)
+}
+
 func (h *MealPlanHandler) Create(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	var req models.CreateMealPlanRequest

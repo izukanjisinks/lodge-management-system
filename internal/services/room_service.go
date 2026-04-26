@@ -45,6 +45,10 @@ func (s *RoomService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, erro
 	return s.repo.GetByID(id, orgID)
 }
 
+func (s *RoomService) GetByIDUnscoped(id uuid.UUID) (*models.Room, error) {
+	return s.repo.GetByIDUnscoped(id)
+}
+
 func (s *RoomService) List(orgID uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	if roomType != "" && !models.ValidRoomTypes[roomType] {
 		return nil, 0, errors.New("invalid room type filter")

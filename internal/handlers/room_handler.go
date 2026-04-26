@@ -45,6 +45,59 @@ func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GuestList handles GET /api/v1/guest/rooms — public, requires ?org_id= query param
+func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
+	orgIDStr := r.URL.Query().Get("org_id")
+	if orgIDStr == "" {
+		utils.RespondError(w, http.StatusBadRequest, "org_id query param is required")
+		return
+	}
+	orgID, err := uuid.Parse(orgIDStr)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
+		return
+	}
+
+	pag := utils.ParsePagination(r)
+	roomType := r.URL.Query().Get("type")
+
+	var isAvailable *bool
+	if v := r.URL.Query().Get("is_available"); v != "" {
+		b := v == "true"
+		isAvailable = &b
+	}
+
+	rooms, total, err := h.service.List(orgID, roomType, isAvailable, pag.Page, pag.PageSize)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
+		Data:     rooms,
+		Page:     pag.Page,
+		PageSize: pag.PageSize,
+		Total:    total,
+	})
+}
+
+// GuestGetByID handles GET /api/v1/guest/rooms/{id} — public, no org required (unscoped lookup)
+func (h *RoomHandler) GuestGetByID(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+
+	room, err := h.service.GetByIDUnscoped(id)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "Room not found")
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, room)
+}
+
 func (h *RoomHandler) ListAvailable(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	checkInStr := r.URL.Query().Get("check_in")

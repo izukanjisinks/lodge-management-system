@@ -70,8 +70,8 @@ func (s *BackofficeUserService) Create(req models.CreateBackofficeUserRequest) (
 
 	if s.emailService != nil {
 		go func() {
-			body := email.PasswordResetTemplate(password)
-			if sendErr := s.emailService.SendEmail([]string{req.Email}, "Your Backoffice Account", body); sendErr != nil {
+			body := email.BackofficeWelcomeTemplate(req.FullName, req.Email, password)
+			if sendErr := s.emailService.SendEmail([]string{req.Email}, "You've been granted Backoffice Portal access", body); sendErr != nil {
 				fmt.Printf("warning: failed to send backoffice welcome email to %s: %v\n", req.Email, sendErr)
 			}
 		}()

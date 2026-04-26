@@ -24,7 +24,13 @@ func (h *BackofficeUserHandler) List(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve backoffice users")
 		return
 	}
-	utils.RespondJSON(w, http.StatusOK, users)
+	pag := utils.ParsePagination(r)
+	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
+		Data:     users,
+		Page:     pag.Page,
+		PageSize: pag.PageSize,
+		Total:    len(users),
+	})
 }
 
 func (h *BackofficeUserHandler) GetByID(w http.ResponseWriter, r *http.Request) {

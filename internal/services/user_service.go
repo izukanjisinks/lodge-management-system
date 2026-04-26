@@ -206,6 +206,9 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 		"user": map[string]interface{}{
 			"user_id":         user.UserID,
 			"org_id":          orgIDVal,
+			"org_name":        user.OrgName,
+			"org_logo_url":    user.OrgLogoURL,
+			"full_name":       user.FullName,
 			"email":           user.Email,
 			"role":            user.Role,
 			"is_active":       user.IsActive,

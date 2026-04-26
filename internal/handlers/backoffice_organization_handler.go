@@ -24,7 +24,13 @@ func (h *BackofficeOrganizationHandler) List(w http.ResponseWriter, r *http.Requ
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve organizations")
 		return
 	}
-	utils.RespondJSON(w, http.StatusOK, orgs)
+	pag := utils.ParsePagination(r)
+	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
+		Data:     orgs,
+		Page:     pag.Page,
+		PageSize: pag.PageSize,
+		Total:    len(orgs),
+	})
 }
 
 func (h *BackofficeOrganizationHandler) GetByID(w http.ResponseWriter, r *http.Request) {

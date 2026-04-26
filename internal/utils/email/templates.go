@@ -174,6 +174,27 @@ func WelcomeUserTemplate(fullName, userEmail, temporaryPassword string) string {
 	return emailWrapper("Welcome to Lodge Management", header, body)
 }
 
+// BackofficeWelcomeTemplate generates HTML for a new backoffice platform admin account
+func BackofficeWelcomeTemplate(fullName, userEmail, temporaryPassword string) string {
+	header := headerGradient(colorPrimary, colorPrimaryLight)
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Hello %s,</p>
+              <p>You have been granted access to the <strong>Lodge Management Backoffice Portal</strong> — the platform administration console for managing lodge organisations and platform-level settings.</p>
+              %s
+              %s
+              <p>If you believe this was sent in error, please contact the platform administrator immediately.</p>
+              %s`,
+		fullName,
+		infoTable(colorInfoBox, colorInfoBorder,
+			infoRow("Portal:", "Backoffice Admin Portal"),
+			infoRow("Email:", userEmail),
+			infoRow("Password:", temporaryPassword),
+		),
+		signature(),
+	)
+	return emailWrapper("Backoffice Portal Access", header, body)
+}
+
 // PasswordResetTemplate generates HTML for password reset notification
 func PasswordResetTemplate(temporaryPassword string) string {
 	header := headerGradient(colorPrimary, colorPrimaryLight)

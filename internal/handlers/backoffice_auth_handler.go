@@ -48,11 +48,11 @@ func (h *BackofficeAuthHandler) ChangePassword(w http.ResponseWriter, r *http.Re
 	}
 
 	var req struct {
-		CurrentPassword string `json:"current_password"`
+		CurrentPassword string `json:"old_password"`
 		NewPassword     string `json:"new_password"`
 	}
 	if err := utils.DecodeJson(r, &req); err != nil || req.CurrentPassword == "" || req.NewPassword == "" {
-		utils.RespondError(w, http.StatusBadRequest, "current_password and new_password are required")
+		utils.RespondError(w, http.StatusBadRequest, "old password and new password are required")
 		return
 	}
 

@@ -54,7 +54,7 @@ func (r *UserRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
@@ -68,7 +68,7 @@ func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
@@ -121,7 +121,7 @@ func (r *UserRepository) GetByEmailAndOrg(email string, orgID uuid.UUID) (*model
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
@@ -135,7 +135,7 @@ func (r *UserRepository) GetAllUsers() ([]models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
@@ -198,7 +198,7 @@ func (r *UserRepository) List(orgID uuid.UUID, search string, roleID *uuid.UUID,
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
@@ -272,15 +272,23 @@ func (r *UserRepository) scanUser(row rowScanner) (*models.User, error) {
 	var roleID sql.NullString
 	var rRoleID, rName, rDesc sql.NullString
 	var passwordChangedAt, passwordExpiresAt, lockedUntil, lastLoginAt sql.NullTime
+	var orgName, orgLogoURL sql.NullString
 
 	err := row.Scan(
 		&u.UserID, &u.FullName, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
 		&u.ChangePassword, &passwordChangedAt, &passwordExpiresAt,
 		&u.FailedLoginAttempts, &u.IsLocked, &lockedUntil, &lastLoginAt,
-		&rRoleID, &rName, &rDesc, &u.OrgID,
+		&rRoleID, &rName, &rDesc, &u.OrgID, &orgName, &orgLogoURL,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if orgName.Valid {
+		u.OrgName = orgName.String
+	}
+	if orgLogoURL.Valid {
+		u.OrgLogoURL = orgLogoURL.String
 	}
 
 	if roleID.Valid {

@@ -121,9 +121,10 @@ func (r *UserRepository) GetByEmailAndOrg(email string, orgID uuid.UUID) (*model
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description
+		       r.role_id, r.name, r.description, o.id
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
+		LEFT JOIN organizations o ON u.org_id = o.id
 		WHERE u.email = $1 AND u.org_id = $2`
 
 	return r.scanUser(r.db.QueryRow(query, email, orgID))

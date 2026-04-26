@@ -7,14 +7,12 @@ type WorkflowType string
 
 // Workflow type constants
 const (
-	WorkflowTypeLeaveRequest    WorkflowType = "LEAVE_REQUEST"
 	WorkflowTypeBookingApproval WorkflowType = "BOOKING_APPROVAL"
 )
 
 // GetAllWorkflowTypes returns all available workflow types
 func GetAllWorkflowTypes() []WorkflowType {
 	return []WorkflowType{
-		WorkflowTypeLeaveRequest,
 		WorkflowTypeBookingApproval,
 	}
 }
@@ -29,11 +27,6 @@ type WorkflowTypeInfo struct {
 // GetWorkflowTypeInfo returns metadata for all workflow types
 func GetWorkflowTypeInfo() []WorkflowTypeInfo {
 	return []WorkflowTypeInfo{
-		{
-			Type:        WorkflowTypeLeaveRequest,
-			Name:        "Leave Request",
-			Description: "Workflow for managing employee leave requests and approvals",
-		},
 		{
 			Type:        WorkflowTypeBookingApproval,
 			Name:        "Booking Approval",
@@ -75,11 +68,11 @@ type WorkflowStep struct {
 	WorkflowID           string    `json:"workflow_id"`
 	StepName             string    `json:"step_name"`
 	StepOrder            int       `json:"step_order"`
-	Initial              bool      `json:"initial"`              // First step in workflow
-	Final                bool      `json:"final"`                // Last step in workflow
-	AllowedRoles         []string  `json:"allowed_roles"`        // Roles that can act on this step
+	Initial              bool      `json:"initial"`                // First step in workflow
+	Final                bool      `json:"final"`                  // Last step in workflow
+	AllowedRoles         []string  `json:"allowed_roles"`          // Roles that can act on this step
 	RequiresAllApprovers bool      `json:"requires_all_approvers"` // true = all must approve, false = any one
-	MinApprovals         int       `json:"min_approvals"`        // Minimum approvals needed (0 = not used)
+	MinApprovals         int       `json:"min_approvals"`          // Minimum approvals needed (0 = not used)
 	CreatedAt            time.Time `json:"created_at"`
 }
 
@@ -89,9 +82,9 @@ type WorkflowTransition struct {
 	WorkflowID     string    `json:"workflow_id"`
 	FromStepID     string    `json:"from_step_id"`
 	ToStepID       string    `json:"to_step_id"`
-	ActionName     string    `json:"action_name"`      // "submit", "approve", "reject", "reassign"
-	ConditionType  *string   `json:"condition_type"`   // e.g., "user_role", "assigned_user_only"
-	ConditionValue *string   `json:"condition_value"`  // JSON for complex conditions
+	ActionName     string    `json:"action_name"`     // "submit", "approve", "reject", "reassign"
+	ConditionType  *string   `json:"condition_type"`  // e.g., "user_role", "assigned_user_only"
+	ConditionValue *string   `json:"condition_value"` // JSON for complex conditions
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -100,7 +93,7 @@ type WorkflowTransition struct {
 type WorkflowInstance struct {
 	ID            string      `json:"id"`
 	OrgID         string      `json:"org_id,omitempty"`
-	WorkflowID    string      `json:"workflow_id"`    // References the Workflow template
+	WorkflowID    string      `json:"workflow_id"`     // References the Workflow template
 	CurrentStepID string      `json:"current_step_id"` // Where is this instance currently?
 	Status        string      `json:"status"`          // "pending", "in_progress", "completed", "rejected", "cancelled"
 	TaskDetails   TaskDetails `json:"task_details"`    // The actual data for this instance
@@ -151,7 +144,7 @@ type SenderDetails struct {
 type WorkflowHistory struct {
 	ID              string    `json:"id"`
 	InstanceID      string    `json:"instance_id"`
-	FromStepID      *string   `json:"from_step_id"`      // Nullable for initial creation
+	FromStepID      *string   `json:"from_step_id"` // Nullable for initial creation
 	ToStepID        string    `json:"to_step_id"`
 	ActionTaken     string    `json:"action_taken"`      // "submit", "approve", "reject", "reassign"
 	PerformedBy     string    `json:"performed_by"`      // User ID

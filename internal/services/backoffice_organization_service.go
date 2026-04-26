@@ -140,7 +140,7 @@ func (s *BackofficeOrganizationService) Provision(req models.ProvisionOrgRequest
 
 	if s.emailService != nil {
 		go func() {
-			body := email.PasswordResetTemplate(password)
+			body := email.WelcomeUserTemplate(req.Admin.FullName, req.Admin.Email, password)
 			if sendErr := s.emailService.SendEmail(
 				[]string{req.Admin.Email},
 				fmt.Sprintf("Your admin account for %s", req.Organization.Name),

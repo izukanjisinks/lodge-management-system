@@ -7,6 +7,8 @@ import (
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
+
+	"github.com/lib/pq"
 )
 
 type WorkflowAdminHandler struct {
@@ -82,6 +84,10 @@ func (h *WorkflowAdminHandler) CreateWorkflow(w http.ResponseWriter, r *http.Req
 	workflow.IsActive = true
 
 	if err := h.workflowRepo.Create(&workflow); err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			http.Error(w, "A workflow of this type already exists for your organization", http.StatusConflict)
+			return
+		}
 		http.Error(w, "Failed to create workflow", http.StatusInternalServerError)
 		return
 	}

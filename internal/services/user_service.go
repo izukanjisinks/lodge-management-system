@@ -7,7 +7,7 @@ import (
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
-		"lodge-system/internal/utils/email"
+	"lodge-system/internal/utils/email"
 	"lodge-system/internal/utils/password"
 	"lodge-system/pkg/utils"
 
@@ -367,12 +367,12 @@ func (s *UserService) DeactivateUser(id uuid.UUID) error {
 	return s.repo.Update(user)
 }
 
-func (s *UserService) DeleteUser(id uuid.UUID) error {
+func (s *UserService) DeleteUser(id, orgID uuid.UUID) error {
 	_, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return errors.New("user not found")
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(id, orgID)
 }
 
 func (s *UserService) LockUser(id uuid.UUID) error {
@@ -485,4 +485,3 @@ func (s *UserService) ResetPassword(userID uuid.UUID) error {
 
 	return nil
 }
-

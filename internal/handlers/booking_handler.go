@@ -55,8 +55,9 @@ func (h *BookingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	booking, err := h.service.GetByID(id)
+	booking, err := h.service.GetByID(id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Booking not found")
 		return
@@ -94,6 +95,7 @@ func (h *BookingHandler) Update(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var req models.UpdateBookingRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
@@ -101,7 +103,7 @@ func (h *BookingHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	booking, err := h.service.Update(id, &req)
+	booking, err := h.service.Update(id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -139,8 +141,9 @@ func (h *BookingHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}

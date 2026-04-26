@@ -45,6 +45,7 @@ func GetWorkflowTypeInfo() []WorkflowTypeInfo {
 // Workflow represents a workflow template (the blueprint)
 type Workflow struct {
 	ID           string        `json:"id"`
+	OrgID        string        `json:"org_id,omitempty"`
 	Name         string        `json:"name"`
 	Description  string        `json:"description"`
 	WorkflowType *WorkflowType `json:"workflow_type,omitempty"` // Unique identifier for workflow purpose

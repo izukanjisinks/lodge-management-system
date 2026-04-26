@@ -34,10 +34,10 @@ func (r *MealPlanRepository) Create(m *models.MealPlan, orgID uuid.UUID) error {
 	return err
 }
 
-func (r *MealPlanRepository) GetByID(id uuid.UUID) (*models.MealPlan, error) {
+func (r *MealPlanRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.MealPlan, error) {
 	row := r.db.QueryRow(`
 		SELECT id, name, price_per_person_per_night, includes, description, is_active, created_at, updated_at
-		FROM meal_plans WHERE id = $1`, id)
+		FROM meal_plans WHERE id = $1 AND org_id = $2`, id, orgID)
 	return scanMealPlan(row)
 }
 
@@ -79,20 +79,20 @@ func (r *MealPlanRepository) List(orgID uuid.UUID, isActive *bool, page, pageSiz
 	return plans, total, rows.Err()
 }
 
-func (r *MealPlanRepository) Update(m *models.MealPlan) error {
+func (r *MealPlanRepository) Update(m *models.MealPlan, orgID uuid.UUID) error {
 	m.UpdatedAt = time.Now()
 	_, err := r.db.Exec(`
 		UPDATE meal_plans
 		SET name=$1, price_per_person_per_night=$2, includes=$3, description=$4, is_active=$5, updated_at=$6
-		WHERE id=$7`,
+		WHERE id=$7 AND org_id=$8`,
 		m.Name, m.PricePerPersonPerNight, pq.Array(m.Includes),
-		m.Description, m.IsActive, m.UpdatedAt, m.ID,
+		m.Description, m.IsActive, m.UpdatedAt, m.ID, orgID,
 	)
 	return err
 }
 
-func (r *MealPlanRepository) Delete(id uuid.UUID) error {
-	res, err := r.db.Exec(`DELETE FROM meal_plans WHERE id=$1`, id)
+func (r *MealPlanRepository) Delete(id uuid.UUID, orgID uuid.UUID) error {
+	res, err := r.db.Exec(`DELETE FROM meal_plans WHERE id=$1 AND org_id=$2`, id, orgID)
 	if err != nil {
 		return err
 	}

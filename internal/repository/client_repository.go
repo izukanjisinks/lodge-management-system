@@ -85,13 +85,13 @@ func (r *ClientRepository) UpdateIndividualByUserID(userID uuid.UUID, c *models.
 	return nil
 }
 
-func (r *ClientRepository) GetIndividualByID(id uuid.UUID) (*models.IndividualClient, error) {
+func (r *ClientRepository) GetIndividualByID(id uuid.UUID, orgID uuid.UUID) (*models.IndividualClient, error) {
 	query := `
 		SELECT id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at
 		FROM individual_profiles
-		WHERE id = $1`
+		WHERE id = $1 AND org_id = $2`
 
-	return r.scanIndividual(r.db.QueryRow(query, id))
+	return r.scanIndividual(r.db.QueryRow(query, id, orgID))
 }
 
 func (r *ClientRepository) ListIndividual(orgID uuid.UUID, search, status string, page, pageSize int) ([]models.IndividualClient, int, error) {
@@ -128,25 +128,25 @@ func (r *ClientRepository) ListIndividual(orgID uuid.UUID, search, status string
 	return clients, total, rows.Err()
 }
 
-func (r *ClientRepository) UpdateIndividual(c *models.IndividualClient) error {
+func (r *ClientRepository) UpdateIndividual(c *models.IndividualClient, orgID uuid.UUID) error {
 	query := `
 		UPDATE individual_profiles
 		SET full_name=$1, email=$2, phone=$3, id_passport_number=$4,
 		    nationality=$5, status=$6, notes=$7, updated_at=$8
-		WHERE id=$9`
+		WHERE id=$9 AND org_id=$10`
 
 	c.UpdatedAt = time.Now()
 	_, err := r.db.Exec(query,
 		c.FullName, c.Email, c.Phone, c.IDPassportNumber,
-		c.Nationality, c.Status, c.Notes, c.UpdatedAt, c.ID,
+		c.Nationality, c.Status, c.Notes, c.UpdatedAt, c.ID, orgID,
 	)
 	return err
 }
 
-func (r *ClientRepository) DeleteIndividual(id uuid.UUID) error {
-	query := `DELETE FROM individual_profiles WHERE id=$1`
+func (r *ClientRepository) DeleteIndividual(id uuid.UUID, orgID uuid.UUID) error {
+	query := `DELETE FROM individual_profiles WHERE id=$1 AND org_id=$2`
 
-	res, err := r.db.Exec(query, id)
+	res, err := r.db.Exec(query, id, orgID)
 	if err != nil {
 		return err
 	}
@@ -176,13 +176,13 @@ func (r *ClientRepository) CreateCorporate(c *models.CorporateClient, orgID uuid
 	return err
 }
 
-func (r *ClientRepository) GetCorporateByID(id uuid.UUID) (*models.CorporateClient, error) {
+func (r *ClientRepository) GetCorporateByID(id uuid.UUID, orgID uuid.UUID) (*models.CorporateClient, error) {
 	query := `
 		SELECT id, company_name, contact_person, email, phone, company_reg_number, industry, status, notes, created_at, updated_at
 		FROM corporate_profiles
-		WHERE id = $1`
+		WHERE id = $1 AND org_id = $2`
 
-	return r.scanCorporate(r.db.QueryRow(query, id))
+	return r.scanCorporate(r.db.QueryRow(query, id, orgID))
 }
 
 func (r *ClientRepository) ListCorporate(orgID uuid.UUID, search, status string, page, pageSize int) ([]models.CorporateClient, int, error) {
@@ -219,25 +219,25 @@ func (r *ClientRepository) ListCorporate(orgID uuid.UUID, search, status string,
 	return clients, total, rows.Err()
 }
 
-func (r *ClientRepository) UpdateCorporate(c *models.CorporateClient) error {
+func (r *ClientRepository) UpdateCorporate(c *models.CorporateClient, orgID uuid.UUID) error {
 	query := `
 		UPDATE corporate_profiles
 		SET company_name=$1, contact_person=$2, email=$3, phone=$4,
 		    company_reg_number=$5, industry=$6, status=$7, notes=$8, updated_at=$9
-		WHERE id=$10`
+		WHERE id=$10 AND org_id=$11`
 
 	c.UpdatedAt = time.Now()
 	_, err := r.db.Exec(query,
 		c.CompanyName, c.ContactPerson, c.Email, c.Phone,
-		c.CompanyRegNumber, c.Industry, c.Status, c.Notes, c.UpdatedAt, c.ID,
+		c.CompanyRegNumber, c.Industry, c.Status, c.Notes, c.UpdatedAt, c.ID, orgID,
 	)
 	return err
 }
 
-func (r *ClientRepository) DeleteCorporate(id uuid.UUID) error {
-	query := `DELETE FROM corporate_profiles WHERE id=$1`
+func (r *ClientRepository) DeleteCorporate(id uuid.UUID, orgID uuid.UUID) error {
+	query := `DELETE FROM corporate_profiles WHERE id=$1 AND org_id=$2`
 
-	res, err := r.db.Exec(query, id)
+	res, err := r.db.Exec(query, id, orgID)
 	if err != nil {
 		return err
 	}

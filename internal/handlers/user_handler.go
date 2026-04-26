@@ -183,7 +183,8 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.DeleteUser(id); err != nil {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	if err := h.service.DeleteUser(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

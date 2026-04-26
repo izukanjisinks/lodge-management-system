@@ -49,8 +49,9 @@ func (h *MealPlanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid meal plan ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	plan, err := h.service.GetByID(id)
+	plan, err := h.service.GetByID(id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Meal plan not found")
 		return
@@ -82,6 +83,7 @@ func (h *MealPlanHandler) Update(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid meal plan ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var req models.UpdateMealPlanRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
@@ -89,7 +91,7 @@ func (h *MealPlanHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan, err := h.service.Update(id, &req)
+	plan, err := h.service.Update(id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -104,8 +106,9 @@ func (h *MealPlanHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid meal plan ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

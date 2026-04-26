@@ -47,8 +47,9 @@ func (h *ClientHandler) GetIndividualByID(w http.ResponseWriter, r *http.Request
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	client, err := h.service.GetIndividualByID(id)
+	client, err := h.service.GetIndividualByID(id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Individual client not found")
 		return
@@ -79,6 +80,7 @@ func (h *ClientHandler) UpdateIndividual(w http.ResponseWriter, r *http.Request)
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var updates models.IndividualClient
 	if err := utils.DecodeJson(r, &updates); err != nil {
@@ -86,7 +88,7 @@ func (h *ClientHandler) UpdateIndividual(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	client, err := h.service.UpdateIndividual(id, &updates)
+	client, err := h.service.UpdateIndividual(id, orgID, &updates)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -101,8 +103,9 @@ func (h *ClientHandler) DeleteIndividual(w http.ResponseWriter, r *http.Request)
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.DeleteIndividual(id); err != nil {
+	if err := h.service.DeleteIndividual(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -138,8 +141,9 @@ func (h *ClientHandler) GetCorporateByID(w http.ResponseWriter, r *http.Request)
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	client, err := h.service.GetCorporateByID(id)
+	client, err := h.service.GetCorporateByID(id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Corporate client not found")
 		return
@@ -170,6 +174,7 @@ func (h *ClientHandler) UpdateCorporate(w http.ResponseWriter, r *http.Request) 
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var updates models.CorporateClient
 	if err := utils.DecodeJson(r, &updates); err != nil {
@@ -177,7 +182,7 @@ func (h *ClientHandler) UpdateCorporate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	client, err := h.service.UpdateCorporate(id, &updates)
+	client, err := h.service.UpdateCorporate(id, orgID, &updates)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -192,8 +197,9 @@ func (h *ClientHandler) DeleteCorporate(w http.ResponseWriter, r *http.Request) 
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.DeleteCorporate(id); err != nil {
+	if err := h.service.DeleteCorporate(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

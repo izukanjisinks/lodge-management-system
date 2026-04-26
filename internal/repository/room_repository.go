@@ -36,10 +36,19 @@ func (r *RoomRepository) Create(room *models.Room, orgID uuid.UUID) error {
 	return err
 }
 
-func (r *RoomRepository) GetByID(id uuid.UUID) (*models.Room, error) {
+// GetByIDUnscoped fetches a room by ID with no org filter — use only in guest flows
+// where org is derived from the room itself after lookup.
+func (r *RoomRepository) GetByIDUnscoped(id uuid.UUID) (*models.Room, error) {
 	row := r.db.QueryRow(`
 		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms WHERE id = $1`, id)
+	return scanRoom(row)
+}
+
+func (r *RoomRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, error) {
+	row := r.db.QueryRow(`
+		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		FROM rooms WHERE id = $1 AND org_id = $2`, id, orgID)
 	return scanRoom(row)
 }
 
@@ -123,33 +132,33 @@ func (r *RoomRepository) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.T
 	return rooms, rows.Err()
 }
 
-func (r *RoomRepository) Update(room *models.Room) error {
+func (r *RoomRepository) Update(room *models.Room, orgID uuid.UUID) error {
 	room.UpdatedAt = time.Now()
 	_, err := r.db.Exec(`
 		UPDATE rooms SET name=$1, type=$2, capacity=$3, price_per_night=$4,
 		       amenities=$5, is_available=$6, description=$7, updated_at=$8
-		WHERE id=$9`,
+		WHERE id=$9 AND org_id=$10`,
 		room.Name, room.Type, room.Capacity, room.PricePerNight,
 		pq.Array(room.Amenities), room.IsAvailable, room.Description,
-		room.UpdatedAt, room.ID,
+		room.UpdatedAt, room.ID, orgID,
 	)
 	return err
 }
 
-func (r *RoomRepository) UpdateImages(id uuid.UUID, images []string) error {
-	_, err := r.db.Exec(`UPDATE rooms SET images=$1, updated_at=$2 WHERE id=$3`,
-		pq.Array(images), time.Now(), id)
+func (r *RoomRepository) UpdateImages(id uuid.UUID, orgID uuid.UUID, images []string) error {
+	_, err := r.db.Exec(`UPDATE rooms SET images=$1, updated_at=$2 WHERE id=$3 AND org_id=$4`,
+		pq.Array(images), time.Now(), id, orgID)
 	return err
 }
 
-func (r *RoomRepository) SetAvailability(id uuid.UUID, available bool) error {
-	_, err := r.db.Exec(`UPDATE rooms SET is_available=$1, updated_at=$2 WHERE id=$3`,
-		available, time.Now(), id)
+func (r *RoomRepository) SetAvailability(id uuid.UUID, orgID uuid.UUID, available bool) error {
+	_, err := r.db.Exec(`UPDATE rooms SET is_available=$1, updated_at=$2 WHERE id=$3 AND org_id=$4`,
+		available, time.Now(), id, orgID)
 	return err
 }
 
-func (r *RoomRepository) Delete(id uuid.UUID) error {
-	res, err := r.db.Exec(`DELETE FROM rooms WHERE id=$1`, id)
+func (r *RoomRepository) Delete(id uuid.UUID, orgID uuid.UUID) error {
+	res, err := r.db.Exec(`DELETE FROM rooms WHERE id=$1 AND org_id=$2`, id, orgID)
 	if err != nil {
 		return err
 	}

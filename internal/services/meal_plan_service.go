@@ -41,16 +41,16 @@ func (s *MealPlanService) Create(orgID uuid.UUID, req *models.CreateMealPlanRequ
 	return m, nil
 }
 
-func (s *MealPlanService) GetByID(id uuid.UUID) (*models.MealPlan, error) {
-	return s.repo.GetByID(id)
+func (s *MealPlanService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.MealPlan, error) {
+	return s.repo.GetByID(id, orgID)
 }
 
 func (s *MealPlanService) List(orgID uuid.UUID, isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {
 	return s.repo.List(orgID, isActive, page, pageSize)
 }
 
-func (s *MealPlanService) Update(id uuid.UUID, req *models.UpdateMealPlanRequest) (*models.MealPlan, error) {
-	m, err := s.repo.GetByID(id)
+func (s *MealPlanService) Update(id uuid.UUID, orgID uuid.UUID, req *models.UpdateMealPlanRequest) (*models.MealPlan, error) {
+	m, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("meal plan not found")
 	}
@@ -80,16 +80,16 @@ func (s *MealPlanService) Update(id uuid.UUID, req *models.UpdateMealPlanRequest
 		m.IsActive = *req.IsActive
 	}
 
-	if err := s.repo.Update(m); err != nil {
+	if err := s.repo.Update(m, orgID); err != nil {
 		return nil, err
 	}
-	return s.repo.GetByID(id)
+	return s.repo.GetByID(id, orgID)
 }
 
-func (s *MealPlanService) Delete(id uuid.UUID) error {
-	_, err := s.repo.GetByID(id)
+func (s *MealPlanService) Delete(id uuid.UUID, orgID uuid.UUID) error {
+	_, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return errors.New("meal plan not found")
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(id, orgID)
 }

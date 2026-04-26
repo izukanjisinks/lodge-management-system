@@ -67,9 +67,10 @@ func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description
+		       r.role_id, r.name, r.description, o.id
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
+		LEFT JOIN organizations o ON u.org_id = o.id
 		WHERE u.email = $1`
 
 	return r.scanUser(r.db.QueryRow(query, email))
@@ -225,19 +226,19 @@ func (r *UserRepository) Update(user *models.User) error {
 		       password = $6, change_password = $7, password_changed_at = $8,
 		       password_expires_at = $9, failed_login_attempts = $10,
 		       is_locked = $11, locked_until = $12, last_login_at = $13
-		WHERE user_id = $14`
+		WHERE user_id = $14 AND org_id = $15`
 	_, err := r.db.Exec(query,
 		user.FullName, user.Email, user.RoleID, user.IsActive, time.Now(),
 		user.Password, user.ChangePassword, user.PasswordChangedAt,
 		user.PasswordExpiresAt, user.FailedLoginAttempts,
-		user.IsLocked, user.LockedUntil, user.LastLoginAt, user.UserID,
+		user.IsLocked, user.LockedUntil, user.LastLoginAt, user.UserID, user.OrgID,
 	)
 	return err
 }
 
-func (r *UserRepository) Delete(id uuid.UUID) error {
-	query := `DELETE FROM users WHERE user_id = $1`
-	result, err := r.db.Exec(query, id)
+func (r *UserRepository) Delete(id, orgID uuid.UUID) error {
+	query := `DELETE FROM users WHERE user_id = $1 AND org_id = $2`
+	result, err := r.db.Exec(query, id, orgID)
 	if err != nil {
 		return err
 	}
@@ -272,7 +273,7 @@ func (r *UserRepository) scanUser(row rowScanner) (*models.User, error) {
 		&u.UserID, &u.FullName, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
 		&u.ChangePassword, &passwordChangedAt, &passwordExpiresAt,
 		&u.FailedLoginAttempts, &u.IsLocked, &lockedUntil, &lastLoginAt,
-		&rRoleID, &rName, &rDesc,
+		&rRoleID, &rName, &rDesc, &u.OrgID,
 	)
 	if err != nil {
 		return nil, err

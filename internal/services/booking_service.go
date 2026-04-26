@@ -48,7 +48,7 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 	}
 
 	// Validate room exists and guests fit capacity
-	room, err := s.room.GetByID(req.RoomID)
+	room, err := s.room.GetByID(req.RoomID, orgID)
 	if err != nil {
 		return nil, errors.New("room not found")
 	}
@@ -76,7 +76,7 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 
 	// Validate meal plan exists if provided
 	if req.MealPlanID != nil {
-		_, err := s.mealPlan.GetByID(*req.MealPlanID)
+		_, err := s.mealPlan.GetByID(*req.MealPlanID, orgID)
 		if err != nil {
 			return nil, errors.New("meal plan not found")
 		}
@@ -99,19 +99,19 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 	}
 
 	// Fetch back to get client_name and meal_plan_name resolved via JOINs
-	return s.repo.GetByID(b.ID)
+	return s.repo.GetByID(b.ID, orgID)
 }
 
-func (s *BookingService) GetByID(id uuid.UUID) (*models.Booking, error) {
-	return s.repo.GetByID(id)
+func (s *BookingService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Booking, error) {
+	return s.repo.GetByID(id, orgID)
 }
 
 func (s *BookingService) List(orgID uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
 	return s.repo.List(orgID, status, clientType, clientID, page, pageSize)
 }
 
-func (s *BookingService) Update(id uuid.UUID, req *models.UpdateBookingRequest) (*models.Booking, error) {
-	b, err := s.repo.GetByID(id)
+func (s *BookingService) Update(id uuid.UUID, orgID uuid.UUID, req *models.UpdateBookingRequest) (*models.Booking, error) {
+	b, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -137,7 +137,7 @@ func (s *BookingService) Update(id uuid.UUID, req *models.UpdateBookingRequest) 
 		if *req.MealPlanID == uuid.Nil {
 			b.MealPlanID = nil // explicitly removing the meal plan
 		} else {
-			_, err := s.mealPlan.GetByID(*req.MealPlanID)
+			_, err := s.mealPlan.GetByID(*req.MealPlanID, orgID)
 			if err != nil {
 				return nil, errors.New("meal plan not found")
 			}
@@ -161,14 +161,14 @@ func (s *BookingService) Update(id uuid.UUID, req *models.UpdateBookingRequest) 
 		return nil, errors.New("room is not available for the selected dates")
 	}
 
-	if err := s.repo.Update(b); err != nil {
+	if err := s.repo.Update(b, orgID); err != nil {
 		return nil, err
 	}
-	return s.repo.GetByID(id)
+	return s.repo.GetByID(id, orgID)
 }
 
 func (s *BookingService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, newStatus string) (*models.Booking, error) {
-	b, err := s.repo.GetByID(id)
+	b, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -186,7 +186,7 @@ func (s *BookingService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, newStatus s
 		return nil, fmt.Errorf("cannot transition booking from '%s' to '%s'", b.Status, newStatus)
 	}
 
-	if err := s.repo.UpdateStatusTx(id, newStatus); err != nil {
+	if err := s.repo.UpdateStatusTx(id, orgID, newStatus); err != nil {
 		return nil, err
 	}
 
@@ -198,16 +198,16 @@ func (s *BookingService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, newStatus s
 		}
 	}
 
-	return s.repo.GetByID(id)
+	return s.repo.GetByID(id, orgID)
 }
 
-func (s *BookingService) Delete(id uuid.UUID) error {
-	b, err := s.repo.GetByID(id)
+func (s *BookingService) Delete(id uuid.UUID, orgID uuid.UUID) error {
+	b, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return errors.New("booking not found")
 	}
 	if b.Status == models.BookingStatusCheckedIn {
 		return errors.New("cannot delete a booking that is currently checked in")
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(id, orgID)
 }

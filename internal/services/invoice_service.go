@@ -34,17 +34,17 @@ func NewInvoiceService(
 // It is called inside the booking status transition — not exposed as an HTTP endpoint.
 func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID) error {
 	// Idempotent — don't create a second invoice if one already exists
-	existing, _ := s.repo.GetByBookingID(bookingID)
+	existing, _ := s.repo.GetByBookingID(bookingID, orgID)
 	if existing != nil {
 		return nil
 	}
 
-	b, err := s.booking.GetByID(bookingID)
+	b, err := s.booking.GetByID(bookingID, orgID)
 	if err != nil {
 		return errors.New("booking not found")
 	}
 
-	room, err := s.room.GetByID(b.RoomID)
+	room, err := s.room.GetByID(b.RoomID, orgID)
 	if err != nil {
 		return errors.New("room not found")
 	}
@@ -67,7 +67,7 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 
 	// Line item: meal plan cost (if attached)
 	if b.MealPlanID != nil {
-		mp, err := s.mealPlan.GetByID(*b.MealPlanID)
+		mp, err := s.mealPlan.GetByID(*b.MealPlanID, orgID)
 		if err == nil {
 			mealTotal := float64(nights) * float64(b.Guests) * mp.PricePerPersonPerNight
 			lineItems = append(lineItems, models.InvoiceLineItem{
@@ -114,16 +114,16 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 	return s.repo.Create(inv, orgID)
 }
 
-func (s *InvoiceService) GetByID(id uuid.UUID) (*models.Invoice, error) {
-	inv, err := s.repo.GetByID(id)
+func (s *InvoiceService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
+	inv, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("invoice not found")
 	}
 	return inv, nil
 }
 
-func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID) (*models.Invoice, error) {
-	inv, err := s.repo.GetByBookingID(bookingID)
+func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
+	inv, err := s.repo.GetByBookingID(bookingID, orgID)
 	if err != nil {
 		return nil, errors.New("invoice not found for this booking")
 	}
@@ -134,8 +134,8 @@ func (s *InvoiceService) List(orgID uuid.UUID, status string, page, pageSize int
 	return s.repo.List(orgID, status, page, pageSize)
 }
 
-func (s *InvoiceService) UpdateStatus(id uuid.UUID, req *models.UpdateInvoiceStatusRequest) (*models.Invoice, error) {
-	inv, err := s.repo.GetByID(id)
+func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models.UpdateInvoiceStatusRequest) (*models.Invoice, error) {
+	inv, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("invoice not found")
 	}
@@ -152,8 +152,8 @@ func (s *InvoiceService) UpdateStatus(id uuid.UUID, req *models.UpdateInvoiceSta
 		return nil, fmt.Errorf("cannot transition invoice from '%s' to '%s'", inv.Status, req.Status)
 	}
 
-	if err := s.repo.UpdateStatus(id, req.Status, req.PaidDate, req.Notes); err != nil {
+	if err := s.repo.UpdateStatus(id, orgID, req.Status, req.PaidDate, req.Notes); err != nil {
 		return nil, err
 	}
-	return s.repo.GetByID(id)
+	return s.repo.GetByID(id, orgID)
 }

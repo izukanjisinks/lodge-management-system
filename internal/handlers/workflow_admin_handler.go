@@ -45,7 +45,8 @@ func (h *WorkflowAdminHandler) GetWorkflowByID(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	workflow, err := h.workflowRepo.GetByID(workflowID)
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	workflow, err := h.workflowRepo.GetByID(workflowID, orgID.String())
 	if err != nil {
 		http.Error(w, "Workflow not found", http.StatusNotFound)
 		return
@@ -75,7 +76,9 @@ func (h *WorkflowAdminHandler) CreateWorkflow(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	workflow.CreatedBy = userID.String()
+	workflow.OrgID = orgID.String()
 	workflow.IsActive = true
 
 	if err := h.workflowRepo.Create(&workflow); err != nil {
@@ -106,8 +109,10 @@ func (h *WorkflowAdminHandler) UpdateWorkflow(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
 	// Get existing workflow
-	workflow, err := h.workflowRepo.GetByID(workflowID)
+	workflow, err := h.workflowRepo.GetByID(workflowID, orgID.String())
 	if err != nil {
 		http.Error(w, "Workflow not found", http.StatusNotFound)
 		return
@@ -151,7 +156,8 @@ func (h *WorkflowAdminHandler) DeactivateWorkflow(w http.ResponseWriter, r *http
 		return
 	}
 
-	if err := h.workflowRepo.Deactivate(workflowID); err != nil {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	if err := h.workflowRepo.Deactivate(workflowID, orgID.String()); err != nil {
 		http.Error(w, "Failed to deactivate workflow", http.StatusInternalServerError)
 		return
 	}
@@ -170,7 +176,8 @@ func (h *WorkflowAdminHandler) DeleteWorkflow(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := h.workflowRepo.Delete(workflowID); err != nil {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	if err := h.workflowRepo.Delete(workflowID, orgID.String()); err != nil {
 		http.Error(w, "Failed to delete workflow", http.StatusInternalServerError)
 		return
 	}
@@ -248,8 +255,10 @@ func (h *WorkflowAdminHandler) CreateWorkflowStep(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Verify workflow exists
-	_, err := h.workflowRepo.GetByID(req.WorkflowID)
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	// Verify workflow belongs to org
+	_, err := h.workflowRepo.GetByID(req.WorkflowID, orgID.String())
 	if err != nil {
 		http.Error(w, "Workflow not found", http.StatusNotFound)
 		return
@@ -436,8 +445,10 @@ func (h *WorkflowAdminHandler) CreateWorkflowTransition(w http.ResponseWriter, r
 		return
 	}
 
-	// Verify workflow exists
-	_, err := h.workflowRepo.GetByID(req.WorkflowID)
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	// Verify workflow belongs to org
+	_, err := h.workflowRepo.GetByID(req.WorkflowID, orgID.String())
 	if err != nil {
 		http.Error(w, "Workflow not found", http.StatusNotFound)
 		return
@@ -562,8 +573,10 @@ func (h *WorkflowAdminHandler) GetWorkflowStructure(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Get workflow
-	workflow, err := h.workflowRepo.GetByID(workflowID)
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	// Get workflow, verifying org ownership
+	workflow, err := h.workflowRepo.GetByID(workflowID, orgID.String())
 	if err != nil {
 		http.Error(w, "Workflow not found", http.StatusNotFound)
 		return

@@ -128,14 +128,15 @@ func (s *WorkflowService) InitiateWorkflow(
 	return instance, nil
 }
 
-// ProcessAction processes an action on a workflow instance
+// ProcessAction processes an action on a workflow instance, scoped to org.
 func (s *WorkflowService) ProcessAction(
 	instanceID string,
 	action string,
 	performedByID string,
 	comments string,
+	orgID string,
 ) error {
-	instance, err := s.instanceRepo.GetByID(instanceID)
+	instance, err := s.instanceRepo.GetByID(instanceID, orgID)
 	if err != nil {
 		return fmt.Errorf("instance not found: %w", err)
 	}
@@ -182,19 +183,19 @@ func (s *WorkflowService) ProcessAction(
 		newStatus = "completed"
 	}
 
-	if err := s.instanceRepo.UpdateStep(instanceID, nextStep.ID, newStatus); err != nil {
+	if err := s.instanceRepo.UpdateStep(instanceID, nextStep.ID, newStatus, instance.OrgID); err != nil {
 		return fmt.Errorf("failed to update instance: %w", err)
 	}
 
-	activeTask, err := s.taskRepo.GetActiveTaskForInstance(instanceID)
+	activeTask, err := s.taskRepo.GetActiveTaskForInstance(instanceID, instance.OrgID)
 	if err == nil && activeTask != nil {
-		if err := s.taskRepo.Complete(activeTask.ID); err != nil {
+		if err := s.taskRepo.Complete(activeTask.ID, instance.OrgID); err != nil {
 			return fmt.Errorf("failed to complete task: %w", err)
 		}
 	}
 
 	if isRejection || isCompletingFinalStep {
-		if err := s.instanceRepo.Complete(instanceID); err != nil {
+		if err := s.instanceRepo.Complete(instanceID, instance.OrgID); err != nil {
 			return fmt.Errorf("failed to complete instance: %w", err)
 		}
 
@@ -210,10 +211,10 @@ func (s *WorkflowService) ProcessAction(
 				}
 			}
 			if entityStatus != "" {
-				if err := s.workflowRepo.UpdateEntityStatus(instance.TaskDetails.TaskType, instance.TaskDetails.TaskID, entityStatus); err != nil {
+				if err := s.workflowRepo.UpdateEntityStatus(instance.TaskDetails.TaskType, instance.TaskDetails.TaskID, entityStatus, instance.OrgID); err != nil {
 					fmt.Printf("warning: failed to update %s status after workflow outcome: %v\n", instance.TaskDetails.TaskType, err)
 				} else {
-					go s.notifyGuestBookingOutcome(instance.TaskDetails, entityStatus)
+					go s.notifyGuestBookingOutcome(instance.OrgID, instance.TaskDetails, entityStatus)
 				}
 			}
 		}
@@ -280,14 +281,17 @@ func (s *WorkflowService) GetMyTasks(orgID, userID string, statusFilter string) 
 	return s.taskRepo.GetByAssignee(orgID, userID)
 }
 
-// GetInstanceHistory retrieves the complete history of a workflow instance
-func (s *WorkflowService) GetInstanceHistory(instanceID string) ([]models.WorkflowHistory, error) {
+// GetInstanceHistory retrieves the complete history of a workflow instance, scoped to org.
+func (s *WorkflowService) GetInstanceHistory(instanceID, orgID string) ([]models.WorkflowHistory, error) {
+	if _, err := s.instanceRepo.GetByID(instanceID, orgID); err != nil {
+		return nil, fmt.Errorf("instance not found: %w", err)
+	}
 	return s.historyRepo.GetByInstanceID(instanceID)
 }
 
-// GetInstanceByTaskID retrieves a workflow instance by the associated task ID
-func (s *WorkflowService) GetInstanceByTaskID(taskID string) (*models.WorkflowInstance, error) {
-	return s.instanceRepo.GetByTaskID(taskID)
+// GetInstanceByTaskID retrieves a workflow instance by the associated task ID, scoped to org.
+func (s *WorkflowService) GetInstanceByTaskID(taskID, orgID string) (*models.WorkflowInstance, error) {
+	return s.instanceRepo.GetByTaskID(taskID, orgID)
 }
 
 // determineAssignee finds the user with the required role who has the fewest pending tasks,
@@ -336,7 +340,7 @@ func (s *WorkflowService) checkPermission(userID string, step *models.WorkflowSt
 
 // notifyTaskAssignment sends an email when a task is assigned
 // notifyGuestBookingOutcome emails the guest when their booking is approved or rejected.
-func (s *WorkflowService) notifyGuestBookingOutcome(details models.TaskDetails, entityStatus string) {
+func (s *WorkflowService) notifyGuestBookingOutcome(orgID string, details models.TaskDetails, entityStatus string) {
 	if s.emailService == nil || s.clientRepo == nil {
 		return
 	}
@@ -347,7 +351,8 @@ func (s *WorkflowService) notifyGuestBookingOutcome(details models.TaskDetails, 
 		return
 	}
 
-	profile, err := s.clientRepo.GetIndividualByID(clientID)
+	orgUUID, _ := uuid.Parse(orgID)
+	profile, err := s.clientRepo.GetIndividualByID(clientID, orgUUID)
 	if err != nil {
 		fmt.Printf("warning: could not find guest profile for booking outcome email: %v\n", err)
 		return

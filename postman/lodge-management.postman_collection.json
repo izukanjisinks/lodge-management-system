@@ -1,8 +1,8 @@
 {
   "info": {
     "name": "Lodge Management System",
-    "description": "API collection for the Lodge Management System backend. Phase 1 + Phase 2 endpoints: Auth, Users, Rooms, Clients, Bookings, Password Policy, Workflow Engine.\n\nBase URL: {{base_url}}\nSet `token` variable after login — all authenticated requests use it automatically via collection auth.",
-    "_postman_id": "lodge-management-system-v1",
+    "description": "API collection for the Lodge Management System. Multi-tenant backend with three user classes: Staff (org-scoped), Backoffice (platform admins), and Guests (standalone).\n\nBase URL: {{base_url}}\n\n**Staff flow:** Login → token auto-saved → all staff requests use it.\n**Backoffice flow:** Use backoffice_token variable.\n**Guest flow:** Use guest_token variable.",
+    "_postman_id": "lodge-management-system-v2",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -16,20 +16,25 @@
     ]
   },
   "variable": [
-    { "key": "base_url",      "value": "http://localhost:8080", "type": "string" },
-    { "key": "token",         "value": "", "type": "string" },
-    { "key": "user_id",       "value": "", "type": "string" },
-    { "key": "room_id",               "value": "", "type": "string" },
-    { "key": "individual_client_id",  "value": "", "type": "string" },
-    { "key": "corporate_client_id",   "value": "", "type": "string" },
-    { "key": "booking_id",            "value": "", "type": "string" },
-    { "key": "meal_plan_id",          "value": "", "type": "string" },
-    { "key": "invoice_id",            "value": "", "type": "string" },
-    { "key": "workflow_id",   "value": "", "type": "string" },
-    { "key": "instance_id",   "value": "", "type": "string" },
-    { "key": "task_id",       "value": "", "type": "string" },
-    { "key": "step_id",       "value": "", "type": "string" },
-    { "key": "transition_id", "value": "", "type": "string" }
+    { "key": "base_url",            "value": "http://localhost:8080", "type": "string" },
+    { "key": "token",               "value": "", "type": "string", "description": "Staff JWT — auto-set by Login test script" },
+    { "key": "backoffice_token",    "value": "", "type": "string", "description": "Backoffice JWT — auto-set by Backoffice Login test script" },
+    { "key": "guest_token",         "value": "", "type": "string", "description": "Guest JWT — auto-set by Guest Login test script" },
+    { "key": "org_id",              "value": "", "type": "string", "description": "Organization UUID — auto-set by Staff Login test script" },
+    { "key": "user_id",             "value": "", "type": "string" },
+    { "key": "backoffice_user_id",  "value": "", "type": "string" },
+    { "key": "room_id",             "value": "", "type": "string" },
+    { "key": "individual_client_id","value": "", "type": "string" },
+    { "key": "corporate_client_id", "value": "", "type": "string" },
+    { "key": "booking_id",          "value": "", "type": "string" },
+    { "key": "guest_booking_id",    "value": "", "type": "string" },
+    { "key": "meal_plan_id",        "value": "", "type": "string" },
+    { "key": "invoice_id",          "value": "", "type": "string" },
+    { "key": "workflow_id",         "value": "", "type": "string" },
+    { "key": "instance_id",         "value": "", "type": "string" },
+    { "key": "task_id",             "value": "", "type": "string" },
+    { "key": "step_id",             "value": "", "type": "string" },
+    { "key": "transition_id",       "value": "", "type": "string" }
   ],
   "item": [
     {
@@ -52,7 +57,7 @@
       ]
     },
     {
-      "name": "Auth",
+      "name": "Staff — Auth",
       "item": [
         {
           "name": "Login",
@@ -64,7 +69,11 @@
                   "const res = pm.response.json();",
                   "if (res.token) {",
                   "  pm.collectionVariables.set('token', res.token);",
-                  "  console.log('Token saved:', res.token.substring(0, 20) + '...');",
+                  "  console.log('Staff token saved');",
+                  "}",
+                  "if (res.user && res.user.org_id) {",
+                  "  pm.collectionVariables.set('org_id', res.user.org_id);",
+                  "  console.log('Org ID saved:', res.user.org_id);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -84,7 +93,44 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "auth", "login"]
             },
-            "description": "Authenticate with email and password. Saves token to `token` collection variable automatically."
+            "description": "Staff login. If the email belongs to users in multiple orgs, the response returns `requires_org_selection: true` with an `organizations` array — re-send with `org_id` to complete login.\n\nOn success: saves `token` and `org_id` collection variables automatically.\n\n**Multi-org example body:**\n```json\n{\n  \"email\": \"shared@example.com\",\n  \"password\": \"...\",\n  \"org_id\": \"<uuid>\"\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Login (with org_id — multi-org step 2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('token', res.token);",
+                  "  console.log('Staff token saved');",
+                  "}",
+                  "if (res.user && res.user.org_id) {",
+                  "  pm.collectionVariables.set('org_id', res.user.org_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@lodge.dev\",\n  \"password\": \"Admin@123\",\n  \"org_id\": \"{{org_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Step 2 of the multi-org login flow. Send the `org_id` chosen from the organizations list returned in step 1."
           },
           "response": []
         },
@@ -97,7 +143,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "auth", "me"]
             },
-            "description": "Returns the currently authenticated user decoded from the JWT."
+            "description": "Returns the currently authenticated staff user decoded from the JWT."
           },
           "response": []
         },
@@ -128,7 +174,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "auth", "change-password"]
             },
-            "description": "Change the authenticated user's own password. Validates against the active password policy."
+            "description": "Change the authenticated staff user's own password."
           },
           "response": []
         },
@@ -144,12 +190,7 @@
             "description": "Returns a randomly generated password that satisfies the active password policy."
           },
           "response": []
-        }
-      ]
-    },
-    {
-      "name": "Profile",
-      "item": [
+        },
         {
           "name": "Get My Profile",
           "request": {
@@ -159,14 +200,14 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "profile"]
             },
-            "description": "Returns the authenticated user's profile. Available to all roles."
+            "description": "Returns the authenticated user's profile."
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Users",
+      "name": "Staff — Users",
       "item": [
         {
           "name": "Create User",
@@ -194,7 +235,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "users"]
             },
-            "description": "Create a new system user. Requires admin role. Saves returned `id` to `user_id` variable. A welcome email with credentials is sent to the user."
+            "description": "Create a new staff user scoped to the caller's org (derived from JWT). Requires admin role. A welcome email with credentials is sent to the user."
           },
           "response": []
         },
@@ -209,12 +250,12 @@
               "query": [
                 { "key": "page",      "value": "1" },
                 { "key": "page_size", "value": "20" },
-                { "key": "search",    "value": "", "disabled": true, "description": "Filter by email (partial match)" },
+                { "key": "search",    "value": "", "disabled": true, "description": "Filter by name or email (partial match)" },
                 { "key": "role_id",   "value": "", "disabled": true, "description": "Filter by role UUID" },
                 { "key": "is_active", "value": "true", "disabled": true, "description": "true | false" }
               ]
             },
-            "description": "Paginated list of all system users. Returns SystemUser shape: id, full_name, email, role, status, last_login, created_at."
+            "description": "Paginated list of users in the caller's org only. Org is derived from JWT."
           },
           "response": []
         },
@@ -227,7 +268,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "users", "{{user_id}}"]
             },
-            "description": "Get a single user by their UUID."
+            "description": "Get a single staff user by UUID."
           },
           "response": []
         },
@@ -258,7 +299,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "users", "{{user_id}}"]
             },
-            "description": "Permanently delete a user. Use with caution."
+            "description": "Permanently delete a user. Scoped to caller's org — cannot delete users from other orgs."
           },
           "response": []
         },
@@ -271,7 +312,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "users", "{{user_id}}", "lock"]
             },
-            "description": "Permanently lock a user account until an admin explicitly unlocks it."
+            "description": "Lock a user account until an admin explicitly unlocks it."
           },
           "response": []
         },
@@ -284,7 +325,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "users", "{{user_id}}", "unlock"]
             },
-            "description": "Unlock a locked user account and reset their failed login attempt counter."
+            "description": "Unlock a locked account and reset their failed login attempt counter."
           },
           "response": []
         },
@@ -302,7 +343,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "users", "{{user_id}}", "role"]
             },
-            "description": "Assign a role by UUID. Use PUT /users/{id} with `role` name string for the simpler approach."
+            "description": "Assign a role by UUID. Prefer PUT /users/{id} with `role` name string for the simpler approach."
           },
           "response": []
         },
@@ -322,7 +363,7 @@
       ]
     },
     {
-      "name": "Rooms",
+      "name": "Staff — Rooms",
       "item": [
         {
           "name": "List Rooms",
@@ -339,7 +380,7 @@
                 { "key": "is_available", "value": "true", "disabled": true, "description": "true | false" }
               ]
             },
-            "description": "Paginated list of all rooms. Filterable by type and availability. Available to all authenticated staff."
+            "description": "Paginated list of rooms in the caller's org."
           },
           "response": []
         },
@@ -348,16 +389,16 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/v1/rooms/available?check_in=2026-04-01&check_out=2026-04-05",
+              "raw": "{{base_url}}/api/v1/rooms/available?check_in=2026-05-01&check_out=2026-05-05",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "rooms", "available"],
               "query": [
-                { "key": "check_in",  "value": "2026-04-01", "description": "YYYY-MM-DD" },
-                { "key": "check_out", "value": "2026-04-05", "description": "YYYY-MM-DD" },
-                { "key": "type",      "value": "", "disabled": true, "description": "single | double | suite | cabin | conference" }
+                { "key": "check_in",  "value": "2026-05-01", "description": "YYYY-MM-DD" },
+                { "key": "check_out", "value": "2026-05-05", "description": "YYYY-MM-DD" },
+                { "key": "type",      "value": "", "disabled": true }
               ]
             },
-            "description": "Returns rooms with no confirmed or checked_in bookings overlapping [check_in, check_out). Used by the booking wizard."
+            "description": "Rooms with no confirmed/checked_in bookings in the given date range, scoped to caller's org."
           },
           "response": []
         },
@@ -370,7 +411,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "rooms", "{{room_id}}"]
             },
-            "description": "Get a single room by UUID."
+            "description": "Get a single room by UUID, scoped to caller's org."
           },
           "response": []
         },
@@ -400,7 +441,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "rooms"]
             },
-            "description": "Create a new room. Requires admin or manager role. Room types: single, double, suite, cabin, conference. Saves returned `id` to `room_id` variable."
+            "description": "Create a new room in the caller's org. Requires admin or manager. Saves returned `id` to `room_id`."
           },
           "response": []
         },
@@ -418,7 +459,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "rooms", "{{room_id}}"]
             },
-            "description": "Update a room's details. All fields are optional — only provided fields are applied. Requires admin or manager."
+            "description": "Update a room. Scoped to caller's org — cannot modify rooms from other orgs."
           },
           "response": []
         },
@@ -436,7 +477,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "rooms", "{{room_id}}", "availability"]
             },
-            "description": "Toggle a room's availability flag. Use `false` to take it offline (maintenance, etc), `true` to restore it. Requires admin or manager."
+            "description": "Toggle a room's availability. `false` = offline (maintenance), `true` = available."
           },
           "response": []
         },
@@ -449,67 +490,31 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "rooms", "{{room_id}}"]
             },
-            "description": "Permanently delete a room. Requires admin or manager."
+            "description": "Permanently delete a room. Scoped to caller's org."
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Admin — Password Policy",
-      "item": [
-        {
-          "name": "Get Password Policy",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/v1/password-policy",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "password-policy"]
-            },
-            "description": "Get the current global password policy configuration."
-          },
-          "response": []
-        },
-        {
-          "name": "Update Password Policy",
-          "request": {
-            "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"min_length\": 8,\n  \"require_uppercase\": true,\n  \"require_lowercase\": true,\n  \"require_numbers\": true,\n  \"require_special_chars\": true,\n  \"max_failed_attempts\": 5,\n  \"lockout_duration_mins\": 30,\n  \"password_expiry_days\": 90,\n  \"otp_length\": 6,\n  \"otp_expiry_mins\": 5,\n  \"session_timeout_mins\": 30\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/api/v1/password-policy",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "password-policy"]
-            },
-            "description": "Update the global password policy. All fields optional — only provided fields are updated."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Clients — Individual",
+      "name": "Staff — Clients (Individual)",
       "item": [
         {
           "name": "List Individual Clients",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/v1/clients/individual?search=&status=&page=1&page_size=20",
+              "raw": "{{base_url}}/api/v1/clients/individual?page=1&page_size=20",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "individual"],
               "query": [
-                { "key": "search",    "value": "",     "description": "Search by name or email" },
-                { "key": "status",    "value": "",     "description": "Filter: active | inactive" },
+                { "key": "search",    "value": "", "disabled": true, "description": "Search by name or email" },
+                { "key": "status",    "value": "", "disabled": true, "description": "active | inactive" },
                 { "key": "page",      "value": "1" },
                 { "key": "page_size", "value": "20" }
               ]
             },
-            "description": "List individual clients with optional search and status filter."
+            "description": "List individual clients in the caller's org."
           },
           "response": []
         },
@@ -522,7 +527,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "individual", "{{individual_client_id}}"]
             },
-            "description": "Get a single individual client by ID."
+            "description": "Get a single individual client. Scoped to caller's org."
           },
           "response": []
         },
@@ -543,16 +548,16 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"John Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"phone\": \"+260971234567\",\n  \"id_passport_number\": \"NRC123456\",\n  \"nationality\": \"Zambian\",\n  \"status\": \"active\",\n  \"notes\": \"VIP guest\"\n}"
+            },
             "url": {
               "raw": "{{base_url}}/api/v1/clients/individual",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "individual"]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"full_name\": \"John Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"phone\": \"+260971234567\",\n  \"id_passport_number\": \"NRC123456\",\n  \"nationality\": \"Zambian\",\n  \"status\": \"active\",\n  \"notes\": \"VIP guest\"\n}"
-            },
-            "description": "Create a new individual client record."
+            "description": "Create a new individual client record in the caller's org."
           },
           "response": []
         },
@@ -561,16 +566,16 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+260971111111\",\n  \"nationality\": \"Zambian\",\n  \"notes\": \"Updated notes\"\n}"
+            },
             "url": {
               "raw": "{{base_url}}/api/v1/clients/individual/{{individual_client_id}}",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "individual", "{{individual_client_id}}"]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"phone\": \"+260971111111\",\n  \"nationality\": \"Zambian\",\n  \"notes\": \"Updated notes\"\n}"
-            },
-            "description": "Update an individual client. Only provided fields are changed."
+            "description": "Update an individual client. Scoped to caller's org."
           },
           "response": []
         },
@@ -583,31 +588,31 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "individual", "{{individual_client_id}}"]
             },
-            "description": "Delete an individual client by ID. Requires admin or manager role."
+            "description": "Delete an individual client. Scoped to caller's org."
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Clients — Corporate",
+      "name": "Staff — Clients (Corporate)",
       "item": [
         {
           "name": "List Corporate Clients",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/v1/clients/corporate?search=&status=&page=1&page_size=20",
+              "raw": "{{base_url}}/api/v1/clients/corporate?page=1&page_size=20",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "corporate"],
               "query": [
-                { "key": "search",    "value": "",     "description": "Search by company name or email" },
-                { "key": "status",    "value": "",     "description": "Filter: active | inactive" },
+                { "key": "search",    "value": "", "disabled": true, "description": "Search by company name or email" },
+                { "key": "status",    "value": "", "disabled": true, "description": "active | inactive" },
                 { "key": "page",      "value": "1" },
                 { "key": "page_size", "value": "20" }
               ]
             },
-            "description": "List corporate clients with optional search and status filter."
+            "description": "List corporate clients in the caller's org."
           },
           "response": []
         },
@@ -620,7 +625,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "corporate", "{{corporate_client_id}}"]
             },
-            "description": "Get a single corporate client by ID."
+            "description": "Get a single corporate client. Scoped to caller's org."
           },
           "response": []
         },
@@ -641,16 +646,16 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"Acme Corp\",\n  \"contact_person\": \"Jane Smith\",\n  \"email\": \"jane.smith@acme.com\",\n  \"phone\": \"+260977654321\",\n  \"company_reg_number\": \"ZM-2024-001\",\n  \"industry\": \"Mining\",\n  \"status\": \"active\",\n  \"notes\": \"Corporate account\"\n}"
+            },
             "url": {
               "raw": "{{base_url}}/api/v1/clients/corporate",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "corporate"]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"company_name\": \"Acme Corp\",\n  \"contact_person\": \"Jane Smith\",\n  \"email\": \"jane.smith@acme.com\",\n  \"phone\": \"+260977654321\",\n  \"company_reg_number\": \"ZM-2024-001\",\n  \"industry\": \"Mining\",\n  \"status\": \"active\",\n  \"notes\": \"Corporate account\"\n}"
-            },
-            "description": "Create a new corporate client record."
+            "description": "Create a new corporate client record in the caller's org."
           },
           "response": []
         },
@@ -659,16 +664,16 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contact_person\": \"Bob Jones\",\n  \"industry\": \"Tourism\",\n  \"notes\": \"Updated contact\"\n}"
+            },
             "url": {
               "raw": "{{base_url}}/api/v1/clients/corporate/{{corporate_client_id}}",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "corporate", "{{corporate_client_id}}"]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"contact_person\": \"Bob Jones\",\n  \"industry\": \"Tourism\",\n  \"notes\": \"Updated contact\"\n}"
-            },
-            "description": "Update a corporate client. Only provided fields are changed."
+            "description": "Update a corporate client. Scoped to caller's org."
           },
           "response": []
         },
@@ -681,14 +686,14 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "clients", "corporate", "{{corporate_client_id}}"]
             },
-            "description": "Delete a corporate client by ID. Requires admin or manager role."
+            "description": "Delete a corporate client. Scoped to caller's org."
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Bookings",
+      "name": "Staff — Bookings",
       "item": [
         {
           "name": "List Bookings",
@@ -703,10 +708,10 @@
                 { "key": "page_size",   "value": "20" },
                 { "key": "status",      "value": "", "disabled": true, "description": "pending | confirmed | checked_in | checked_out | cancelled" },
                 { "key": "client_type", "value": "", "disabled": true, "description": "individual | corporate" },
-                { "key": "client_id",   "value": "", "disabled": true, "description": "Filter by client UUID" }
+                { "key": "client_id",   "value": "", "disabled": true }
               ]
             },
-            "description": "Paginated list of all bookings. Filterable by status, client_type, and client_id. Available to all authenticated staff."
+            "description": "Paginated list of all bookings in the caller's org."
           },
           "response": []
         },
@@ -719,7 +724,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "bookings", "{{booking_id}}"]
             },
-            "description": "Get a single booking by UUID."
+            "description": "Get a single booking. Scoped to caller's org."
           },
           "response": []
         },
@@ -742,14 +747,14 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"room_id\": \"{{room_id}}\",\n  \"client_id\": \"{{individual_client_id}}\",\n  \"client_type\": \"individual\",\n  \"check_in\": \"2026-04-01T00:00:00Z\",\n  \"check_out\": \"2026-04-05T00:00:00Z\",\n  \"guests\": 2,\n  \"special_requests\": \"Non-smoking room, early check-in if possible\"\n}"
+              "raw": "{\n  \"room_id\": \"{{room_id}}\",\n  \"client_id\": \"{{individual_client_id}}\",\n  \"client_type\": \"individual\",\n  \"check_in\": \"2026-05-01T00:00:00Z\",\n  \"check_out\": \"2026-05-05T00:00:00Z\",\n  \"guests\": 2,\n  \"special_requests\": \"Non-smoking room, early check-in if possible\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/bookings",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "bookings"]
             },
-            "description": "Create a new booking in pending status. Validates room capacity, date range, and checks for overlapping confirmed/checked_in bookings. Requires admin, manager, or receptionist role. Saves returned `id` to `booking_id` variable."
+            "description": "Create a booking in the caller's org. Validates room availability, capacity, and date range. Triggers the booking approval workflow automatically."
           },
           "response": []
         },
@@ -760,14 +765,14 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"check_in\": \"2026-04-02T00:00:00Z\",\n  \"check_out\": \"2026-04-06T00:00:00Z\",\n  \"guests\": 1,\n  \"special_requests\": \"Late check-out requested\"\n}"
+              "raw": "{\n  \"check_in\": \"2026-05-02T00:00:00Z\",\n  \"check_out\": \"2026-05-06T00:00:00Z\",\n  \"guests\": 1,\n  \"special_requests\": \"Late check-out requested\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/bookings/{{booking_id}}",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "bookings", "{{booking_id}}"]
             },
-            "description": "Update a booking's dates, guests, or special requests. Only allowed while the booking is in pending status. All fields are optional. Requires admin, manager, or receptionist role."
+            "description": "Update a booking's dates, guests, or special requests. Only allowed while pending."
           },
           "response": []
         },
@@ -785,7 +790,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "bookings", "{{booking_id}}", "status"]
             },
-            "description": "Advance a booking through its lifecycle. Valid transitions:\n- pending → confirmed (locks the room)\n- pending → cancelled (frees the room)\n- confirmed → checked_in\n- confirmed → cancelled (frees the room)\n- checked_in → checked_out (frees the room)\n\nRequires admin or manager role."
+            "description": "Valid transitions:\n- pending → confirmed (locks room)\n- pending → cancelled (frees room)\n- confirmed → checked_in\n- confirmed → cancelled (frees room)\n- checked_in → checked_out (frees room, auto-generates invoice)"
           },
           "response": []
         },
@@ -798,14 +803,14 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "bookings", "{{booking_id}}"]
             },
-            "description": "Permanently delete a booking. Not allowed when status is checked_in. Requires admin or manager role."
+            "description": "Permanently delete a booking. Not allowed when checked_in. Scoped to caller's org."
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Meal Plans",
+      "name": "Staff — Meal Plans",
       "item": [
         {
           "name": "List Meal Plans",
@@ -818,10 +823,10 @@
               "query": [
                 { "key": "page",      "value": "1" },
                 { "key": "page_size", "value": "20" },
-                { "key": "is_active", "value": "true", "disabled": true, "description": "true | false" }
+                { "key": "is_active", "value": "true", "disabled": true }
               ]
             },
-            "description": "Paginated list of all meal plans. Filter by is_active. Available to all authenticated staff."
+            "description": "Paginated list of meal plans in the caller's org."
           },
           "response": []
         },
@@ -834,7 +839,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
             },
-            "description": "Get a single meal plan by UUID."
+            "description": "Get a single meal plan. Scoped to caller's org."
           },
           "response": []
         },
@@ -864,7 +869,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "meal-plans"]
             },
-            "description": "Create a new meal plan. Requires admin or manager role. Saves returned `id` to `meal_plan_id` variable."
+            "description": "Create a meal plan in the caller's org. Saves returned `id` to `meal_plan_id`."
           },
           "response": []
         },
@@ -882,7 +887,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
             },
-            "description": "Update a meal plan. All fields optional. Requires admin or manager role."
+            "description": "Update a meal plan. Scoped to caller's org."
           },
           "response": []
         },
@@ -895,14 +900,14 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
             },
-            "description": "Permanently delete a meal plan. Requires admin or manager role."
+            "description": "Delete a meal plan. Scoped to caller's org."
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Invoices",
+      "name": "Staff — Invoices",
       "item": [
         {
           "name": "List Invoices",
@@ -918,7 +923,7 @@
                 { "key": "status",    "value": "", "disabled": true, "description": "draft | issued | paid | overdue | cancelled" }
               ]
             },
-            "description": "Paginated list of all invoices. Filterable by status. Requires admin or manager role."
+            "description": "Paginated list of invoices in the caller's org."
           },
           "response": []
         },
@@ -943,7 +948,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "invoices", "{{invoice_id}}"]
             },
-            "description": "Get a single invoice by UUID. Requires admin, manager, or receptionist role."
+            "description": "Get a single invoice. Scoped to caller's org."
           },
           "response": []
         },
@@ -956,7 +961,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "invoices", "booking", "{{booking_id}}"]
             },
-            "description": "Fetch the invoice for a given booking. Useful when you already have a booking_id and want its invoice without a separate lookup. Available to all authenticated staff."
+            "description": "Fetch the invoice for a given booking. Scoped to caller's org."
           },
           "response": []
         },
@@ -967,21 +972,21 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"issued\"\n}"
+              "raw": "{\n  \"status\": \"paid\",\n  \"paid_date\": \"2026-05-10T00:00:00Z\",\n  \"notes\": \"Paid by bank transfer\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/invoices/{{invoice_id}}/status",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "invoices", "{{invoice_id}}", "status"]
             },
-            "description": "Advance an invoice through its lifecycle. Valid transitions:\n- draft → issued\n- draft → cancelled\n- issued → paid (include paid_date)\n- issued → overdue\n- issued → cancelled\n- overdue → paid (include paid_date)\n- overdue → cancelled\n\nRequires admin or manager role."
+            "description": "Update invoice status. Valid transitions:\n- draft → issued\n- draft → cancelled\n- issued → paid (include paid_date)\n- issued → overdue\n- issued → cancelled\n- overdue → paid\n- overdue → cancelled"
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Dashboard",
+      "name": "Staff — Dashboard",
       "item": [
         {
           "name": "Get Staff Dashboard Stats",
@@ -992,14 +997,50 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "dashboard", "stats"]
             },
-            "description": "Returns all data needed for the staff dashboard in a single request:\n- stat_cards: new bookings this month, today's check-ins, today's check-outs\n- room_summary: occupied / reserved / available / not_ready counts\n- revenue_by_month: last 12 months of paid/issued invoice totals\n- reservations_by_day: last 14 days of booked vs cancelled counts\n- recent_bookings: latest 5 bookings with client name, room, dates, status\n\nRequires admin, manager, or receptionist role."
+            "description": "Returns all data needed for the staff dashboard, scoped to caller's org: stat cards, room summary, revenue by month, reservations by day, recent bookings."
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Admin — Workflow Engine",
+      "name": "Staff — Password Policy",
+      "item": [
+        {
+          "name": "Get Password Policy",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/password-policy",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "password-policy"]
+            },
+            "description": "Get the current password policy configuration."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Password Policy",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_length\": 8,\n  \"require_uppercase\": true,\n  \"require_lowercase\": true,\n  \"require_numbers\": true,\n  \"require_special_chars\": true,\n  \"max_failed_attempts\": 5,\n  \"lockout_duration_mins\": 30,\n  \"password_expiry_days\": 90,\n  \"session_timeout_mins\": 30\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/password-policy",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "password-policy"]
+            },
+            "description": "Update the password policy. All fields optional."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Staff — Workflow Admin",
       "item": [
         {
           "name": "Get Available Workflow Types",
@@ -1010,7 +1051,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflow-types"]
             },
-            "description": "Returns the list of supported workflow type constants (e.g. booking_approval)."
+            "description": "Returns supported workflow type constants (e.g. BOOKING_APPROVAL)."
           },
           "response": []
         },
@@ -1022,7 +1063,7 @@
               "script": {
                 "exec": [
                   "const res = pm.response.json();",
-                  "if (res.id) pm.collectionVariables.set('workflow_id', res.id);"
+                  "if (res.workflow && res.workflow.id) pm.collectionVariables.set('workflow_id', res.workflow.id);"
                 ],
                 "type": "text/javascript"
               }
@@ -1033,14 +1074,14 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Booking Approval\",\n  \"description\": \"Standard workflow for approving guest bookings\",\n  \"type\": \"booking_approval\",\n  \"is_active\": true\n}"
+              "raw": "{\n  \"name\": \"Booking Approval\",\n  \"description\": \"Standard workflow for approving guest bookings\",\n  \"workflow_type\": \"BOOKING_APPROVAL\",\n  \"is_active\": true\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/admin/workflows",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflows"]
             },
-            "description": "Create a new workflow template. Saves returned `id` to `workflow_id` variable."
+            "description": "Create a new workflow template. `org_id` is taken from the caller's JWT — not required in the body. Saves returned `id` to `workflow_id`."
           },
           "response": []
         },
@@ -1053,7 +1094,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflows"]
             },
-            "description": "List all workflow templates."
+            "description": "List all active workflow templates in the caller's org."
           },
           "response": []
         },
@@ -1066,7 +1107,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}"]
             },
-            "description": "Get a single workflow template by ID."
+            "description": "Get a workflow template. Scoped to caller's org — returns 404 for workflows from other orgs."
           },
           "response": []
         },
@@ -1079,7 +1120,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}", "structure"]
             },
-            "description": "Returns the complete workflow structure — all steps and transitions in one response."
+            "description": "Returns the complete workflow — steps and transitions in one response."
           },
           "response": []
         },
@@ -1097,7 +1138,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}"]
             },
-            "description": "Update a workflow template's name, description, or active status."
+            "description": "Update a workflow's name, description, or active status. Scoped to caller's org."
           },
           "response": []
         },
@@ -1110,7 +1151,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}", "deactivate"]
             },
-            "description": "Soft-delete: marks the workflow as inactive."
+            "description": "Soft-delete: marks the workflow as inactive. Scoped to caller's org."
           },
           "response": []
         },
@@ -1123,7 +1164,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflows", "{{workflow_id}}"]
             },
-            "description": "Permanently delete a workflow template and all its steps/transitions."
+            "description": "Permanently delete a workflow and all its steps/transitions. Scoped to caller's org."
           },
           "response": []
         },
@@ -1135,7 +1176,7 @@
               "script": {
                 "exec": [
                   "const res = pm.response.json();",
-                  "if (res.id) pm.collectionVariables.set('step_id', res.id);"
+                  "if (res.step && res.step.id) pm.collectionVariables.set('step_id', res.step.id);"
                 ],
                 "type": "text/javascript"
               }
@@ -1153,7 +1194,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflow-steps"]
             },
-            "description": "Add a step to a workflow. Saves returned `id` to `step_id`."
+            "description": "Add a step to a workflow. The workflow must belong to the caller's org. Saves returned `id` to `step_id`."
           },
           "response": []
         },
@@ -1197,7 +1238,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflow-steps", "{{step_id}}"]
             },
-            "description": "Update an existing workflow step."
+            "description": "Update a workflow step."
           },
           "response": []
         },
@@ -1210,7 +1251,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflow-steps", "{{step_id}}"]
             },
-            "description": "Delete a workflow step. Also removes all transitions referencing this step."
+            "description": "Delete a workflow step."
           },
           "response": []
         },
@@ -1235,7 +1276,7 @@
               "script": {
                 "exec": [
                   "const res = pm.response.json();",
-                  "if (res.id) pm.collectionVariables.set('transition_id', res.id);"
+                  "if (res.transition && res.transition.id) pm.collectionVariables.set('transition_id', res.transition.id);"
                 ],
                 "type": "text/javascript"
               }
@@ -1253,7 +1294,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "admin", "workflow-transitions"]
             },
-            "description": "Define a valid transition between two steps. Saves returned `id` to `transition_id`."
+            "description": "Define a valid transition between two steps. The workflow must belong to caller's org. Saves returned `id` to `transition_id`."
           },
           "response": []
         },
@@ -1304,7 +1345,7 @@
       ]
     },
     {
-      "name": "Workflow — Task Inbox",
+      "name": "Staff — Workflow Task Inbox",
       "item": [
         {
           "name": "Get My Tasks",
@@ -1318,7 +1359,7 @@
                 { "key": "status", "value": "pending", "disabled": true, "description": "pending | in_progress | completed" }
               ]
             },
-            "description": "Get all workflow tasks assigned to the authenticated user."
+            "description": "Get all workflow tasks assigned to the authenticated user, scoped to their org."
           },
           "response": []
         },
@@ -1331,7 +1372,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "workflow", "my-tasks", "pending"]
             },
-            "description": "Shortcut to get only pending tasks for the authenticated user."
+            "description": "Shortcut — pending tasks only for the authenticated user."
           },
           "response": []
         },
@@ -1344,7 +1385,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "workflow", "tasks", "{{task_id}}"]
             },
-            "description": "Get full details of a specific assigned task."
+            "description": "Get full details of a specific assigned task, including the workflow instance and history."
           },
           "response": []
         },
@@ -1356,7 +1397,7 @@
               "script": {
                 "exec": [
                   "const res = pm.response.json();",
-                  "if (res.id) pm.collectionVariables.set('instance_id', res.id);"
+                  "if (res.instance && res.instance.id) pm.collectionVariables.set('instance_id', res.instance.id);"
                 ],
                 "type": "text/javascript"
               }
@@ -1367,14 +1408,14 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"workflow_type\": \"booking_approval\",\n  \"task_details\": {\n    \"task_id\": \"<booking-uuid>\",\n    \"task_type\": \"booking\",\n    \"task_description\": \"New booking request from John Doe\",\n    \"sender_details\": {\n      \"sender_id\": \"<user-uuid>\",\n      \"sender_name\": \"John Doe\"\n    }\n  },\n  \"priority\": \"medium\"\n}"
+              "raw": "{\n  \"workflow_type\": \"BOOKING_APPROVAL\",\n  \"task_details\": {\n    \"task_id\": \"{{booking_id}}\",\n    \"task_type\": \"booking\",\n    \"task_description\": \"New booking request from John Doe\",\n    \"sender_details\": {\n      \"sender_id\": \"{{individual_client_id}}\",\n      \"sender_name\": \"John Doe\"\n    }\n  },\n  \"priority\": \"medium\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/workflow/instances",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "workflow", "instances"]
             },
-            "description": "Start a new workflow instance. Saves returned `id` to `instance_id`."
+            "description": "Start a new workflow instance. `org_id` is taken from the caller's JWT. Saves returned `id` to `instance_id`."
           },
           "response": []
         },
@@ -1392,7 +1433,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "workflow", "instances", "{{instance_id}}", "action"]
             },
-            "description": "Perform an action on a workflow instance (e.g. approve, reject)."
+            "description": "Approve or reject a workflow instance. Only instances belonging to the caller's org can be actioned — cross-org access returns 404."
           },
           "response": []
         },
@@ -1405,7 +1446,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "workflow", "task", "{{task_id}}", "instance"]
             },
-            "description": "Find the workflow instance associated with a specific business task ID (e.g. a booking UUID)."
+            "description": "Find the workflow instance for a business entity (e.g. a booking UUID). Scoped to caller's org."
           },
           "response": []
         },
@@ -1418,7 +1459,360 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "workflow", "instances", "{{instance_id}}", "history"]
             },
-            "description": "Get the full audit trail of actions taken on a workflow instance."
+            "description": "Get the full audit trail of a workflow instance. Returns 404 if the instance doesn't belong to the caller's org."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Backoffice — Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('backoffice_token', res.token);",
+                  "  console.log('Backoffice token saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"backoffice@lodge.dev\",\n  \"password\": \"<generated-password>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "auth", "login"]
+            },
+            "description": "Platform-level admin login. Hits the `backoffice_users` table — no org required. Saves token to `backoffice_token` variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "auth", "me"]
+            },
+            "description": "Returns the currently authenticated backoffice user."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"<current-password>\",\n  \"new_password\": \"NewBackoffice@456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/auth/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "auth", "change-password"]
+            },
+            "description": "Change the backoffice user's own password."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Backoffice — Users",
+      "item": [
+        {
+          "name": "List Backoffice Users",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/users",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "users"]
+            },
+            "description": "List all backoffice (platform admin) users."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Backoffice User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('backoffice_user_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Platform Admin 2\",\n  \"email\": \"admin2@backoffice.dev\",\n  \"password\": \"SecurePass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/users",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "users"]
+            },
+            "description": "Create a new backoffice user. Saves returned `id` to `backoffice_user_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Backoffice User by ID",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/users/{{backoffice_user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "users", "{{backoffice_user_id}}"]
+            },
+            "description": "Get a single backoffice user."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Backoffice User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated Name\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/users/{{backoffice_user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "users", "{{backoffice_user_id}}"]
+            },
+            "description": "Update a backoffice user's details."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Backoffice User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/users/{{backoffice_user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "users", "{{backoffice_user_id}}"]
+            },
+            "description": "Delete a backoffice user."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Backoffice User Password",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/users/{{backoffice_user_id}}/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "users", "{{backoffice_user_id}}", "reset-password"]
+            },
+            "description": "Generate and email a temporary password to a backoffice user."
+          },
+          "response": []
+        },
+        {
+          "name": "Lock Backoffice User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/users/{{backoffice_user_id}}/lock",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "users", "{{backoffice_user_id}}", "lock"]
+            },
+            "description": "Lock a backoffice user account."
+          },
+          "response": []
+        },
+        {
+          "name": "Unlock Backoffice User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/users/{{backoffice_user_id}}/unlock",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "users", "{{backoffice_user_id}}", "unlock"]
+            },
+            "description": "Unlock a backoffice user account."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Backoffice — Organizations",
+      "item": [
+        {
+          "name": "List Organizations",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/organizations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "organizations"]
+            },
+            "description": "List all organizations (lodges) on the platform."
+          },
+          "response": []
+        },
+        {
+          "name": "Provision Organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.organization && res.organization.id) pm.collectionVariables.set('org_id', res.organization.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organization\": {\n    \"name\": \"Mountain View Lodge\",\n    \"email\": \"info@mountainview.com\",\n    \"phone\": \"+260 97 000 0000\",\n    \"address\": \"123 Mountain Rd, Lusaka\"\n  },\n  \"admin\": {\n    \"full_name\": \"Jane Banda\",\n    \"email\": \"jane@mountainview.com\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/organizations/provision",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "organizations", "provision"]
+            },
+            "description": "Create a new lodge organization and its first admin user in a single transaction. The admin's password is auto-generated and emailed to them. Saves returned `org_id` to variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Organization by ID",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/organizations/{{org_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "organizations", "{{org_id}}"]
+            },
+            "description": "Get a single organization by UUID."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Organization",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mountain View Lodge (Updated)\",\n  \"phone\": \"+260 97 111 1111\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/organizations/{{org_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "organizations", "{{org_id}}"]
+            },
+            "description": "Update an organization's details."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Organization",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{backoffice_token}}", "type": "string" }]
+            },
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/backoffice/organizations/{{org_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "backoffice", "organizations", "{{org_id}}"]
+            },
+            "description": "Delete an organization. Use with caution."
           },
           "response": []
         }
@@ -1428,73 +1822,109 @@
       "name": "Guest — Auth",
       "item": [
         {
-          "name": "Register (Guest Self-Registration)",
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('guest_token', res.token);",
+                  "  console.log('Guest token saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": {
-              "raw": "{{base_url}}/api/v1/guest/register",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "guest", "register"]
-            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"full_name\": \"John Mwale\",\n  \"email\": \"john.mwale@example.com\",\n  \"password\": \"Password123!\",\n  \"phone\": \"+260971234567\",\n  \"id_passport_number\": \"NRC123456/78/1\",\n  \"nationality\": \"Zambian\"\n}"
             },
-            "description": "Public endpoint. Creates a user account (role=guest) and a linked individual profile atomically. Returns a JWT immediately so the guest is logged in after registration."
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "auth", "register"]
+            },
+            "description": "Public endpoint. Creates a guest account and linked individual profile in one transaction. Returns a JWT so the guest is logged in immediately. Saves token to `guest_token`."
           },
           "response": []
         },
         {
-          "name": "Login (Guest)",
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('guest_token', res.token);",
+                  "  console.log('Guest token saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": {
-              "raw": "{{base_url}}/api/v1/auth/login",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "auth", "login"]
-            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"john.mwale@example.com\",\n  \"password\": \"Password123!\"\n}"
             },
-            "description": "Guests use the same login endpoint as staff. The JWT payload includes role=guest which the website uses to route to the guest dashboard."
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "auth", "login"]
+            },
+            "description": "Guest login. Hits the `guests` table — separate from staff login. Saves token to `guest_token`."
           },
           "response": []
         },
         {
           "name": "Get My Profile",
           "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{guest_token}}", "type": "string" }]
+            },
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
               "raw": "{{base_url}}/api/v1/guest/me",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "guest", "me"]
             },
-            "description": "Returns the authenticated guest's user account and linked individual profile."
+            "description": "Returns the authenticated guest's account and linked individual profile."
           },
           "response": []
         },
         {
           "name": "Update My Profile",
           "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{guest_token}}", "type": "string" }]
+            },
             "method": "PUT",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"John Mwale\",\n  \"phone\": \"+260971234567\",\n  \"id_passport_number\": \"NRC123456/78/1\",\n  \"nationality\": \"Zambian\"\n}"
+            },
             "url": {
               "raw": "{{base_url}}/api/v1/guest/me",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "guest", "me"]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"full_name\": \"John Mwale\",\n  \"phone\": \"+260971234567\",\n  \"id_passport_number\": \"NRC123456/78/1\",\n  \"nationality\": \"Zambian\"\n}"
-            },
-            "description": "Updates the guest's own profile fields. Email cannot be changed here. Returns the updated profile."
+            "description": "Update the guest's own profile. Email cannot be changed here."
           },
           "response": []
         }
@@ -1505,36 +1935,52 @@
       "item": [
         {
           "name": "Create Booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('guest_booking_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{guest_token}}", "type": "string" }]
+            },
             "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"room_id\": \"{{room_id}}\",\n  \"check_in\": \"2026-05-01\",\n  \"check_out\": \"2026-05-05\",\n  \"guests\": 2,\n  \"meal_plan_id\": \"{{meal_plan_id}}\",\n  \"special_requests\": \"Late check-in after 10 PM\"\n}"
+            },
             "url": {
               "raw": "{{base_url}}/api/v1/guest/bookings",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "guest", "bookings"]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"room_id\": \"{{room_id}}\",\n  \"check_in\": \"2026-05-01\",\n  \"check_out\": \"2026-05-05\",\n  \"guests\": 2,\n  \"meal_plan_id\": \"{{meal_plan_id}}\",\n  \"special_requests\": \"Late check-in after 10 PM\"\n}"
-            },
-            "description": "Creates a booking for the authenticated guest. client_id is resolved automatically from the JWT — no need to pass it. Returns the full booking with computed nights, room_cost, meal_cost, and total_amount."
+            "description": "Create a booking as a guest. `client_id` and org are resolved automatically — the org is derived from the room's `org_id`. A booking approval workflow is triggered automatically. Saves returned `id` to `guest_booking_id`."
           },
           "response": []
         },
         {
           "name": "List My Bookings",
           "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{guest_token}}", "type": "string" }]
+            },
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": {
               "raw": "{{base_url}}/api/v1/guest/bookings?page=1&page_size=10",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "guest", "bookings"],
               "query": [
-                { "key": "page", "value": "1" },
+                { "key": "page",      "value": "1" },
                 { "key": "page_size", "value": "10" }
               ]
             },
@@ -1545,28 +1991,75 @@
         {
           "name": "Get Booking by ID",
           "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": {
-              "raw": "{{base_url}}/api/v1/guest/bookings/{{booking_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "guest", "bookings", "{{booking_id}}"]
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{guest_token}}", "type": "string" }]
             },
-            "description": "Returns a single booking. Returns 403 if the booking does not belong to the authenticated guest."
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/bookings/{{guest_booking_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "bookings", "{{guest_booking_id}}"]
+            },
+            "description": "Get a single booking. Returns 403 if the booking belongs to a different guest."
           },
           "response": []
         },
         {
           "name": "Cancel Booking",
           "request": {
-            "method": "PATCH",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": {
-              "raw": "{{base_url}}/api/v1/guest/bookings/{{booking_id}}/cancel",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "guest", "bookings", "{{booking_id}}", "cancel"]
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{guest_token}}", "type": "string" }]
             },
-            "description": "Cancels the guest's own booking. Only allowed when status is pending or confirmed. Returns 403 if the booking belongs to another guest."
+            "method": "PATCH",
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/bookings/{{guest_booking_id}}/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "bookings", "{{guest_booking_id}}", "cancel"]
+            },
+            "description": "Cancel the guest's own booking. Only allowed when status is pending or confirmed."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Guest — Reviews",
+      "item": [
+        {
+          "name": "Submit Review",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{guest_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"booking_id\": \"{{guest_booking_id}}\",\n  \"facilities\": 4.5,\n  \"cleanliness\": 5.0,\n  \"services\": 4.0,\n  \"comfort\": 4.5,\n  \"location\": 5.0,\n  \"comment\": \"Wonderful stay, highly recommended!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/reviews",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "reviews"]
+            },
+            "description": "Submit a review after check-out. Booking must have status `checked_out` and belong to the authenticated guest. One review per booking. Scores are 0–5."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Rating Summary (Public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/reviews/summary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "reviews", "summary"]
+            },
+            "description": "Public endpoint. Returns aggregate ratings across all reviews: average facilities, cleanliness, services, comfort, location, and overall score."
           },
           "response": []
         }

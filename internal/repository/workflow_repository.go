@@ -21,18 +21,19 @@ func NewWorkflowRepository() *WorkflowRepository {
 	}
 }
 
-// GetByID retrieves a workflow template by ID
-func (r *WorkflowRepository) GetByID(id string) (*models.Workflow, error) {
+// GetByID retrieves a workflow template by ID, scoped to org.
+func (r *WorkflowRepository) GetByID(id, orgID string) (*models.Workflow, error) {
 	query := `
-		SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
+		SELECT id, org_id, name, description, workflow_type, is_active, created_by, created_at, updated_at
 		FROM workflows
-		WHERE id = $1
+		WHERE id = $1 AND org_id = $2
 	`
 
 	var wf models.Workflow
 	var workflowType sql.NullString
-	err := r.db.QueryRow(query, id).Scan(
+	err := r.db.QueryRow(query, id, orgID).Scan(
 		&wf.ID,
+		&wf.OrgID,
 		&wf.Name,
 		&wf.Description,
 		&workflowType,
@@ -54,18 +55,19 @@ func (r *WorkflowRepository) GetByID(id string) (*models.Workflow, error) {
 	return &wf, nil
 }
 
-// GetByName retrieves a workflow template by name
-func (r *WorkflowRepository) GetByName(name string) (*models.Workflow, error) {
+// GetByName retrieves a workflow template by name, scoped to org.
+func (r *WorkflowRepository) GetByName(name, orgID string) (*models.Workflow, error) {
 	query := `
-		SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
+		SELECT id, org_id, name, description, workflow_type, is_active, created_by, created_at, updated_at
 		FROM workflows
-		WHERE name = $1 AND is_active = true
+		WHERE name = $1 AND is_active = true AND org_id = $2
 	`
 
 	var wf models.Workflow
 	var workflowType sql.NullString
-	err := r.db.QueryRow(query, name).Scan(
+	err := r.db.QueryRow(query, name, orgID).Scan(
 		&wf.ID,
+		&wf.OrgID,
 		&wf.Name,
 		&wf.Description,
 		&workflowType,
@@ -87,31 +89,19 @@ func (r *WorkflowRepository) GetByName(name string) (*models.Workflow, error) {
 	return &wf, nil
 }
 
-// GetByType retrieves a workflow template by its type, scoped to org when provided.
+// GetByType retrieves a workflow template by its type, scoped to org.
 func (r *WorkflowRepository) GetByType(workflowType models.WorkflowType, orgID string) (*models.Workflow, error) {
 	var wf models.Workflow
 	var wfTypeStr sql.NullString
-	var err error
 
-	if orgID != "" {
-		err = r.db.QueryRow(`
-			SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
-			FROM workflows
-			WHERE workflow_type = $1 AND is_active = true AND org_id = $2
-			LIMIT 1`, string(workflowType), orgID).Scan(
-			&wf.ID, &wf.Name, &wf.Description, &wfTypeStr,
-			&wf.IsActive, &wf.CreatedBy, &wf.CreatedAt, &wf.UpdatedAt,
-		)
-	} else {
-		err = r.db.QueryRow(`
-			SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
-			FROM workflows
-			WHERE workflow_type = $1 AND is_active = true
-			LIMIT 1`, string(workflowType)).Scan(
-			&wf.ID, &wf.Name, &wf.Description, &wfTypeStr,
-			&wf.IsActive, &wf.CreatedBy, &wf.CreatedAt, &wf.UpdatedAt,
-		)
-	}
+	err := r.db.QueryRow(`
+		SELECT id, org_id, name, description, workflow_type, is_active, created_by, created_at, updated_at
+		FROM workflows
+		WHERE workflow_type = $1 AND is_active = true AND org_id = $2
+		LIMIT 1`, string(workflowType), orgID).Scan(
+		&wf.ID, &wf.OrgID, &wf.Name, &wf.Description, &wfTypeStr,
+		&wf.IsActive, &wf.CreatedBy, &wf.CreatedAt, &wf.UpdatedAt,
+	)
 
 	if err != nil {
 		return nil, err
@@ -125,21 +115,11 @@ func (r *WorkflowRepository) GetByType(workflowType models.WorkflowType, orgID s
 	return &wf, nil
 }
 
-// GetAllActive retrieves all active workflow templates. When orgID is non-empty it filters to that org.
+// GetAllActive retrieves all active workflow templates, scoped to org.
 func (r *WorkflowRepository) GetAllActive(orgID string) ([]models.Workflow, error) {
-	var (
-		rows *sql.Rows
-		err  error
-	)
-	if orgID != "" {
-		rows, err = r.db.Query(`
-			SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
-			FROM workflows WHERE is_active = true AND org_id = $1 ORDER BY name`, orgID)
-	} else {
-		rows, err = r.db.Query(`
-			SELECT id, name, description, workflow_type, is_active, created_by, created_at, updated_at
-			FROM workflows WHERE is_active = true ORDER BY name`)
-	}
+	rows, err := r.db.Query(`
+		SELECT id, org_id, name, description, workflow_type, is_active, created_by, created_at, updated_at
+		FROM workflows WHERE is_active = true AND org_id = $1 ORDER BY name`, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +131,7 @@ func (r *WorkflowRepository) GetAllActive(orgID string) ([]models.Workflow, erro
 		var workflowType sql.NullString
 		err := rows.Scan(
 			&wf.ID,
+			&wf.OrgID,
 			&wf.Name,
 			&wf.Description,
 			&workflowType,
@@ -174,14 +155,9 @@ func (r *WorkflowRepository) GetAllActive(orgID string) ([]models.Workflow, erro
 	return workflows, nil
 }
 
-// GetAllActiveWithCounts retrieves all active workflow templates with step and transition counts.
-// When orgID is non-empty it filters to that org.
+// GetAllActiveWithCounts retrieves all active workflow templates with step and transition counts, scoped to org.
 func (r *WorkflowRepository) GetAllActiveWithCounts(orgID string) ([]models.WorkflowWithCounts, error) {
-	var (
-		rows *sql.Rows
-		err  error
-	)
-	base := `
+	rows, err := r.db.Query(`
 		SELECT
 			w.id, w.name, w.description, w.workflow_type, w.is_active, w.created_by,
 			w.created_at, w.updated_at,
@@ -189,18 +165,10 @@ func (r *WorkflowRepository) GetAllActiveWithCounts(orgID string) ([]models.Work
 			COALESCE(COUNT(DISTINCT wt.id), 0) as transition_count
 		FROM workflows w
 		LEFT JOIN workflow_steps ws ON w.id = ws.workflow_id
-		LEFT JOIN workflow_transitions wt ON w.id = wt.workflow_id`
-	if orgID != "" {
-		rows, err = r.db.Query(base+`
+		LEFT JOIN workflow_transitions wt ON w.id = wt.workflow_id
 		WHERE w.is_active = true AND w.org_id = $1
 		GROUP BY w.id, w.name, w.description, w.workflow_type, w.is_active, w.created_by, w.created_at, w.updated_at
 		ORDER BY w.name`, orgID)
-	} else {
-		rows, err = r.db.Query(base + `
-		WHERE w.is_active = true
-		GROUP BY w.id, w.name, w.description, w.workflow_type, w.is_active, w.created_by, w.created_at, w.updated_at
-		ORDER BY w.name`)
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -491,11 +459,11 @@ func (r *WorkflowRepository) GetTransitionByAction(fromStepID, action string) (*
 	return &tr, nil
 }
 
-// Create creates a new workflow template
+// Create creates a new workflow template.
 func (r *WorkflowRepository) Create(workflow *models.Workflow) error {
 	query := `
-		INSERT INTO workflows (id, name, description, workflow_type, is_active, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO workflows (id, org_id, name, description, workflow_type, is_active, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING created_at, updated_at
 	`
 
@@ -510,6 +478,7 @@ func (r *WorkflowRepository) Create(workflow *models.Workflow) error {
 	return r.db.QueryRow(
 		query,
 		workflow.ID,
+		workflow.OrgID,
 		workflow.Name,
 		workflow.Description,
 		workflowType,
@@ -576,12 +545,12 @@ func (r *WorkflowRepository) CreateTransition(transition *models.WorkflowTransit
 	).Scan(&transition.CreatedAt)
 }
 
-// Update updates an existing workflow template
+// Update updates an existing workflow template, scoped to org.
 func (r *WorkflowRepository) Update(workflow *models.Workflow) error {
 	query := `
 		UPDATE workflows
 		SET name = $1, description = $2, workflow_type = $3, is_active = $4
-		WHERE id = $5
+		WHERE id = $5 AND org_id = $6
 		RETURNING updated_at
 	`
 
@@ -598,6 +567,7 @@ func (r *WorkflowRepository) Update(workflow *models.Workflow) error {
 		workflowType,
 		workflow.IsActive,
 		workflow.ID,
+		workflow.OrgID,
 	).Scan(&workflow.UpdatedAt)
 }
 
@@ -676,15 +646,15 @@ func (r *WorkflowRepository) UpdateTransition(transition *models.WorkflowTransit
 	return nil
 }
 
-// Deactivate deactivates a workflow template by setting is_active to false
-func (r *WorkflowRepository) Deactivate(id string) error {
+// Deactivate deactivates a workflow template, scoped to org.
+func (r *WorkflowRepository) Deactivate(id, orgID string) error {
 	query := `
 		UPDATE workflows
 		SET is_active = false
-		WHERE id = $1
+		WHERE id = $1 AND org_id = $2
 	`
 
-	result, err := r.db.Exec(query, id)
+	result, err := r.db.Exec(query, id, orgID)
 	if err != nil {
 		return err
 	}
@@ -701,11 +671,11 @@ func (r *WorkflowRepository) Deactivate(id string) error {
 	return nil
 }
 
-// Delete permanently deletes a workflow template
-func (r *WorkflowRepository) Delete(id string) error {
-	query := `DELETE FROM workflows WHERE id = $1`
+// Delete permanently deletes a workflow template, scoped to org.
+func (r *WorkflowRepository) Delete(id, orgID string) error {
+	query := `DELETE FROM workflows WHERE id = $1 AND org_id = $2`
 
-	result, err := r.db.Exec(query, id)
+	result, err := r.db.Exec(query, id, orgID)
 	if err != nil {
 		return err
 	}
@@ -816,17 +786,17 @@ func (r *WorkflowRepository) GetFirstActionStep(workflowID string) (*models.Work
 
 // UpdateEntityStatus updates the status of the real entity that a workflow instance tracks.
 // Called by ProcessAction when a workflow reaches a terminal state (approved or rejected).
-func (r *WorkflowRepository) UpdateEntityStatus(entityType, entityID, status string) error {
+func (r *WorkflowRepository) UpdateEntityStatus(entityType, entityID, status, orgID string) error {
 	var query string
 
 	switch entityType {
 	case "booking":
-		query = `UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2`
+		query = `UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`
 	default:
 		return fmt.Errorf("unsupported entity type: %s", entityType)
 	}
 
-	res, err := r.db.Exec(query, status, entityID)
+	res, err := r.db.Exec(query, status, entityID, orgID)
 	if err != nil {
 		return fmt.Errorf("failed to update %s status: %w", entityType, err)
 	}

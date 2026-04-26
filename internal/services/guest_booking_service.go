@@ -45,10 +45,17 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		return nil, errors.New("guest profile not found — please complete your registration")
 	}
 
-	room, err := s.roomRepo.GetByID(req.RoomID)
+	// Look up the room without an org filter — guests have no org in their JWT.
+	// orgID is derived from the room itself and used for all subsequent scoped calls.
+	room, err := s.roomRepo.GetByIDUnscoped(req.RoomID)
 	if err != nil {
 		return nil, errors.New("room not found")
 	}
+	orgID := uuid.Nil
+	if room.OrgID != nil {
+		orgID = *room.OrgID
+	}
+
 	if req.Guests > room.Capacity {
 		return nil, fmt.Errorf("room capacity is %d, requested %d guests", room.Capacity, req.Guests)
 	}
@@ -65,7 +72,7 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 	}
 
 	if req.MealPlanID != nil {
-		if _, err := s.mealPlanRepo.GetByID(*req.MealPlanID); err != nil {
+		if _, err := s.mealPlanRepo.GetByID(*req.MealPlanID, orgID); err != nil {
 			return nil, errors.New("meal plan not found")
 		}
 	}
@@ -83,15 +90,11 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		SpecialRequests: req.SpecialRequests,
 	}
 
-	orgID := uuid.Nil
-	if room.OrgID != nil {
-		orgID = *room.OrgID
-	}
 	if err := s.bookingRepo.Create(b, orgID); err != nil {
 		return nil, err
 	}
 
-	created, err := s.bookingRepo.GetByID(b.ID)
+	created, err := s.bookingRepo.GetByIDUnscoped(b.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +145,7 @@ func (s *GuestBookingService) GetByID(userID uuid.UUID, bookingID uuid.UUID) (*m
 		return nil, errors.New("guest profile not found")
 	}
 
-	b, err := s.bookingRepo.GetByID(bookingID)
+	b, err := s.bookingRepo.GetByIDUnscoped(bookingID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -171,5 +174,10 @@ func (s *GuestBookingService) Cancel(userID uuid.UUID, bookingID uuid.UUID) erro
 		return fmt.Errorf("cannot cancel a booking with status %q", b.Status)
 	}
 
-	return s.bookingRepo.UpdateStatusTx(bookingID, models.BookingStatusCancelled)
+	// Derive orgID from the room so the status update is scoped correctly.
+	orgID := uuid.Nil
+	if room, err := s.roomRepo.GetByIDUnscoped(b.RoomID); err == nil && room.OrgID != nil {
+		orgID = *room.OrgID
+	}
+	return s.bookingRepo.UpdateStatusTx(bookingID, orgID, models.BookingStatusCancelled)
 }

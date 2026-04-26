@@ -82,8 +82,9 @@ func (h *RoomHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	room, err := h.service.GetByID(id)
+	room, err := h.service.GetByID(id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Room not found")
 		return
@@ -114,6 +115,7 @@ func (h *RoomHandler) Update(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var updates models.Room
 	if err := utils.DecodeJson(r, &updates); err != nil {
@@ -121,7 +123,7 @@ func (h *RoomHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	room, err := h.service.Update(id, &updates)
+	room, err := h.service.Update(id, orgID, &updates)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -136,6 +138,7 @@ func (h *RoomHandler) UpdateImages(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var req struct {
 		Images []string `json:"images"`
@@ -145,7 +148,7 @@ func (h *RoomHandler) UpdateImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	room, err := h.service.UpdateImages(id, req.Images)
+	room, err := h.service.UpdateImages(id, orgID, req.Images)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -160,6 +163,7 @@ func (h *RoomHandler) SetAvailability(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var req struct {
 		IsAvailable bool `json:"is_available"`
@@ -169,7 +173,7 @@ func (h *RoomHandler) SetAvailability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.SetAvailability(id, req.IsAvailable); err != nil {
+	if err := h.service.SetAvailability(id, orgID, req.IsAvailable); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -186,8 +190,9 @@ func (h *RoomHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

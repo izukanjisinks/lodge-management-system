@@ -93,17 +93,18 @@ func (r *WorkflowHistoryRepository) GetByInstanceID(instanceID string) ([]models
 	return historyEntries, nil
 }
 
-// GetByPerformer retrieves all history entries performed by a user
-func (r *WorkflowHistoryRepository) GetByPerformer(userID string) ([]models.WorkflowHistory, error) {
+// GetByPerformer retrieves all history entries performed by a user, scoped to org.
+func (r *WorkflowHistoryRepository) GetByPerformer(orgID, userID string) ([]models.WorkflowHistory, error) {
 	query := `
-		SELECT id, instance_id, from_step_id, to_step_id, action_taken,
-		       performed_by, performed_by_name, comments, metadata, timestamp
-		FROM workflow_history
-		WHERE performed_by = $1
-		ORDER BY timestamp DESC
+		SELECT wh.id, wh.instance_id, wh.from_step_id, wh.to_step_id, wh.action_taken,
+		       wh.performed_by, wh.performed_by_name, wh.comments, wh.metadata, wh.timestamp
+		FROM workflow_history wh
+		JOIN workflow_instances wi ON wh.instance_id = wi.id
+		WHERE wh.performed_by = $1 AND wi.org_id = $2
+		ORDER BY wh.timestamp DESC
 	`
 
-	rows, err := r.db.Query(query, userID)
+	rows, err := r.db.Query(query, userID, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,17 +134,18 @@ func (r *WorkflowHistoryRepository) GetByPerformer(userID string) ([]models.Work
 	return historyEntries, nil
 }
 
-// GetByAction retrieves all history entries for a specific action type
-func (r *WorkflowHistoryRepository) GetByAction(action string) ([]models.WorkflowHistory, error) {
+// GetByAction retrieves all history entries for a specific action type, scoped to org.
+func (r *WorkflowHistoryRepository) GetByAction(orgID, action string) ([]models.WorkflowHistory, error) {
 	query := `
-		SELECT id, instance_id, from_step_id, to_step_id, action_taken,
-		       performed_by, performed_by_name, comments, metadata, timestamp
-		FROM workflow_history
-		WHERE action_taken = $1
-		ORDER BY timestamp DESC
+		SELECT wh.id, wh.instance_id, wh.from_step_id, wh.to_step_id, wh.action_taken,
+		       wh.performed_by, wh.performed_by_name, wh.comments, wh.metadata, wh.timestamp
+		FROM workflow_history wh
+		JOIN workflow_instances wi ON wh.instance_id = wi.id
+		WHERE wh.action_taken = $1 AND wi.org_id = $2
+		ORDER BY wh.timestamp DESC
 	`
 
-	rows, err := r.db.Query(query, action)
+	rows, err := r.db.Query(query, action, orgID)
 	if err != nil {
 		return nil, err
 	}

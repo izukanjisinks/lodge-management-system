@@ -70,12 +70,12 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 	return tx.Commit()
 }
 
-func (r *InvoiceRepository) GetByID(id uuid.UUID) (*models.Invoice, error) {
-	return r.fetchOne(`WHERE i.id = $1`, id)
+func (r *InvoiceRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
+	return r.fetchOne(`WHERE i.id = $1 AND i.org_id = $2`, id, orgID)
 }
 
-func (r *InvoiceRepository) GetByBookingID(bookingID uuid.UUID) (*models.Invoice, error) {
-	return r.fetchOne(`WHERE i.booking_id = $1`, bookingID)
+func (r *InvoiceRepository) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
+	return r.fetchOne(`WHERE i.booking_id = $1 AND i.org_id = $2`, bookingID, orgID)
 }
 
 func (r *InvoiceRepository) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
@@ -139,19 +139,19 @@ func (r *InvoiceRepository) List(orgID uuid.UUID, status string, page, pageSize 
 	return invoices, total, rows.Err()
 }
 
-func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, status string, paidDate *time.Time, notes *string) error {
+func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, orgID uuid.UUID, status string, paidDate *time.Time, notes *string) error {
 	now := time.Now()
 	_, err := r.db.Exec(`
 		UPDATE invoices
 		SET status=$1, paid_date=$2, notes=COALESCE($3, notes), updated_at=$4
-		WHERE id=$5`,
-		status, paidDate, notes, now, id,
+		WHERE id=$5 AND org_id=$6`,
+		status, paidDate, notes, now, id, orgID,
 	)
 	return err
 }
 
 // fetchOne is a shared helper used by GetByID and GetByBookingID.
-func (r *InvoiceRepository) fetchOne(whereClause string, arg interface{}) (*models.Invoice, error) {
+func (r *InvoiceRepository) fetchOne(whereClause string, args ...interface{}) (*models.Invoice, error) {
 	row := r.db.QueryRow(fmt.Sprintf(`
 		SELECT i.id, i.invoice_number, i.booking_id,
 		       b.client_id, b.client_type,
@@ -170,7 +170,7 @@ func (r *InvoiceRepository) fetchOne(whereClause string, arg interface{}) (*mode
 		JOIN bookings b             ON b.id = i.booking_id
 		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		%s`, whereClause), arg)
+		%s`, whereClause), args...)
 
 	inv, err := scanInvoice(row)
 	if err != nil {

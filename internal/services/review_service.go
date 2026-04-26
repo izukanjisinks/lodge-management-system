@@ -36,7 +36,7 @@ func (s *ReviewService) Submit(userID uuid.UUID, req *models.SubmitReviewRequest
 	}
 
 	// Verify the booking belongs to this guest and is checked_out
-	booking, err := s.bookingRepo.GetByID(req.BookingID)
+	booking, err := s.bookingRepo.GetByIDUnscoped(req.BookingID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}

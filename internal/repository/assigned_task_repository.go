@@ -38,7 +38,7 @@ func (r *AssignedTaskRepository) Create(task *models.AssignedTask) error {
 	).Scan(&task.CreatedAt, &task.UpdatedAt)
 }
 
-func (r *AssignedTaskRepository) GetActiveTaskForInstance(instanceID string) (*models.AssignedTask, error) {
+func (r *AssignedTaskRepository) GetActiveTaskForInstance(instanceID, orgID string) (*models.AssignedTask, error) {
 	query := `
 		SELECT at.id, at.instance_id, at.step_id, at.step_name,
 		       at.assigned_to, at.assigned_by, at.status,
@@ -46,20 +46,20 @@ func (r *AssignedTaskRepository) GetActiveTaskForInstance(instanceID string) (*m
 		       wi.task_details
 		FROM assigned_tasks at
 		JOIN workflow_instances wi ON at.instance_id = wi.id
-		WHERE at.instance_id = $1
+		WHERE at.instance_id = $1 AND at.org_id = $2
 		  AND at.status IN ('pending', 'in_progress')
 		ORDER BY at.created_at DESC
 		LIMIT 1`
 
-	return r.scanTask(r.db.QueryRow(query, instanceID))
+	return r.scanTask(r.db.QueryRow(query, instanceID, orgID))
 }
 
-func (r *AssignedTaskRepository) Complete(taskID string) error {
+func (r *AssignedTaskRepository) Complete(taskID, orgID string) error {
 	query := `
 		UPDATE assigned_tasks
 		SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1`
-	result, err := r.db.Exec(query, taskID)
+		WHERE id = $1 AND org_id = $2`
+	result, err := r.db.Exec(query, taskID, orgID)
 	if err != nil {
 		return err
 	}
@@ -74,15 +74,10 @@ func (r *AssignedTaskRepository) Complete(taskID string) error {
 }
 
 func (r *AssignedTaskRepository) GetByAssignee(orgID, assigneeID string, statusFilter ...string) ([]models.AssignedTask, error) {
-	args := []interface{}{assigneeID}
-	where := "at.assigned_to = $1"
-	i := 2
+	args := []interface{}{assigneeID, orgID}
+	where := "at.assigned_to = $1 AND at.org_id = $2"
+	i := 3
 
-	if orgID != "" {
-		where += fmt.Sprintf(" AND at.org_id = $%d", i)
-		args = append(args, orgID)
-		i++
-	}
 	if len(statusFilter) > 0 && statusFilter[0] != "" {
 		where += fmt.Sprintf(" AND at.status = $%d", i)
 		args = append(args, statusFilter[0])

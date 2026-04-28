@@ -15,19 +15,17 @@ import (
 const defaultTaxRate = 16.0 // 16% VAT — adjust as needed
 
 type InvoiceService struct {
-	repo     *repository.InvoiceRepository
-	booking  *repository.BookingRepository
-	room     *repository.RoomRepository
-	mealPlan *repository.MealPlanRepository
+	repo    *repository.InvoiceRepository
+	booking *repository.BookingRepository
+	room    *repository.RoomRepository
 }
 
 func NewInvoiceService(
 	repo *repository.InvoiceRepository,
 	booking *repository.BookingRepository,
 	room *repository.RoomRepository,
-	mealPlan *repository.MealPlanRepository,
 ) *InvoiceService {
-	return &InvoiceService{repo: repo, booking: booking, room: room, mealPlan: mealPlan}
+	return &InvoiceService{repo: repo, booking: booking, room: room}
 }
 
 // GenerateForBooking auto-creates an invoice when a booking is confirmed.
@@ -54,36 +52,17 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 		nights = 1
 	}
 
-	var lineItems []models.InvoiceLineItem
-
-	// Line item: room cost
 	roomTotal := float64(nights) * room.PricePerNight
-	lineItems = append(lineItems, models.InvoiceLineItem{
-		Description: fmt.Sprintf("%s — %d night(s) @ %.2f/night", room.Name, nights, room.PricePerNight),
-		Quantity:    nights,
-		UnitPrice:   room.PricePerNight,
-		Total:       roomTotal,
-	})
-
-	// Line item: meal plan cost (if attached)
-	if b.MealPlanID != nil {
-		mp, err := s.mealPlan.GetByID(*b.MealPlanID, orgID)
-		if err == nil {
-			mealTotal := float64(nights) * float64(b.Guests) * mp.PricePerPersonPerNight
-			lineItems = append(lineItems, models.InvoiceLineItem{
-				Description: fmt.Sprintf("%s — %d night(s) × %d guest(s) @ %.2f/person/night", mp.Name, nights, b.Guests, mp.PricePerPersonPerNight),
-				Quantity:    nights * b.Guests,
-				UnitPrice:   mp.PricePerPersonPerNight,
-				Total:       mealTotal,
-			})
-		}
+	lineItems := []models.InvoiceLineItem{
+		{
+			Description: fmt.Sprintf("%s — %d night(s) @ %.2f/night", room.Name, nights, room.PricePerNight),
+			Quantity:    nights,
+			UnitPrice:   room.PricePerNight,
+			Total:       roomTotal,
+		},
 	}
 
-	// Calculate totals
-	subtotal := 0.0
-	for _, item := range lineItems {
-		subtotal += item.Total
-	}
+	subtotal := roomTotal
 	taxAmount := math.Round((subtotal*defaultTaxRate/100)*100) / 100
 	total := math.Round((subtotal+taxAmount)*100) / 100
 
@@ -93,7 +72,7 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 	}
 
 	now := time.Now()
-	dueDate := now.AddDate(0, 0, 30) // due in 30 days
+	dueDate := now.AddDate(0, 0, 30)
 
 	inv := &models.Invoice{
 		InvoiceNumber: invoiceNumber,

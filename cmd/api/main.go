@@ -74,8 +74,8 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 	roomHandler := handlers.NewRoomHandler(services.NewRoomService(roomRepo))
 	clientHandler := handlers.NewClientHandler(services.NewClientService(clientRepo))
-	bookingSvc := services.NewBookingService(bookingRepo, roomRepo, mealPlanRepo)
-	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo, mealPlanRepo)
+	bookingSvc := services.NewBookingService(bookingRepo, roomRepo)
+	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo)
 	bookingSvc.SetInvoiceService(invoiceSvc)
 
 	bookingHandler := handlers.NewBookingHandler(bookingSvc)
@@ -89,7 +89,7 @@ func main() {
 	guestRepo := repository.NewGuestRepository()
 	guestAuthSvc := services.NewGuestAuthService(guestRepo)
 	guestAuthSvc.SetEmailService(emailService)
-	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, mealPlanRepo, guestAuthSvc)
+	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, guestAuthSvc)
 	guestBookingSvc.SetWorkflowService(workflowService)
 	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc)
 	guestBookingHandler := handlers.NewGuestBookingHandler(guestBookingSvc)
@@ -110,6 +110,11 @@ func main() {
 	backofficeUserHandler := handlers.NewBackofficeUserHandler(backofficeUserSvc)
 	backofficeOrgHandler := handlers.NewBackofficeOrganizationHandler(backofficeOrgSvc)
 
+	menuRepo := repository.NewMenuRepository()
+	orderRepo := repository.NewOrderRepository()
+	menuHandler := handlers.NewMenuHandler(services.NewMenuService(menuRepo))
+	orderHandler := handlers.NewOrderHandler(services.NewOrderService(orderRepo, invoiceRepo, bookingRepo))
+
 	reviewRepo := repository.NewReviewRepository()
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
 
@@ -124,6 +129,8 @@ func main() {
 		dashboardHandler,
 		workflowHandler,
 		workflowAdminHandler,
+		menuHandler,
+		orderHandler,
 		guestAuthHandler,
 		guestBookingHandler,
 		reviewHandler,

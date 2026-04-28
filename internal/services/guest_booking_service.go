@@ -11,24 +11,21 @@ import (
 )
 
 type GuestBookingService struct {
-	bookingRepo  *repository.BookingRepository
-	roomRepo     *repository.RoomRepository
-	mealPlanRepo *repository.MealPlanRepository
-	guestAuth    *GuestAuthService
-	workflow     *WorkflowService
+	bookingRepo *repository.BookingRepository
+	roomRepo    *repository.RoomRepository
+	guestAuth   *GuestAuthService
+	workflow    *WorkflowService
 }
 
 func NewGuestBookingService(
 	bookingRepo *repository.BookingRepository,
 	roomRepo *repository.RoomRepository,
-	mealPlanRepo *repository.MealPlanRepository,
 	guestAuth *GuestAuthService,
 ) *GuestBookingService {
 	return &GuestBookingService{
-		bookingRepo:  bookingRepo,
-		roomRepo:     roomRepo,
-		mealPlanRepo: mealPlanRepo,
-		guestAuth:    guestAuth,
+		bookingRepo: bookingRepo,
+		roomRepo:    roomRepo,
+		guestAuth:   guestAuth,
 	}
 }
 
@@ -71,18 +68,11 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		return nil, errors.New("room is not available for the selected dates")
 	}
 
-	if req.MealPlanID != nil {
-		if _, err := s.mealPlanRepo.GetByID(*req.MealPlanID, orgID); err != nil {
-			return nil, errors.New("meal plan not found")
-		}
-	}
-
 	b := &models.Booking{
 		UserID:          userID,
 		RoomID:          req.RoomID,
 		ClientID:        profile.ID,
 		ClientType:      models.BookingClientTypeIndividual,
-		MealPlanID:      req.MealPlanID,
 		CheckIn:         req.CheckIn,
 		CheckOut:        req.CheckOut,
 		Guests:          req.Guests,

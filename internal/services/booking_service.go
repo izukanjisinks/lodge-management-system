@@ -11,21 +11,19 @@ import (
 )
 
 type BookingService struct {
-	repo     *repository.BookingRepository
-	room     *repository.RoomRepository
-	mealPlan *repository.MealPlanRepository
-	invoice  *InvoiceService
+	repo    *repository.BookingRepository
+	room    *repository.RoomRepository
+	invoice *InvoiceService
 }
 
-func NewBookingService(repo *repository.BookingRepository, room *repository.RoomRepository, mealPlan *repository.MealPlanRepository) *BookingService {
-	return &BookingService{repo: repo, room: room, mealPlan: mealPlan}
+func NewBookingService(repo *repository.BookingRepository, room *repository.RoomRepository) *BookingService {
+	return &BookingService{repo: repo, room: room}
 }
 
 // SetInvoiceService injects the invoice service after construction to avoid a circular dependency.
 func (s *BookingService) SetInvoiceService(invoice *InvoiceService) {
 	s.invoice = invoice
 }
-
 
 func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
 	if req.RoomID == uuid.Nil {
@@ -74,20 +72,11 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 		return nil, errors.New("client already has an active booking for this room on the selected dates")
 	}
 
-	// Validate meal plan exists if provided
-	if req.MealPlanID != nil {
-		_, err := s.mealPlan.GetByID(*req.MealPlanID, orgID)
-		if err != nil {
-			return nil, errors.New("meal plan not found")
-		}
-	}
-
 	b := &models.Booking{
 		UserID:          userID,
 		RoomID:          req.RoomID,
 		ClientID:        req.ClientID,
 		ClientType:      req.ClientType,
-		MealPlanID:      req.MealPlanID,
 		CheckIn:         req.CheckIn,
 		CheckOut:        req.CheckOut,
 		Guests:          req.Guests,
@@ -98,7 +87,7 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 		return nil, err
 	}
 
-	// Fetch back to get client_name and meal_plan_name resolved via JOINs
+	// Fetch back to get client_name resolved via JOINs
 	return s.repo.GetByID(b.ID, orgID)
 }
 
@@ -132,17 +121,6 @@ func (s *BookingService) Update(id uuid.UUID, orgID uuid.UUID, req *models.Updat
 	}
 	if req.SpecialRequests != nil {
 		b.SpecialRequests = *req.SpecialRequests
-	}
-	if req.MealPlanID != nil {
-		if *req.MealPlanID == uuid.Nil {
-			b.MealPlanID = nil // explicitly removing the meal plan
-		} else {
-			_, err := s.mealPlan.GetByID(*req.MealPlanID, orgID)
-			if err != nil {
-				return nil, errors.New("meal plan not found")
-			}
-			b.MealPlanID = req.MealPlanID
-		}
 	}
 
 	if !b.CheckOut.After(b.CheckIn) {

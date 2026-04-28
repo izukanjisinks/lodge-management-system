@@ -55,9 +55,9 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 		inv.LineItems[i].InvoiceID = inv.ID
 		inv.LineItems[i].CreatedAt = now
 		_, err = tx.Exec(`
-			INSERT INTO invoice_line_items (id, invoice_id, description, quantity, unit_price, total, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-			inv.LineItems[i].ID, inv.ID,
+			INSERT INTO invoice_line_items (id, invoice_id, order_id, description, quantity, unit_price, total, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+			inv.LineItems[i].ID, inv.ID, inv.LineItems[i].OrderID,
 			inv.LineItems[i].Description, inv.LineItems[i].Quantity,
 			inv.LineItems[i].UnitPrice, inv.LineItems[i].Total,
 			inv.LineItems[i].CreatedAt,
@@ -184,9 +184,52 @@ func (r *InvoiceRepository) fetchOne(whereClause string, args ...interface{}) (*
 	return inv, nil
 }
 
+// AppendOrderLineItem adds a line item linked to a closed order onto the booking's invoice.
+// The invoice totals (subtotal, tax, total) are recalculated atomically.
+func (r *InvoiceRepository) AppendOrderLineItem(invoiceID uuid.UUID, orgID uuid.UUID, item *models.InvoiceLineItem) error {
+	item.ID = uuid.New()
+	item.InvoiceID = invoiceID
+	item.CreatedAt = time.Now()
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	_, err = tx.Exec(`
+		INSERT INTO invoice_line_items (id, invoice_id, order_id, description, quantity, unit_price, total, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		item.ID, invoiceID, item.OrderID,
+		item.Description, item.Quantity, item.UnitPrice, item.Total,
+		item.CreatedAt,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Recalculate invoice totals from all line items
+	_, err = tx.Exec(`
+		UPDATE invoices
+		SET subtotal   = (SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1),
+		    tax        = ROUND((SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1) * tax_rate / 100, 2),
+		    total      = ROUND((SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1) * (1 + tax_rate / 100), 2),
+		    updated_at = $2
+		WHERE id = $1 AND org_id = $3`, invoiceID, time.Now(), orgID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.InvoiceLineItem, error) {
 	rows, err := r.db.Query(`
-		SELECT id, invoice_id, description, quantity, unit_price, total, created_at
+		SELECT id, invoice_id, order_id, description, quantity, unit_price, total, created_at
 		FROM invoice_line_items WHERE invoice_id = $1
 		ORDER BY created_at ASC`, invoiceID)
 	if err != nil {
@@ -197,8 +240,12 @@ func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.Invoic
 	var items []models.InvoiceLineItem
 	for rows.Next() {
 		var item models.InvoiceLineItem
-		if err := rows.Scan(&item.ID, &item.InvoiceID, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
+		var orderID uuid.NullUUID
+		if err := rows.Scan(&item.ID, &item.InvoiceID, &orderID, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
 			return nil, err
+		}
+		if orderID.Valid {
+			item.OrderID = &orderID.UUID
 		}
 		items = append(items, item)
 	}

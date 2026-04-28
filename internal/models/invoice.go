@@ -23,13 +23,14 @@ var ValidInvoiceTransitions = map[string][]string{
 }
 
 type InvoiceLineItem struct {
-	ID          uuid.UUID `json:"id"`
-	InvoiceID   uuid.UUID `json:"invoice_id"`
-	Description string    `json:"description"`
-	Quantity    int       `json:"quantity"`
-	UnitPrice   float64   `json:"unit_price"`
-	Total       float64   `json:"total"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	InvoiceID   uuid.UUID  `json:"invoice_id"`
+	OrderID     *uuid.UUID `json:"order_id,omitempty"`
+	Description string     `json:"description"`
+	Quantity    int        `json:"quantity"`
+	UnitPrice   float64    `json:"unit_price"`
+	Total       float64    `json:"total"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type Invoice struct {

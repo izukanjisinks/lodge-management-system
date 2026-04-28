@@ -28,7 +28,9 @@
     { "key": "corporate_client_id", "value": "", "type": "string" },
     { "key": "booking_id",          "value": "", "type": "string" },
     { "key": "guest_booking_id",    "value": "", "type": "string" },
-    { "key": "meal_plan_id",        "value": "", "type": "string" },
+    { "key": "menu_id",             "value": "", "type": "string" },
+    { "key": "menu_item_id",        "value": "", "type": "string" },
+    { "key": "order_id",            "value": "", "type": "string" },
     { "key": "invoice_id",          "value": "", "type": "string" },
     { "key": "workflow_id",         "value": "", "type": "string" },
     { "key": "instance_id",         "value": "", "type": "string" },
@@ -810,48 +812,47 @@
       ]
     },
     {
-      "name": "Staff — Meal Plans",
+      "name": "Staff — Menus",
       "item": [
         {
-          "name": "List Meal Plans",
+          "name": "List Menus",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/v1/meal-plans?page=1&page_size=20",
+              "raw": "{{base_url}}/api/v1/menus?page=1&page_size=20",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "meal-plans"],
+              "path": ["api", "v1", "menus"],
               "query": [
                 { "key": "page",      "value": "1" },
-                { "key": "page_size", "value": "20" },
-                { "key": "is_active", "value": "true", "disabled": true }
+                { "key": "page_size", "value": "20" }
               ]
             },
-            "description": "Paginated list of meal plans in the caller's org."
+            "description": "Paginated list of menus in the caller's org. Each menu includes its items."
           },
           "response": []
         },
         {
-          "name": "Get Meal Plan by ID",
+          "name": "Get Menu by ID",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/v1/meal-plans/{{meal_plan_id}}",
+              "raw": "{{base_url}}/api/v1/menus/{{menu_id}}",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
+              "path": ["api", "v1", "menus", "{{menu_id}}"]
             },
-            "description": "Get a single meal plan. Scoped to caller's org."
+            "description": "Get a single menu with all its items. Scoped to caller's org."
           },
           "response": []
         },
         {
-          "name": "Create Meal Plan",
+          "name": "Create Menu",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "const res = pm.response.json();",
-                  "if (res.id) pm.collectionVariables.set('meal_plan_id', res.id);"
+                  "if (res.id) pm.collectionVariables.set('menu_id', res.id);"
                 ],
                 "type": "text/javascript"
               }
@@ -862,45 +863,221 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Full Board\",\n  \"price_per_person_per_night\": 85.00,\n  \"includes\": [\"Breakfast\", \"Lunch\", \"Dinner\"],\n  \"description\": \"Three meals a day included\",\n  \"is_active\": true\n}"
+              "raw": "{\n  \"name\": \"Dinner Menu\",\n  \"description\": \"Evening dining options\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/v1/meal-plans",
+              "raw": "{{base_url}}/api/v1/menus",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "meal-plans"]
+              "path": ["api", "v1", "menus"]
             },
-            "description": "Create a meal plan in the caller's org. Saves returned `id` to `meal_plan_id`."
+            "description": "Create a menu. Requires admin or manager. Saves returned `id` to `menu_id`."
           },
           "response": []
         },
         {
-          "name": "Update Meal Plan",
+          "name": "Update Menu",
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"price_per_person_per_night\": 90.00,\n  \"is_active\": true\n}"
+              "raw": "{\n  \"name\": \"Dinner Menu\",\n  \"description\": \"Updated description\",\n  \"is_active\": true\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/v1/meal-plans/{{meal_plan_id}}",
+              "raw": "{{base_url}}/api/v1/menus/{{menu_id}}",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
+              "path": ["api", "v1", "menus", "{{menu_id}}"]
             },
-            "description": "Update a meal plan. Scoped to caller's org."
+            "description": "Update a menu's name, description, or active status."
           },
           "response": []
         },
         {
-          "name": "Delete Meal Plan",
+          "name": "Delete Menu",
           "request": {
             "method": "DELETE",
             "url": {
-              "raw": "{{base_url}}/api/v1/meal-plans/{{meal_plan_id}}",
+              "raw": "{{base_url}}/api/v1/menus/{{menu_id}}",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "meal-plans", "{{meal_plan_id}}"]
+              "path": ["api", "v1", "menus", "{{menu_id}}"]
             },
-            "description": "Delete a meal plan. Scoped to caller's org."
+            "description": "Delete a menu and all its items (CASCADE). Scoped to caller's org."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Item to Menu",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('menu_item_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Grilled Chicken\",\n  \"description\": \"Free-range chicken with seasonal vegetables\",\n  \"price\": 45.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/menus/{{menu_id}}/items",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "menus", "{{menu_id}}", "items"]
+            },
+            "description": "Add an item to a menu. Price is set here and snapshotted on orders. Saves returned `id` to `menu_item_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Menu Item",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 50.00,\n  \"is_available\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/menus/{{menu_id}}/items/{{menu_item_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "menus", "{{menu_id}}", "items", "{{menu_item_id}}"]
+            },
+            "description": "Update a menu item's name, description, price, or availability. Price changes only affect future orders — past orders retain their snapshotted price."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Menu Item",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/menus/{{menu_id}}/items/{{menu_item_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "menus", "{{menu_id}}", "items", "{{menu_item_id}}"]
+            },
+            "description": "Delete a menu item. Will fail if the item is referenced by existing order_items (RESTRICT)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Staff — Orders",
+      "item": [
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders"],
+              "query": [
+                { "key": "page",       "value": "1" },
+                { "key": "page_size",  "value": "20" },
+                { "key": "type",       "value": "", "disabled": true, "description": "in_house | walk_in" },
+                { "key": "booking_id", "value": "", "disabled": true, "description": "Filter by booking UUID" }
+              ]
+            },
+            "description": "Paginated list of all orders in the caller's org."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders/{{order_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders", "{{order_id}}"]
+            },
+            "description": "Get a single order with all its items. Scoped to caller's org."
+          },
+          "response": []
+        },
+        {
+          "name": "Place In-House Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('order_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"booking_id\": \"{{booking_id}}\",\n  \"notes\": \"Table 4, guest requested no onions\",\n  \"items\": [\n    {\n      \"menu_item_id\": \"{{menu_item_id}}\",\n      \"quantity\": 2,\n      \"notes\": \"No onions\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Place an order for a confirmed or checked-in booking. Prices are snapshotted at order time. The booking's invoice is updated immediately with a Food & Beverage line item. Saves returned `id` to `order_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Place Walk-In Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) pm.collectionVariables.set('order_id', res.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Counter seat 2\",\n  \"items\": [\n    {\n      \"menu_item_id\": \"{{menu_item_id}}\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders/walk-in",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders", "walk-in"]
+            },
+            "description": "Place an order for a walk-in customer with no booking. No invoice is updated. Saves returned `id` to `order_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Items to Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"menu_item_id\": \"{{menu_item_id}}\",\n      \"quantity\": 1,\n      \"notes\": \"Extra sauce\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders/{{order_id}}/items",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders", "{{order_id}}", "items"]
+            },
+            "description": "Append more items to an existing order (e.g. second round of drinks). The booking's invoice is updated immediately with an additional line item."
           },
           "response": []
         }
@@ -1956,14 +2133,14 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"room_id\": \"{{room_id}}\",\n  \"check_in\": \"2026-05-01\",\n  \"check_out\": \"2026-05-05\",\n  \"guests\": 2,\n  \"meal_plan_id\": \"{{meal_plan_id}}\",\n  \"special_requests\": \"Late check-in after 10 PM\"\n}"
+              "raw": "{\n  \"room_id\": \"{{room_id}}\",\n  \"check_in\": \"2026-05-01\",\n  \"check_out\": \"2026-05-05\",\n  \"guests\": 2,\n  \"special_requests\": \"Late check-in after 10 PM\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/guest/bookings",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "guest", "bookings"]
             },
-            "description": "Create a booking as a guest. `client_id` and org are resolved automatically — the org is derived from the room's `org_id`. A booking approval workflow is triggered automatically. Saves returned `id` to `guest_booking_id`."
+            "description": "Create a booking as a guest. `client_id` and org are resolved automatically from the JWT and the room's `org_id`. A booking approval workflow is triggered automatically. Food orders are placed separately via staff after check-in. Saves returned `id` to `guest_booking_id`."
           },
           "response": []
         },
@@ -2019,6 +2196,30 @@
               "path": ["api", "v1", "guest", "bookings", "{{guest_booking_id}}", "cancel"]
             },
             "description": "Cancel the guest's own booking. Only allowed when status is pending or confirmed."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Guest — Menus (Public)",
+      "item": [
+        {
+          "name": "List Menus",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/menus?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "menus"],
+              "query": [
+                { "key": "page",      "value": "1" },
+                { "key": "page_size", "value": "20" },
+                { "key": "org_id",    "value": "", "disabled": true, "description": "Optional — filter by lodge UUID. Omit to return menus from all orgs." }
+              ]
+            },
+            "description": "Public endpoint. Returns active menus with their available items. Pass `org_id` to filter by a specific lodge."
           },
           "response": []
         }

@@ -26,17 +26,7 @@ func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 	b.CreatedAt = now
 	b.UpdatedAt = now
 
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
-
-	_, err = tx.Exec(`
+	_, err := r.db.Exec(`
 		INSERT INTO bookings
 		    (id, user_id, room_id, client_id, client_type, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
@@ -44,22 +34,7 @@ func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
 		orgID, b.CreatedAt, b.UpdatedAt,
 	)
-	if err != nil {
-		return err
-	}
-
-	if b.MealPlanID != nil {
-		_, err = tx.Exec(`
-			INSERT INTO booking_meal_plans (booking_id, meal_plan_id, guests)
-			VALUES ($1, $2, $3)`,
-			b.ID, *b.MealPlanID, b.Guests,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
+	return err
 }
 
 // GetByIDUnscoped fetches a booking by ID with no org filter — use only in guest/review flows
@@ -72,21 +47,16 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
-		       bmp.meal_plan_id, mp.name AS meal_plan_name,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
-		       COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS meal_cost,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night +
-		           COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS total_amount,
+		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
 		       b.status, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r   ON r.id = b.room_id
 		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		LEFT JOIN booking_meal_plans  bmp ON bmp.booking_id = b.id
-		LEFT JOIN meal_plans          mp  ON mp.id = bmp.meal_plan_id
 		WHERE b.id = $1`, id)
 	return scanBooking(row)
 }
@@ -99,21 +69,16 @@ func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Book
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
-		       bmp.meal_plan_id, mp.name AS meal_plan_name,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
-		       COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS meal_cost,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night +
-		           COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS total_amount,
+		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
 		       b.status, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r   ON r.id = b.room_id
 		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		LEFT JOIN booking_meal_plans  bmp ON bmp.booking_id = b.id
-		LEFT JOIN meal_plans          mp  ON mp.id = bmp.meal_plan_id
 		WHERE b.id = $1 AND b.org_id = $2`, id, orgID)
 	return scanBooking(row)
 }
@@ -162,21 +127,16 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
-		       bmp.meal_plan_id, mp.name AS meal_plan_name,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
-		       COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS meal_cost,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night +
-		           COALESCE(GREATEST(b.check_out - b.check_in, 1) * bmp.guests * mp.price_per_person_per_night, 0) AS total_amount,
+		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
 		       b.status, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r   ON r.id = b.room_id
 		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		LEFT JOIN booking_meal_plans  bmp ON bmp.booking_id = b.id
-		LEFT JOIN meal_plans          mp  ON mp.id = bmp.meal_plan_id
 		WHERE %s
 		ORDER BY b.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
@@ -198,44 +158,13 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 
 func (r *BookingRepository) Update(b *models.Booking, orgID uuid.UUID) error {
 	b.UpdatedAt = time.Now()
-
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
-
-	_, err = tx.Exec(`
+	_, err := r.db.Exec(`
 		UPDATE bookings
 		SET check_in=$1, check_out=$2, guests=$3, special_requests=$4, updated_at=$5
 		WHERE id=$6 AND org_id=$7`,
 		b.CheckIn, b.CheckOut, b.Guests, b.SpecialRequests, b.UpdatedAt, b.ID, orgID,
 	)
-	if err != nil {
-		return err
-	}
-
-	// Replace meal plan — delete existing then insert new if provided
-	_, err = tx.Exec(`DELETE FROM booking_meal_plans WHERE booking_id=$1`, b.ID)
-	if err != nil {
-		return err
-	}
-	if b.MealPlanID != nil {
-		_, err = tx.Exec(`
-			INSERT INTO booking_meal_plans (booking_id, meal_plan_id, guests)
-			VALUES ($1, $2, $3)`,
-			b.ID, *b.MealPlanID, b.Guests,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
+	return err
 }
 
 // UpdateStatusTx updates the booking status and the room's availability atomically.
@@ -340,14 +269,12 @@ type bookingScanner interface {
 
 func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
-	var roomName, clientName, mealPlanName, specialRequests sql.NullString
-	var mealPlanID uuid.NullUUID
+	var roomName, clientName, specialRequests sql.NullString
 	err := row.Scan(
 		&b.ID, &b.UserID, &b.RoomID, &roomName,
 		&b.ClientID, &b.ClientType, &clientName,
-		&mealPlanID, &mealPlanName,
 		&b.CheckIn, &b.CheckOut, &b.Guests,
-		&b.Nights, &b.RoomCost, &b.MealCost, &b.TotalAmount,
+		&b.Nights, &b.RoomCost, &b.TotalAmount,
 		&b.Status, &specialRequests,
 		&b.CreatedAt, &b.UpdatedAt,
 	)
@@ -359,12 +286,6 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	}
 	if clientName.Valid {
 		b.ClientName = clientName.String
-	}
-	if mealPlanID.Valid {
-		b.MealPlanID = &mealPlanID.UUID
-	}
-	if mealPlanName.Valid {
-		b.MealPlanName = mealPlanName.String
 	}
 	if specialRequests.Valid {
 		b.SpecialRequests = specialRequests.String

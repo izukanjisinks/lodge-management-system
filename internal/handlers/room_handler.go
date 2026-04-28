@@ -45,17 +45,16 @@ func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GuestList handles GET /api/v1/guest/rooms — public, requires ?org_id= query param
+// GuestList handles GET /api/v1/guest/rooms — public, org_id is an optional filter
 func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
-	orgIDStr := r.URL.Query().Get("org_id")
-	if orgIDStr == "" {
-		utils.RespondError(w, http.StatusBadRequest, "org_id query param is required")
-		return
-	}
-	orgID, err := uuid.Parse(orgIDStr)
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
-		return
+	var orgID *uuid.UUID
+	if orgIDStr := r.URL.Query().Get("org_id"); orgIDStr != "" {
+		parsed, err := uuid.Parse(orgIDStr)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
+			return
+		}
+		orgID = &parsed
 	}
 
 	pag := utils.ParsePagination(r)
@@ -67,7 +66,7 @@ func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 		isAvailable = &b
 	}
 
-	rooms, total, err := h.service.List(orgID, roomType, isAvailable, pag.Page, pag.PageSize)
+	rooms, total, err := h.service.GuestList(orgID, roomType, isAvailable, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

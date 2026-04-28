@@ -19,7 +19,9 @@
       "Bash(find \"c:/development/New folder \\(3\\)/src/types\" -type f)",
       "Bash(find \"c:/development/New folder \\(3\\)/src\" -name \"*validat*\" -o -name \"*rule*\")",
       "Bash(grep -r \"SystemUserPayload\\\\|createUser\\\\|register\" 'c:/development/New folder \\(3\\)/src' --include=*.ts --include=*.vue)",
-      "Bash(ls -la \"/c/development/New folder \\(3\\)/\")"
+      "Bash(ls -la \"/c/development/New folder \\(3\\)/\")",
+      "Read(//c/development/lodge-management-system-website/src/stores/**)",
+      "Read(//c/development/lodge-management-system-website/**)"
     ]
   }
 }

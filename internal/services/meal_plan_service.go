@@ -45,6 +45,14 @@ func (s *MealPlanService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.MealPl
 	return s.repo.GetByID(id, orgID)
 }
 
+func (s *MealPlanService) GetByIDUnscoped(id uuid.UUID) (*models.MealPlan, error) {
+	return s.repo.GetByIDUnscoped(id)
+}
+
+func (s *MealPlanService) GuestList(orgID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {
+	return s.repo.GuestList(orgID, isActive, page, pageSize)
+}
+
 func (s *MealPlanService) List(orgID uuid.UUID, isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {
 	return s.repo.List(orgID, isActive, page, pageSize)
 }

@@ -60,17 +60,16 @@ func (h *MealPlanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, plan)
 }
 
-// GuestList handles GET /api/v1/guest/meal-plans — public, requires ?org_id= query param
+// GuestList handles GET /api/v1/guest/meal-plans — public, org_id is an optional filter
 func (h *MealPlanHandler) GuestList(w http.ResponseWriter, r *http.Request) {
-	orgIDStr := r.URL.Query().Get("org_id")
-	if orgIDStr == "" {
-		utils.RespondError(w, http.StatusBadRequest, "org_id query param is required")
-		return
-	}
-	orgID, err := uuid.Parse(orgIDStr)
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
-		return
+	var orgID *uuid.UUID
+	if orgIDStr := r.URL.Query().Get("org_id"); orgIDStr != "" {
+		parsed, err := uuid.Parse(orgIDStr)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
+			return
+		}
+		orgID = &parsed
 	}
 
 	pag := utils.ParsePagination(r)
@@ -81,7 +80,7 @@ func (h *MealPlanHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 		isActive = &b
 	}
 
-	plans, total, err := h.service.List(orgID, isActive, pag.Page, pag.PageSize)
+	plans, total, err := h.service.GuestList(orgID, isActive, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -95,25 +94,15 @@ func (h *MealPlanHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GuestGetByID handles GET /api/v1/guest/meal-plans/{id} — public, requires ?org_id= query param
+// GuestGetByID handles GET /api/v1/guest/meal-plans/{id} — public, no org required
 func (h *MealPlanHandler) GuestGetByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid meal plan ID")
 		return
 	}
-	orgIDStr := r.URL.Query().Get("org_id")
-	if orgIDStr == "" {
-		utils.RespondError(w, http.StatusBadRequest, "org_id query param is required")
-		return
-	}
-	orgID, err := uuid.Parse(orgIDStr)
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
-		return
-	}
 
-	plan, err := h.service.GetByID(id, orgID)
+	plan, err := h.service.GetByIDUnscoped(id)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Meal plan not found")
 		return

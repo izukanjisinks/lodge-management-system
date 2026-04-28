@@ -52,6 +52,57 @@ func (r *RoomRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, e
 	return scanRoom(row)
 }
 
+// GuestList lists rooms with an optional org_id filter — used by public guest endpoints.
+func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+	args := []interface{}{}
+	where := []string{"1=1"}
+	i := 1
+
+	if orgID != nil {
+		where = append(where, fmt.Sprintf("org_id = $%d", i))
+		args = append(args, *orgID)
+		i++
+	}
+	if roomType != "" {
+		where = append(where, fmt.Sprintf("type = $%d", i))
+		args = append(args, roomType)
+		i++
+	}
+	if isAvailable != nil {
+		where = append(where, fmt.Sprintf("is_available = $%d", i))
+		args = append(args, *isAvailable)
+		i++
+	}
+
+	whereStr := strings.Join(where, " AND ")
+
+	var total int
+	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM rooms WHERE %s`, whereStr), args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, pageSize, (page-1)*pageSize)
+	rows, err := r.db.Query(fmt.Sprintf(`
+		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		FROM rooms WHERE %s
+		ORDER BY name ASC
+		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var rooms []models.Room
+	for rows.Next() {
+		room, err := scanRoom(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		rooms = append(rooms, *room)
+	}
+	return rooms, total, rows.Err()
+}
+
 func (r *RoomRepository) List(orgID uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"org_id = $1"}

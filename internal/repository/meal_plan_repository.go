@@ -34,11 +34,62 @@ func (r *MealPlanRepository) Create(m *models.MealPlan, orgID uuid.UUID) error {
 	return err
 }
 
+func (r *MealPlanRepository) GetByIDUnscoped(id uuid.UUID) (*models.MealPlan, error) {
+	row := r.db.QueryRow(`
+		SELECT id, name, price_per_person_per_night, includes, description, is_active, created_at, updated_at
+		FROM meal_plans WHERE id = $1`, id)
+	return scanMealPlan(row)
+}
+
 func (r *MealPlanRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.MealPlan, error) {
 	row := r.db.QueryRow(`
 		SELECT id, name, price_per_person_per_night, includes, description, is_active, created_at, updated_at
 		FROM meal_plans WHERE id = $1 AND org_id = $2`, id, orgID)
 	return scanMealPlan(row)
+}
+
+// GuestList lists meal plans with an optional org_id filter — used by public guest endpoints.
+func (r *MealPlanRepository) GuestList(orgID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {
+	args := []interface{}{}
+	where := "1=1"
+	i := 1
+
+	if orgID != nil {
+		where += fmt.Sprintf(" AND org_id = $%d", i)
+		args = append(args, *orgID)
+		i++
+	}
+	if isActive != nil {
+		where += fmt.Sprintf(" AND is_active = $%d", i)
+		args = append(args, *isActive)
+		i++
+	}
+
+	var total int
+	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM meal_plans WHERE %s`, where), args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, pageSize, (page-1)*pageSize)
+	rows, err := r.db.Query(fmt.Sprintf(`
+		SELECT id, name, price_per_person_per_night, includes, description, is_active, created_at, updated_at
+		FROM meal_plans WHERE %s
+		ORDER BY name ASC
+		LIMIT $%d OFFSET $%d`, where, i, i+1), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var plans []models.MealPlan
+	for rows.Next() {
+		m, err := scanMealPlan(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		plans = append(plans, *m)
+	}
+	return plans, total, rows.Err()
 }
 
 func (r *MealPlanRepository) List(orgID uuid.UUID, isActive *bool, page, pageSize int) ([]models.MealPlan, int, error) {

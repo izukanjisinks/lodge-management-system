@@ -83,6 +83,11 @@ func (r *MenuRepository) ListMenus(orgID uuid.UUID, page, pageSize int) ([]model
 		if description.Valid {
 			m.Description = description.String
 		}
+		items, err := r.ListMenuItems(m.ID, orgID)
+		if err != nil {
+			return nil, 0, err
+		}
+		m.Items = items
 		menus = append(menus, m)
 	}
 	return menus, total, rows.Err()

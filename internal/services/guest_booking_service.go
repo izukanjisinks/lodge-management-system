@@ -56,11 +56,11 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 	if req.Guests > room.Capacity {
 		return nil, fmt.Errorf("room capacity is %d, requested %d guests", room.Capacity, req.Guests)
 	}
-	if req.CheckOut.Before(req.CheckIn) || req.CheckOut.Equal(req.CheckIn) {
+	if req.CheckOut.Before(req.CheckIn.Time) || req.CheckOut.Equal(req.CheckIn.Time) {
 		return nil, errors.New("check_out must be after check_in")
 	}
 
-	available, err := s.bookingRepo.IsRoomAvailable(req.RoomID, req.CheckIn, req.CheckOut, nil)
+	available, err := s.bookingRepo.IsRoomAvailable(req.RoomID, req.CheckIn.Time, req.CheckOut.Time, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +73,8 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		RoomID:          req.RoomID,
 		ClientID:        profile.ID,
 		ClientType:      models.BookingClientTypeIndividual,
-		CheckIn:         req.CheckIn,
-		CheckOut:        req.CheckOut,
+		CheckIn:         req.CheckIn.Time,
+		CheckOut:        req.CheckOut.Time,
 		Guests:          req.Guests,
 		Status:          models.BookingStatusPending,
 		SpecialRequests: req.SpecialRequests,

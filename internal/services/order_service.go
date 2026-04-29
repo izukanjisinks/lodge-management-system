@@ -49,7 +49,7 @@ func (s *OrderService) PlaceOrder(orgID uuid.UUID, req *models.PlaceOrderRequest
 		return nil, err
 	}
 
-	s.appendToInvoice(order, orgID)
+	s.appendToInvoice(order, orgID, order.Items)
 	return order, nil
 }
 
@@ -70,12 +70,12 @@ func (s *OrderService) AddItems(orderID uuid.UUID, orgID uuid.UUID, req *models.
 	if len(req.Items) == 0 {
 		return nil, errors.New("at least one item is required")
 	}
-	order, err := s.repo.AddItems(orderID, orgID, req.Items)
+	order, newItems, err := s.repo.AddItems(orderID, orgID, req.Items)
 	if err != nil {
 		return nil, err
 	}
 
-	s.appendToInvoice(order, orgID)
+	s.appendToInvoice(order, orgID, newItems)
 	return order, nil
 }
 
@@ -91,15 +91,10 @@ func (s *OrderService) List(orgID uuid.UUID, orderType string, bookingID *uuid.U
 	return s.repo.List(orgID, orderType, bookingID, page, pageSize)
 }
 
-// appendToInvoice writes a line item for this order onto the booking's invoice.
+// appendToInvoice writes one invoice line item per order item onto the booking's invoice.
 // Non-fatal — logs on failure so the order itself is never rolled back.
-func (s *OrderService) appendToInvoice(order *models.Order, orgID uuid.UUID) {
-	if order.BookingID == nil {
-		return
-	}
-
-	total, err := s.repo.GetItemsTotal(order.ID)
-	if err != nil || total == 0 {
+func (s *OrderService) appendToInvoice(order *models.Order, orgID uuid.UUID, items []models.OrderItem) {
+	if order.BookingID == nil || len(items) == 0 {
 		return
 	}
 
@@ -109,16 +104,17 @@ func (s *OrderService) appendToInvoice(order *models.Order, orgID uuid.UUID) {
 		return
 	}
 
-	description := fmt.Sprintf("Food & Beverage — Order %s (%d item(s))", order.OrderNumber, len(order.Items))
 	orderID := order.ID
-	lineItem := &models.InvoiceLineItem{
-		OrderID:     &orderID,
-		Description: description,
-		Quantity:    1,
-		UnitPrice:   total,
-		Total:       total,
-	}
-	if err := s.invoice.AppendOrderLineItem(inv.ID, orgID, lineItem); err != nil {
-		fmt.Printf("warning: failed to append order %s to invoice %s: %v\n", order.ID, inv.ID, err)
+	for _, item := range items {
+		lineItem := &models.InvoiceLineItem{
+			OrderID:     &orderID,
+			Description: fmt.Sprintf("%s × %d", item.ItemName, item.Quantity),
+			Quantity:    item.Quantity,
+			UnitPrice:   item.UnitPrice,
+			Total:       item.Subtotal,
+		}
+		if err := s.invoice.AppendOrderLineItem(inv.ID, orgID, lineItem); err != nil {
+			fmt.Printf("warning: failed to append order item %s to invoice %s: %v\n", item.ID, inv.ID, err)
+		}
 	}
 }

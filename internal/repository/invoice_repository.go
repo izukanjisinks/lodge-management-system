@@ -139,6 +139,15 @@ func (r *InvoiceRepository) List(orgID uuid.UUID, status string, page, pageSize 
 	return invoices, total, rows.Err()
 }
 
+func (r *InvoiceRepository) UpdateDueDate(bookingID uuid.UUID, orgID uuid.UUID, dueDate time.Time) error {
+	_, err := r.db.Exec(`
+		UPDATE invoices SET due_date=$1, updated_at=$2
+		WHERE booking_id=$3 AND org_id=$4`,
+		dueDate, time.Now(), bookingID, orgID,
+	)
+	return err
+}
+
 func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, orgID uuid.UUID, status string, paidDate *time.Time, notes *string) error {
 	now := time.Now()
 	_, err := r.db.Exec(`

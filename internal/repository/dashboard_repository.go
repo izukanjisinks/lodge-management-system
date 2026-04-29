@@ -132,6 +132,7 @@ func (r *DashboardRepository) RecentBookings(orgID uuid.UUID, limit int) ([]mode
 	rows, err := r.db.Query(`
 		SELECT
 		    b.id,
+		    b.booking_number,
 		    CASE b.client_type
 		        WHEN 'individual' THEN ip.full_name
 		        WHEN 'corporate'  THEN cp.company_name
@@ -159,7 +160,7 @@ func (r *DashboardRepository) RecentBookings(orgID uuid.UUID, limit int) ([]mode
 	for rows.Next() {
 		var b models.DashboardRecentBooking
 		var clientName sql.NullString
-		if err := rows.Scan(&b.ID, &clientName, &b.RoomName, &b.RoomType, &b.CheckIn, &b.CheckOut, &b.Status); err != nil {
+		if err := rows.Scan(&b.ID, &b.BookingNumber, &clientName, &b.RoomName, &b.RoomType, &b.CheckIn, &b.CheckOut, &b.Status); err != nil {
 			return nil, err
 		}
 		if clientName.Valid {

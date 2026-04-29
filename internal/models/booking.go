@@ -1,10 +1,32 @@
 package models
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// DateOnly is a time.Time that marshals/unmarshals as "YYYY-MM-DD".
+type DateOnly struct{ time.Time }
+
+func (d *DateOnly) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return fmt.Errorf("date must be YYYY-MM-DD, got %q", s)
+	}
+	d.Time = t
+	return nil
+}
+
+func (d DateOnly) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.Time.Format("2006-01-02"))
+}
 
 const (
 	BookingStatusPending    = "pending"
@@ -30,6 +52,7 @@ var ValidBookingTransitions = map[string][]string{
 
 type Booking struct {
 	ID              uuid.UUID `json:"id"`
+	BookingNumber   string    `json:"booking_number"`
 	UserID          uuid.UUID `json:"user_id"`
 	RoomID          uuid.UUID `json:"room_id"`
 	RoomName        string    `json:"room_name"`
@@ -52,17 +75,17 @@ type CreateBookingRequest struct {
 	RoomID          uuid.UUID `json:"room_id"`
 	ClientID        uuid.UUID `json:"client_id"`
 	ClientType      string    `json:"client_type"`
-	CheckIn         time.Time `json:"check_in"`
-	CheckOut        time.Time `json:"check_out"`
+	CheckIn         DateOnly  `json:"check_in"`
+	CheckOut        DateOnly  `json:"check_out"`
 	Guests          int       `json:"guests"`
 	SpecialRequests string    `json:"special_requests,omitempty"`
 }
 
 type UpdateBookingRequest struct {
-	CheckIn         *time.Time `json:"check_in,omitempty"`
-	CheckOut        *time.Time `json:"check_out,omitempty"`
-	Guests          *int       `json:"guests,omitempty"`
-	SpecialRequests *string    `json:"special_requests,omitempty"`
+	CheckIn         *DateOnly `json:"check_in,omitempty"`
+	CheckOut        *DateOnly `json:"check_out,omitempty"`
+	Guests          *int      `json:"guests,omitempty"`
+	SpecialRequests *string   `json:"special_requests,omitempty"`
 }
 
 type UpdateBookingStatusRequest struct {

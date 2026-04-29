@@ -12,15 +12,19 @@ const (
 )
 
 type Order struct {
-	ID          uuid.UUID   `json:"id"`
-	OrgID       uuid.UUID   `json:"org_id"`
-	BookingID   *uuid.UUID  `json:"booking_id,omitempty"`
-	OrderNumber string      `json:"order_number"`
-	Type        string      `json:"type"`
-	Notes       string      `json:"notes,omitempty"`
-	Items       []OrderItem `json:"items,omitempty"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID            uuid.UUID   `json:"id"`
+	OrgID         uuid.UUID   `json:"org_id"`
+	BookingID     *uuid.UUID  `json:"booking_id,omitempty"`
+	BookingNumber string      `json:"booking_number,omitempty"`
+	RoomName      string      `json:"room_name,omitempty"`
+	ClientName    string      `json:"client_name,omitempty"`
+	OrderNumber   string      `json:"order_number"`
+	Type          string      `json:"type"`
+	Notes         string      `json:"notes,omitempty"`
+	Total         float64     `json:"total"`
+	Items         []OrderItem `json:"items,omitempty"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 }
 
 type OrderItem struct {

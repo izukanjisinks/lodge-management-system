@@ -41,7 +41,7 @@ func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 // where the caller has already verified ownership via client_id.
 func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
-		SELECT b.id, b.user_id, b.room_id, r.name AS room_name,
+		SELECT b.id, b.booking_number, b.user_id, b.room_id, r.name AS room_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -63,7 +63,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 
 func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
-		SELECT b.id, b.user_id, b.room_id, r.name AS room_name,
+		SELECT b.id, b.booking_number, b.user_id, b.room_id, r.name AS room_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -121,7 +121,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT b.id, b.user_id, b.room_id, r.name AS room_name,
+		SELECT b.id, b.booking_number, b.user_id, b.room_id, r.name AS room_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -271,7 +271,7 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
 	var roomName, clientName, specialRequests sql.NullString
 	err := row.Scan(
-		&b.ID, &b.UserID, &b.RoomID, &roomName,
+		&b.ID, &b.BookingNumber, &b.UserID, &b.RoomID, &roomName,
 		&b.ClientID, &b.ClientType, &clientName,
 		&b.CheckIn, &b.CheckOut, &b.Guests,
 		&b.Nights, &b.RoomCost, &b.TotalAmount,

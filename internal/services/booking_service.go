@@ -38,7 +38,7 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 	if req.CheckIn.IsZero() || req.CheckOut.IsZero() {
 		return nil, errors.New("check_in and check_out are required")
 	}
-	if !req.CheckOut.After(req.CheckIn) {
+	if !req.CheckOut.After(req.CheckIn.Time) {
 		return nil, errors.New("check_out must be after check_in")
 	}
 	if req.Guests <= 0 {
@@ -55,7 +55,7 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 	}
 
 	// Check for date conflicts with existing pending/confirmed/checked_in bookings
-	available, err := s.repo.IsRoomAvailable(req.RoomID, req.CheckIn, req.CheckOut, nil)
+	available, err := s.repo.IsRoomAvailable(req.RoomID, req.CheckIn.Time, req.CheckOut.Time, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 	}
 
 	// Prevent the same client from booking the same room twice for overlapping dates
-	duplicate, err := s.repo.HasActiveBookingForClient(req.ClientID, req.RoomID, req.CheckIn, req.CheckOut)
+	duplicate, err := s.repo.HasActiveBookingForClient(req.ClientID, req.RoomID, req.CheckIn.Time, req.CheckOut.Time)
 	if err != nil {
 		return nil, err
 	}
@@ -77,8 +77,8 @@ func (s *BookingService) Create(userID uuid.UUID, orgID uuid.UUID, req *models.C
 		RoomID:          req.RoomID,
 		ClientID:        req.ClientID,
 		ClientType:      req.ClientType,
-		CheckIn:         req.CheckIn,
-		CheckOut:        req.CheckOut,
+		CheckIn:         req.CheckIn.Time,
+		CheckOut:        req.CheckOut.Time,
 		Guests:          req.Guests,
 		Status:          models.BookingStatusPending,
 		SpecialRequests: req.SpecialRequests,
@@ -106,15 +106,15 @@ func (s *BookingService) Update(id uuid.UUID, orgID uuid.UUID, req *models.Updat
 	}
 
 	// Only pending bookings can be edited
-	if b.Status != models.BookingStatusPending {
-		return nil, errors.New("only pending bookings can be updated")
+	if b.Status != models.BookingStatusCheckedIn && b.Status != models.BookingStatusConfirmed && b.Status != models.BookingStatusPending {
+		return nil, errors.New("only pending, checked-in, or confirmed bookings can be updated")
 	}
 
 	if req.CheckIn != nil {
-		b.CheckIn = *req.CheckIn
+		b.CheckIn = req.CheckIn.Time
 	}
 	if req.CheckOut != nil {
-		b.CheckOut = *req.CheckOut
+		b.CheckOut = req.CheckOut.Time
 	}
 	if req.Guests != nil {
 		b.Guests = *req.Guests
@@ -142,6 +142,14 @@ func (s *BookingService) Update(id uuid.UUID, orgID uuid.UUID, req *models.Updat
 	if err := s.repo.Update(b, orgID); err != nil {
 		return nil, err
 	}
+
+	// Keep invoice due date in sync with check_out when it changes
+	if req.CheckOut != nil && s.invoice != nil {
+		if err := s.invoice.UpdateDueDate(id, orgID, b.CheckOut); err != nil {
+			fmt.Printf("warning: failed to update invoice due date for booking %s: %v\n", id, err)
+		}
+	}
+
 	return s.repo.GetByID(id, orgID)
 }
 

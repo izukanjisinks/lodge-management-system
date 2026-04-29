@@ -72,7 +72,7 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 	}
 
 	now := time.Now()
-	dueDate := now.AddDate(0, 0, 30)
+	dueDate := b.CheckOut
 
 	inv := &models.Invoice{
 		InvoiceNumber: invoiceNumber,
@@ -111,6 +111,10 @@ func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*
 
 func (s *InvoiceService) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
 	return s.repo.List(orgID, status, page, pageSize)
+}
+
+func (s *InvoiceService) UpdateDueDate(bookingID uuid.UUID, orgID uuid.UUID, dueDate time.Time) error {
+	return s.repo.UpdateDueDate(bookingID, orgID, dueDate)
 }
 
 func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models.UpdateInvoiceStatusRequest) (*models.Invoice, error) {

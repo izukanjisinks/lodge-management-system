@@ -39,6 +39,8 @@ func main() {
 	mealPlanRepo := repository.NewMealPlanRepository()
 	invoiceRepo := repository.NewInvoiceRepository()
 	dashboardRepo := repository.NewDashboardRepository()
+	auditLogRepo := repository.NewAuditLogRepository()
+	auditLogHandler := handlers.NewAuditLogHandler(services.NewAuditLogService(auditLogRepo))
 
 	workflowRepo := repository.NewWorkflowRepository()
 	instanceRepo := repository.NewWorkflowInstanceRepository()
@@ -120,7 +122,7 @@ func main() {
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
 
 	// Background jobs
-	jobs.NewOverdueCheckoutJob(bookingRepo, invoiceRepo).Start()
+	jobs.NewOverdueCheckoutJob(bookingRepo, invoiceRepo, auditLogRepo).Start()
 	log.Println("Overdue checkout job scheduled")
 
 	// Register routes
@@ -141,7 +143,8 @@ func main() {
 		reviewHandler,
 		backofficeAuthHandler,
 		backofficeUserHandler,
-		backofficeOrgHandler)
+		backofficeOrgHandler,
+		auditLogHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally

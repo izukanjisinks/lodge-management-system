@@ -263,10 +263,14 @@ func (r *BookingRepository) HasActiveBookingForClient(clientID, roomID uuid.UUID
 	return count > 0, nil
 }
 
-// OverdueBookingRef is a lightweight projection used by the nightly overdue-checkout job.
+// OverdueBookingRef carries all details the nightly job needs to extend and log an overstayed booking.
 type OverdueBookingRef struct {
-	ID    uuid.UUID
-	OrgID uuid.UUID
+	ID               uuid.UUID
+	OrgID            uuid.UUID
+	BookingNumber    string
+	RoomName         string
+	ClientName       string
+	OriginalCheckOut time.Time
 }
 
 // MarkOverstayed sets overstayed=TRUE on a booking. Called only by the nightly job.
@@ -287,12 +291,23 @@ func (r *BookingRepository) ClearOverstayed(id uuid.UUID, orgID uuid.UUID) error
 	return err
 }
 
-// FindOverdueCheckouts returns all checked_in bookings whose check_out date is before today.
+// FindOverdueCheckouts returns all checked_in bookings whose check_out date is before today,
+// with enough detail to build an audit log entry.
 func (r *BookingRepository) FindOverdueCheckouts() ([]OverdueBookingRef, error) {
 	rows, err := r.db.Query(`
-		SELECT id, org_id FROM bookings
-		WHERE status = 'checked_in'
-		  AND check_out < CURRENT_DATE`)
+		SELECT b.id, b.org_id, b.booking_number,
+		       r.name AS room_name,
+		       CASE b.client_type
+		           WHEN 'individual' THEN ip.full_name
+		           WHEN 'corporate'  THEN cp.company_name
+		       END AS client_name,
+		       b.check_out
+		FROM bookings b
+		JOIN rooms r ON r.id = b.room_id
+		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
+		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		WHERE b.status = 'checked_in'
+		  AND b.check_out < CURRENT_DATE`)
 	if err != nil {
 		return nil, err
 	}
@@ -301,8 +316,12 @@ func (r *BookingRepository) FindOverdueCheckouts() ([]OverdueBookingRef, error) 
 	var refs []OverdueBookingRef
 	for rows.Next() {
 		var ref OverdueBookingRef
-		if err := rows.Scan(&ref.ID, &ref.OrgID); err != nil {
+		var clientName sql.NullString
+		if err := rows.Scan(&ref.ID, &ref.OrgID, &ref.BookingNumber, &ref.RoomName, &clientName, &ref.OriginalCheckOut); err != nil {
 			return nil, err
+		}
+		if clientName.Valid {
+			ref.ClientName = clientName.String
 		}
 		refs = append(refs, ref)
 	}

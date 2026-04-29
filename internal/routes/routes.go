@@ -23,6 +23,7 @@ func RegisterRoutes(
 	backofficeAuthHandler *handlers.BackofficeAuthHandler,
 	backofficeUserHandler *handlers.BackofficeUserHandler,
 	backofficeOrgHandler *handlers.BackofficeOrganizationHandler,
+	auditLogHandler *handlers.AuditLogHandler,
 ) {
 	RegisterPublicRoutes(authHandler)
 	RegisterAuthRoutes(authHandler)
@@ -40,4 +41,5 @@ func RegisterRoutes(
 	RegisterGuestRoutes(guestAuthHandler, guestBookingHandler, roomHandler, menuHandler)
 	RegisterReviewRoutes(reviewHandler)
 	RegisterBackofficeRoutes(backofficeAuthHandler, backofficeUserHandler, backofficeOrgHandler)
+	RegisterAuditLogRoutes(auditLogHandler)
 }

@@ -187,6 +187,15 @@ func (s *BookingService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, newStatus s
 	return s.repo.GetByID(id, orgID)
 }
 
+// ClearOverstayed manually resolves the overstayed flag set by the nightly job.
+func (s *BookingService) ClearOverstayed(id uuid.UUID, orgID uuid.UUID) error {
+	_, err := s.repo.GetByID(id, orgID)
+	if err != nil {
+		return errors.New("booking not found")
+	}
+	return s.repo.ClearOverstayed(id, orgID)
+}
+
 func (s *BookingService) Delete(id uuid.UUID, orgID uuid.UUID) error {
 	b, err := s.repo.GetByID(id, orgID)
 	if err != nil {

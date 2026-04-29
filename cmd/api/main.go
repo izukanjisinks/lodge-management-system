@@ -8,6 +8,7 @@ import (
 	"lodge-system/internal/config"
 	"lodge-system/internal/database"
 	"lodge-system/internal/handlers"
+	"lodge-system/internal/jobs"
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/repositories"
 	"lodge-system/internal/repository"
@@ -117,6 +118,10 @@ func main() {
 
 	reviewRepo := repository.NewReviewRepository()
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
+
+	// Background jobs
+	jobs.NewOverdueCheckoutJob(bookingRepo, invoiceRepo).Start()
+	log.Println("Overdue checkout job scheduled")
 
 	// Register routes
 	routes.RegisterRoutes(authHandler,

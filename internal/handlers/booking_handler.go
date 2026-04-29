@@ -135,6 +135,22 @@ func (h *BookingHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, booking)
 }
 
+func (h *BookingHandler) ClearOverstayed(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	if err := h.service.ClearOverstayed(id, orgID); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Overstayed flag cleared"})
+}
+
 func (h *BookingHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

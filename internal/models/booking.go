@@ -66,6 +66,7 @@ type Booking struct {
 	RoomCost        float64   `json:"room_cost"`
 	TotalAmount     float64   `json:"total_amount"`
 	Status          string    `json:"status"`
+	Overstayed      bool      `json:"overstayed"`
 	SpecialRequests string    `json:"special_requests,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`

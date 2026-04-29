@@ -51,7 +51,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.special_requests,
+		       b.status, b.overstayed, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r   ON r.id = b.room_id
@@ -73,7 +73,7 @@ func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Book
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.special_requests,
+		       b.status, b.overstayed, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r   ON r.id = b.room_id
@@ -131,7 +131,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.special_requests,
+		       b.status, b.overstayed, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r   ON r.id = b.room_id
@@ -263,6 +263,62 @@ func (r *BookingRepository) HasActiveBookingForClient(clientID, roomID uuid.UUID
 	return count > 0, nil
 }
 
+// OverdueBookingRef is a lightweight projection used by the nightly overdue-checkout job.
+type OverdueBookingRef struct {
+	ID    uuid.UUID
+	OrgID uuid.UUID
+}
+
+// MarkOverstayed sets overstayed=TRUE on a booking. Called only by the nightly job.
+func (r *BookingRepository) MarkOverstayed(id uuid.UUID, orgID uuid.UUID) error {
+	_, err := r.db.Exec(`
+		UPDATE bookings SET overstayed=TRUE, updated_at=$1 WHERE id=$2 AND org_id=$3`,
+		time.Now(), id, orgID,
+	)
+	return err
+}
+
+// ClearOverstayed sets overstayed=FALSE on a booking. Called when staff manually resolves the flag.
+func (r *BookingRepository) ClearOverstayed(id uuid.UUID, orgID uuid.UUID) error {
+	_, err := r.db.Exec(`
+		UPDATE bookings SET overstayed=FALSE, updated_at=$1 WHERE id=$2 AND org_id=$3`,
+		time.Now(), id, orgID,
+	)
+	return err
+}
+
+// FindOverdueCheckouts returns all checked_in bookings whose check_out date is before today.
+func (r *BookingRepository) FindOverdueCheckouts() ([]OverdueBookingRef, error) {
+	rows, err := r.db.Query(`
+		SELECT id, org_id FROM bookings
+		WHERE status = 'checked_in'
+		  AND check_out < CURRENT_DATE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []OverdueBookingRef
+	for rows.Next() {
+		var ref OverdueBookingRef
+		if err := rows.Scan(&ref.ID, &ref.OrgID); err != nil {
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	return refs, rows.Err()
+}
+
+// ExtendCheckout updates a booking's check_out to newDate.
+// Used by the nightly job to roll forward overdue guests to today.
+func (r *BookingRepository) ExtendCheckout(id uuid.UUID, orgID uuid.UUID, newDate time.Time) error {
+	_, err := r.db.Exec(`
+		UPDATE bookings SET check_out=$1, updated_at=$2 WHERE id=$3 AND org_id=$4`,
+		newDate, time.Now(), id, orgID,
+	)
+	return err
+}
+
 type bookingScanner interface {
 	Scan(dest ...interface{}) error
 }
@@ -275,7 +331,7 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 		&b.ClientID, &b.ClientType, &clientName,
 		&b.CheckIn, &b.CheckOut, &b.Guests,
 		&b.Nights, &b.RoomCost, &b.TotalAmount,
-		&b.Status, &specialRequests,
+		&b.Status, &b.Overstayed, &specialRequests,
 		&b.CreatedAt, &b.UpdatedAt,
 	)
 	if err != nil {

@@ -99,6 +99,17 @@ func (h *OrderHandler) PlaceWalkInOrder(w http.ResponseWriter, r *http.Request) 
 	utils.RespondJSON(w, http.StatusCreated, order)
 }
 
+func (h *OrderHandler) CloseAllOrders(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	n, err := h.service.CloseAllOrders(orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]any{"closed": n})
+}
+
 func (h *OrderHandler) AddItems(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

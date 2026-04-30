@@ -79,6 +79,11 @@ func (s *OrderService) AddItems(orderID uuid.UUID, orgID uuid.UUID, req *models.
 	return order, nil
 }
 
+// CloseAllOrders closes every open order for the org. Returns the count closed.
+func (s *OrderService) CloseAllOrders(orgID uuid.UUID) (int64, error) {
+	return s.repo.CloseOrdersForDay(orgID)
+}
+
 func (s *OrderService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, error) {
 	o, err := s.repo.GetByID(id, orgID)
 	if err != nil {

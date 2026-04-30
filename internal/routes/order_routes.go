@@ -23,4 +23,8 @@ func RegisterOrderRoutes(h *handlers.OrderHandler) {
 	// Add items to an existing order
 	http.HandleFunc("POST /api/v1/orders/{id}/items",
 		withAuthAndRole(h.AddItems, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
+
+	// Manually close all open orders for the org — admin and manager only
+	http.HandleFunc("PATCH /api/v1/orders/close-all",
+		withAuthAndRole(h.CloseAllOrders, models.RoleAdmin, models.RoleManager))
 }

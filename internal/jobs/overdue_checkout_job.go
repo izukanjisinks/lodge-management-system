@@ -15,17 +15,20 @@ type OverdueCheckoutJob struct {
 	bookingRepo  *repository.BookingRepository
 	invoiceRepo  *repository.InvoiceRepository
 	auditLogRepo *repository.AuditLogRepository
+	settingsRepo *repository.OrganizationSettingsRepository
 }
 
 func NewOverdueCheckoutJob(
 	bookingRepo *repository.BookingRepository,
 	invoiceRepo *repository.InvoiceRepository,
 	auditLogRepo *repository.AuditLogRepository,
+	settingsRepo *repository.OrganizationSettingsRepository,
 ) *OverdueCheckoutJob {
 	return &OverdueCheckoutJob{
 		bookingRepo:  bookingRepo,
 		invoiceRepo:  invoiceRepo,
 		auditLogRepo: auditLogRepo,
+		settingsRepo: settingsRepo,
 	}
 }
 
@@ -47,7 +50,17 @@ func (j *OverdueCheckoutJob) Start() {
 func (j *OverdueCheckoutJob) run() {
 	log.Println("[overdue-checkout] running overdue checkout scan")
 
-	refs, err := j.bookingRepo.FindOverdueCheckouts()
+	enabledOrgIDs, err := j.settingsRepo.ListEnabledOrgsForJob("auto_extend_checkout")
+	if err != nil {
+		log.Printf("[overdue-checkout] failed to fetch enabled orgs: %v", err)
+		return
+	}
+	if len(enabledOrgIDs) == 0 {
+		log.Println("[overdue-checkout] no orgs have auto_extend_checkout enabled")
+		return
+	}
+
+	refs, err := j.bookingRepo.FindOverdueCheckouts(enabledOrgIDs)
 	if err != nil {
 		log.Printf("[overdue-checkout] failed to query overdue bookings: %v", err)
 		return

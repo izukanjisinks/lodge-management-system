@@ -40,10 +40,10 @@ func (r *OrderRepository) Create(o *models.Order, items []models.PlaceOrderItemR
 	}()
 
 	err = tx.QueryRow(`
-		INSERT INTO orders (id, org_id, booking_id, type, notes, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		INSERT INTO orders (id, org_id, booking_id, type, status, notes, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		RETURNING order_number`,
-		o.ID, orgID, o.BookingID, o.Type, o.Notes, now, now,
+		o.ID, orgID, o.BookingID, o.Type, models.OrderStatusOpen, o.Notes, now, now,
 	).Scan(&o.OrderNumber)
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	var notes, bookingNumber, roomName, clientName sql.NullString
 
 	err := r.db.QueryRow(`
-		SELECT o.id, o.org_id, o.booking_id, o.order_number, o.type, o.notes,
+		SELECT o.id, o.org_id, o.booking_id, o.order_number, o.type, o.status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
 		       r.name AS room_name,
@@ -93,7 +93,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
 		WHERE o.id=$1 AND o.org_id=$2`, id, orgID).
-		Scan(&o.ID, &o.OrgID, &bookingID, &o.OrderNumber, &o.Type, &notes, &o.Total,
+		Scan(&o.ID, &o.OrgID, &bookingID, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -120,10 +120,16 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	return &o, nil
 }
 
-func (r *OrderRepository) List(orgID uuid.UUID, orderType string, bookingID *uuid.UUID, page, pageSize int) ([]models.Order, int, error) {
+func (r *OrderRepository) List(orgID uuid.UUID, orderType, status string, bookingID *uuid.UUID, page, pageSize int) ([]models.Order, int, error) {
+	// Default to open orders when no status filter is provided
+	if status == "" {
+		status = models.OrderStatusOpen
+	}
+
 	args := []interface{}{orgID}
-	extraFilters := []string{}
-	i := 2
+	extraFilters := []string{fmt.Sprintf("o.status = $%d", 2)}
+	args = append(args, status)
+	i := 3
 
 	if orderType != "" {
 		extraFilters = append(extraFilters, fmt.Sprintf("o.type = $%d", i))
@@ -147,7 +153,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, orderType string, bookingID *uui
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT o.id, o.org_id, o.booking_id, o.order_number, o.type, o.notes,
+		SELECT o.id, o.org_id, o.booking_id, o.order_number, o.type, o.status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
 		       r.name AS room_name,
@@ -164,6 +170,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, orderType string, bookingID *uui
 		WHERE o.org_id = $1%s
 		ORDER BY o.created_at DESC
 		LIMIT $%d OFFSET $%d`, extraWhere, i, i+1), append(args, pageSize, (page-1)*pageSize)...)
+
 	if err != nil {
 		return nil, 0, err
 	}
@@ -174,7 +181,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, orderType string, bookingID *uui
 		var o models.Order
 		var bid uuid.NullUUID
 		var notes, bookingNumber, roomName, clientName sql.NullString
-		if err := rows.Scan(&o.ID, &o.OrgID, &bid, &o.OrderNumber, &o.Type, &notes, &o.Total,
+		if err := rows.Scan(&o.ID, &o.OrgID, &bid, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
@@ -262,6 +269,23 @@ func (r *OrderRepository) AddItems(orderID uuid.UUID, orgID uuid.UUID, items []m
 	}
 	order, err := r.GetByID(orderID, orgID)
 	return order, newItems, err
+}
+
+// CloseOrdersForDay closes all open orders created on or before today for a given org.
+// Returns the number of orders closed.
+func (r *OrderRepository) CloseOrdersForDay(orgID uuid.UUID) (int64, error) {
+	res, err := r.db.Exec(`
+		UPDATE orders
+		SET status=$1, updated_at=$2
+		WHERE org_id=$3
+		  AND status=$4
+		  AND created_at::date <= CURRENT_DATE`,
+		models.OrderStatusClosed, time.Now(), orgID, models.OrderStatusOpen,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // GetItemsTotal returns the sum of all item subtotals for an order.

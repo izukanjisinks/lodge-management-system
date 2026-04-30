@@ -19,34 +19,14 @@ func NewMenuHandler(service *services.MenuService) *MenuHandler {
 	return &MenuHandler{service: service}
 }
 
-// ── Menus ─────────────────────────────────────────────────────────────────────
-
-func (h *MenuHandler) ListMenus(w http.ResponseWriter, r *http.Request) {
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	pag := utils.ParsePagination(r)
-
-	menus, total, err := h.service.ListMenus(orgID, pag.Page, pag.PageSize)
-	if err != nil {
-		utils.RespondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
-		Data:     menus,
-		Page:     pag.Page,
-		PageSize: pag.PageSize,
-		Total:    total,
-	})
-}
+// ── Menu ──────────────────────────────────────────────────────────────────────
 
 func (h *MenuHandler) GetMenu(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid menu ID")
-		return
-	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	p := utils.ParsePagination(r)
+	category := r.URL.Query().Get("category")
 
-	menu, err := h.service.GetMenuByID(id, orgID)
+	menu, err := h.service.GetMenu(orgID, category, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -54,30 +34,10 @@ func (h *MenuHandler) GetMenu(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, menu)
 }
 
-func (h *MenuHandler) CreateMenu(w http.ResponseWriter, r *http.Request) {
+func (h *MenuHandler) UpsertMenu(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-
-	var req models.CreateMenuRequest
-	if err := utils.DecodeJson(r, &req); err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	menu, err := h.service.CreateMenu(orgID, &req)
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	utils.RespondJSON(w, http.StatusCreated, menu)
-}
-
-func (h *MenuHandler) UpdateMenu(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid menu ID")
-		return
-	}
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	p := utils.ParsePagination(r)
+	category := r.URL.Query().Get("category")
 
 	var req models.UpdateMenuRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
@@ -85,37 +45,17 @@ func (h *MenuHandler) UpdateMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	menu, err := h.service.UpdateMenu(id, orgID, &req)
+	menu, err := h.service.UpsertMenu(orgID, &req, category, p.Page, p.PageSize)
 	if err != nil {
-		utils.RespondError(w, http.StatusNotFound, err.Error())
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	utils.RespondJSON(w, http.StatusOK, menu)
 }
 
-func (h *MenuHandler) DeleteMenu(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid menu ID")
-		return
-	}
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-
-	if err := h.service.DeleteMenu(id, orgID); err != nil {
-		utils.RespondError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Menu deleted successfully"})
-}
-
 // ── Menu Items ────────────────────────────────────────────────────────────────
 
 func (h *MenuHandler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
-	menuID, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid menu ID")
-		return
-	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var req models.CreateMenuItemRequest
@@ -124,7 +64,7 @@ func (h *MenuHandler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.service.CreateMenuItem(menuID, orgID, &req)
+	item, err := h.service.CreateMenuItem(orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -133,11 +73,6 @@ func (h *MenuHandler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MenuHandler) UpdateMenuItem(w http.ResponseWriter, r *http.Request) {
-	_, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid menu ID")
-		return
-	}
 	itemID, err := uuid.Parse(r.PathValue("item_id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid item ID")
@@ -160,11 +95,6 @@ func (h *MenuHandler) UpdateMenuItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MenuHandler) DeleteMenuItem(w http.ResponseWriter, r *http.Request) {
-	_, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid menu ID")
-		return
-	}
 	itemID, err := uuid.Parse(r.PathValue("item_id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid item ID")
@@ -179,29 +109,26 @@ func (h *MenuHandler) DeleteMenuItem(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Menu item deleted successfully"})
 }
 
-// ── Guest ─────────────────────────────────────────────────────────────────────
+// ── Guest (public) ────────────────────────────────────────────────────────────
 
-func (h *MenuHandler) GuestListMenus(w http.ResponseWriter, r *http.Request) {
-	var orgID *uuid.UUID
-	if orgIDStr := r.URL.Query().Get("org_id"); orgIDStr != "" {
-		parsed, err := uuid.Parse(orgIDStr)
-		if err != nil {
-			utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
-			return
-		}
-		orgID = &parsed
-	}
-
-	pag := utils.ParsePagination(r)
-	menus, total, err := h.service.GuestListMenus(orgID, pag.Page, pag.PageSize)
-	if err != nil {
-		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+func (h *MenuHandler) GuestGetMenu(w http.ResponseWriter, r *http.Request) {
+	orgIDStr := r.URL.Query().Get("org_id")
+	if orgIDStr == "" {
+		utils.RespondError(w, http.StatusBadRequest, "org_id is required")
 		return
 	}
-	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
-		Data:     menus,
-		Page:     pag.Page,
-		PageSize: pag.PageSize,
-		Total:    total,
-	})
+	orgID, err := uuid.Parse(orgIDStr)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
+		return
+	}
+	p := utils.ParsePagination(r)
+	category := r.URL.Query().Get("category")
+
+	menu, err := h.service.GuestGetMenu(orgID, category, p.Page, p.PageSize)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "Menu not found")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, menu)
 }

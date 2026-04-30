@@ -9,6 +9,9 @@ import (
 const (
 	OrderTypeInHouse = "in_house"
 	OrderTypeWalkIn  = "walk_in"
+
+	OrderStatusOpen   = "open"
+	OrderStatusClosed = "closed"
 )
 
 type Order struct {
@@ -20,6 +23,7 @@ type Order struct {
 	ClientName    string      `json:"client_name,omitempty"`
 	OrderNumber   string      `json:"order_number"`
 	Type          string      `json:"type"`
+	Status        string      `json:"status"`
 	Notes         string      `json:"notes,omitempty"`
 	Total         float64     `json:"total"`
 	Items         []OrderItem `json:"items,omitempty"`

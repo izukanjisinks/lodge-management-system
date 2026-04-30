@@ -24,6 +24,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	pag := utils.ParsePagination(r)
 
 	orderType := r.URL.Query().Get("type")
+	status := r.URL.Query().Get("status") // defaults to "open" when blank
 
 	var bookingID *uuid.UUID
 	if v := r.URL.Query().Get("booking_id"); v != "" {
@@ -35,7 +36,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		bookingID = &parsed
 	}
 
-	orders, total, err := h.service.List(orgID, orderType, bookingID, pag.Page, pag.PageSize)
+	orders, total, err := h.service.List(orgID, orderType, status, bookingID, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return

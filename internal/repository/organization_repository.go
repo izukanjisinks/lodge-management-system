@@ -79,6 +79,25 @@ func (r *OrganizationRepository) List() ([]models.Organization, error) {
 	return orgs, rows.Err()
 }
 
+// ListIDs returns just the IDs of all active organizations — used by background jobs.
+func (r *OrganizationRepository) ListIDs() ([]uuid.UUID, error) {
+	rows, err := r.db.Query(`SELECT id FROM organizations WHERE is_active = TRUE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (r *OrganizationRepository) Update(org *models.Organization) error {
 	query := `
 		UPDATE organizations

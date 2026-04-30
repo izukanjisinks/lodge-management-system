@@ -17,61 +17,51 @@ func NewMenuService(repo *repository.MenuRepository) *MenuService {
 	return &MenuService{repo: repo}
 }
 
-// ── Menus ─────────────────────────────────────────────────────────────────────
+// ── Menu ──────────────────────────────────────────────────────────────────────
 
-func (s *MenuService) CreateMenu(orgID uuid.UUID, req *models.CreateMenuRequest) (*models.Menu, error) {
-	if req.Name == "" {
-		return nil, errors.New("name is required")
+func (s *MenuService) GetMenu(orgID uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.GetMenu(orgID)
+	if err != nil {
+		return nil, errors.New("menu not found")
 	}
-	m := &models.Menu{
-		Name:        req.Name,
-		Description: req.Description,
-		IsActive:    true,
-	}
-	if err := s.repo.CreateMenu(m, orgID); err != nil {
+	return s.buildResponse(menu, orgID, category, page, pageSize)
+}
+
+func (s *MenuService) UpsertMenu(orgID uuid.UUID, req *models.UpdateMenuRequest, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.UpsertMenu(orgID, req)
+	if err != nil {
 		return nil, err
 	}
-	return s.repo.GetMenuByID(m.ID, orgID)
+	return s.buildResponse(menu, orgID, category, page, pageSize)
 }
 
-func (s *MenuService) GetMenuByID(id uuid.UUID, orgID uuid.UUID) (*models.Menu, error) {
-	m, err := s.repo.GetMenuByID(id, orgID)
+func (s *MenuService) buildResponse(menu *models.Menu, orgID uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+	items, total, err := s.repo.ListMenuItems(menu.ID, orgID, category, page, pageSize)
 	if err != nil {
-		return nil, errors.New("menu not found")
+		return nil, err
 	}
-	return m, nil
-}
-
-func (s *MenuService) ListMenus(orgID uuid.UUID, page, pageSize int) ([]models.Menu, int, error) {
-	return s.repo.ListMenus(orgID, page, pageSize)
-}
-
-func (s *MenuService) UpdateMenu(id uuid.UUID, orgID uuid.UUID, req *models.UpdateMenuRequest) (*models.Menu, error) {
-	m, err := s.repo.UpdateMenu(id, orgID, req)
-	if err != nil {
-		return nil, errors.New("menu not found")
-	}
-	return m, nil
-}
-
-func (s *MenuService) DeleteMenu(id uuid.UUID, orgID uuid.UUID) error {
-	if err := s.repo.DeleteMenu(id, orgID); err != nil {
-		return errors.New("menu not found")
-	}
-	return nil
+	return &models.MenuResponse{
+		Menu: *menu,
+		Items: models.MenuItemsPage{
+			Data:     items,
+			Page:     page,
+			PageSize: pageSize,
+			Total:    total,
+		},
+	}, nil
 }
 
 // ── Menu Items ────────────────────────────────────────────────────────────────
 
-func (s *MenuService) CreateMenuItem(menuID uuid.UUID, orgID uuid.UUID, req *models.CreateMenuItemRequest) (*models.MenuItem, error) {
+func (s *MenuService) CreateMenuItem(orgID uuid.UUID, req *models.CreateMenuItemRequest) (*models.MenuItem, error) {
 	if req.Name == "" {
 		return nil, errors.New("name is required")
 	}
 	if req.Price < 0 {
 		return nil, errors.New("price must be >= 0")
 	}
-	// Verify menu belongs to org
-	if _, err := s.repo.GetMenuByID(menuID, orgID); err != nil {
+	menu, err := s.repo.GetMenu(orgID)
+	if err != nil {
 		return nil, errors.New("menu not found")
 	}
 	item := &models.MenuItem{
@@ -80,7 +70,7 @@ func (s *MenuService) CreateMenuItem(menuID uuid.UUID, orgID uuid.UUID, req *mod
 		Price:       req.Price,
 		IsAvailable: true,
 	}
-	if err := s.repo.CreateMenuItem(item, menuID, orgID); err != nil {
+	if err := s.repo.CreateMenuItem(item, menu.ID, orgID); err != nil {
 		return nil, err
 	}
 	return s.repo.GetMenuItemByID(item.ID, orgID)
@@ -114,6 +104,22 @@ func (s *MenuService) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
 
 // ── Guest (public) ────────────────────────────────────────────────────────────
 
-func (s *MenuService) GuestListMenus(orgID *uuid.UUID, page, pageSize int) ([]models.Menu, int, error) {
-	return s.repo.GuestListMenus(orgID, page, pageSize)
+func (s *MenuService) GuestGetMenu(orgID uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.GuestGetMenu(orgID)
+	if err != nil {
+		return nil, errors.New("menu not found")
+	}
+	items, total, err := s.repo.ListAvailableMenuItems(menu.ID, category, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &models.MenuResponse{
+		Menu: *menu,
+		Items: models.MenuItemsPage{
+			Data:     items,
+			Page:     page,
+			PageSize: pageSize,
+			Total:    total,
+		},
+	}, nil
 }

@@ -292,8 +292,8 @@ func (r *BookingRepository) ClearOverstayed(id uuid.UUID, orgID uuid.UUID) error
 }
 
 // FindOverdueCheckouts returns all checked_in bookings whose check_out date is before today,
-// with enough detail to build an audit log entry.
-func (r *BookingRepository) FindOverdueCheckouts() ([]OverdueBookingRef, error) {
+// scoped to the provided org IDs (orgs that have auto_extend_checkout enabled).
+func (r *BookingRepository) FindOverdueCheckouts(orgIDs []uuid.UUID) ([]OverdueBookingRef, error) {
 	rows, err := r.db.Query(`
 		SELECT b.id, b.org_id, b.booking_number,
 		       r.name AS room_name,
@@ -307,7 +307,8 @@ func (r *BookingRepository) FindOverdueCheckouts() ([]OverdueBookingRef, error) 
 		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
 		WHERE b.status = 'checked_in'
-		  AND b.check_out < CURRENT_DATE`)
+		  AND b.check_out < CURRENT_DATE
+		  AND b.org_id = ANY($1)`, orgIDs)
 	if err != nil {
 		return nil, err
 	}

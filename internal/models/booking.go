@@ -16,12 +16,14 @@ func (d *DateOnly) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
 	}
-	t, err := time.Parse("2006-01-02", s)
-	if err != nil {
-		return fmt.Errorf("date must be YYYY-MM-DD, got %q", s)
+	// Accept full ISO 8601 timestamps as well as plain YYYY-MM-DD
+	for _, layout := range []string{"2006-01-02", time.RFC3339, "2006-01-02T15:04:05.999Z07:00"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			d.Time = t.UTC().Truncate(24 * time.Hour)
+			return nil
+		}
 	}
-	d.Time = t
-	return nil
+	return fmt.Errorf("date must be YYYY-MM-DD or ISO 8601, got %q", s)
 }
 
 func (d DateOnly) MarshalJSON() ([]byte, error) {

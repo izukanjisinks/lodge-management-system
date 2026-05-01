@@ -110,6 +110,26 @@ func (h *OrderHandler) CloseAllOrders(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, map[string]any{"closed": n})
 }
 
+func (h *OrderHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid order ID")
+		return
+	}
+	itemID, err := uuid.Parse(r.PathValue("item_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid item ID")
+		return
+	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	if err := h.service.RemoveItem(itemID, id, orgID); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *OrderHandler) AddItems(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

@@ -143,10 +143,10 @@ func (s *BookingService) Update(id uuid.UUID, orgID uuid.UUID, req *models.Updat
 		return nil, err
 	}
 
-	// Keep invoice due date in sync with check_out when it changes
-	if req.CheckOut != nil && s.invoice != nil {
-		if err := s.invoice.UpdateDueDate(id, orgID, b.CheckOut); err != nil {
-			fmt.Printf("warning: failed to update invoice due date for booking %s: %v\n", id, err)
+	// Recalculate room charge and due date if either date changed
+	if (req.CheckIn != nil || req.CheckOut != nil) && s.invoice != nil {
+		if err := s.invoice.RecalculateRoomCharge(id, orgID); err != nil {
+			fmt.Printf("warning: failed to recalculate room charge for booking %s: %v\n", id, err)
 		}
 	}
 

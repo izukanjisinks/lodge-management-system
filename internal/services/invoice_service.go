@@ -117,6 +117,24 @@ func (s *InvoiceService) UpdateDueDate(bookingID uuid.UUID, orgID uuid.UUID, due
 	return s.repo.UpdateDueDate(bookingID, orgID, dueDate)
 }
 
+// RecalculateRoomCharge updates the room line item and invoice totals to reflect
+// a changed check_in or check_out date.
+func (s *InvoiceService) RecalculateRoomCharge(bookingID uuid.UUID, orgID uuid.UUID) error {
+	b, err := s.booking.GetByID(bookingID, orgID)
+	if err != nil {
+		return nil // invoice may not exist yet (pending booking), skip silently
+	}
+	room, err := s.room.GetByID(b.RoomID, orgID)
+	if err != nil {
+		return nil
+	}
+	nights := int(math.Ceil(b.CheckOut.Sub(b.CheckIn).Hours() / 24))
+	if nights < 1 {
+		nights = 1
+	}
+	return s.repo.UpdateRoomLineItem(bookingID, orgID, nights, room.PricePerNight, room.Name)
+}
+
 func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models.UpdateInvoiceStatusRequest) (*models.Invoice, error) {
 	inv, err := s.repo.GetByID(id, orgID)
 	if err != nil {

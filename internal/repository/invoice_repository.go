@@ -55,9 +55,9 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 		inv.LineItems[i].InvoiceID = inv.ID
 		inv.LineItems[i].CreatedAt = now
 		_, err = tx.Exec(`
-			INSERT INTO invoice_line_items (id, invoice_id, order_id, description, quantity, unit_price, total, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-			inv.LineItems[i].ID, inv.ID, inv.LineItems[i].OrderID,
+			INSERT INTO invoice_line_items (id, invoice_id, order_id, order_item_id, description, quantity, unit_price, total, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+			inv.LineItems[i].ID, inv.ID, inv.LineItems[i].OrderID, inv.LineItems[i].OrderItemID,
 			inv.LineItems[i].Description, inv.LineItems[i].Quantity,
 			inv.LineItems[i].UnitPrice, inv.LineItems[i].Total,
 			inv.LineItems[i].CreatedAt,
@@ -148,6 +148,54 @@ func (r *InvoiceRepository) UpdateDueDate(bookingID uuid.UUID, orgID uuid.UUID, 
 	return err
 }
 
+// UpdateRoomLineItem updates the room accommodation line item (the one with no order_id)
+// and recalculates the invoice totals atomically.
+func (r *InvoiceRepository) UpdateRoomLineItem(bookingID uuid.UUID, orgID uuid.UUID, nights int, pricePerNight float64, roomName string) error {
+	inv, err := r.GetByBookingID(bookingID, orgID)
+	if err != nil {
+		return err
+	}
+
+	total := float64(nights) * pricePerNight
+	description := fmt.Sprintf("%s — %d night(s) @ %.2f/night", roomName, nights, pricePerNight)
+	now := time.Now()
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	_, err = tx.Exec(`
+		UPDATE invoice_line_items
+		SET description=$1, quantity=$2, unit_price=$3, total=$4
+		WHERE invoice_id=$5 AND order_id IS NULL`,
+		description, nights, pricePerNight, total, inv.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Recalculate invoice totals from all line items
+	_, err = tx.Exec(`
+		UPDATE invoices
+		SET subtotal   = (SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1),
+		    tax        = ROUND((SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1) * tax_rate / 100, 2),
+		    total      = ROUND((SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1) * (1 + tax_rate / 100), 2),
+		    due_date   = $2,
+		    updated_at = $2
+		WHERE id = $1`, inv.ID, now)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, orgID uuid.UUID, status string, paidDate *time.Time, notes *string) error {
 	now := time.Now()
 	_, err := r.db.Exec(`
@@ -211,9 +259,9 @@ func (r *InvoiceRepository) AppendOrderLineItem(invoiceID uuid.UUID, orgID uuid.
 	}()
 
 	_, err = tx.Exec(`
-		INSERT INTO invoice_line_items (id, invoice_id, order_id, description, quantity, unit_price, total, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		item.ID, invoiceID, item.OrderID,
+		INSERT INTO invoice_line_items (id, invoice_id, order_id, order_item_id, description, quantity, unit_price, total, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		item.ID, invoiceID, item.OrderID, item.OrderItemID,
 		item.Description, item.Quantity, item.UnitPrice, item.Total,
 		item.CreatedAt,
 	)
@@ -236,9 +284,47 @@ func (r *InvoiceRepository) AppendOrderLineItem(invoiceID uuid.UUID, orgID uuid.
 	return tx.Commit()
 }
 
+// RemoveOrderLineItem deletes the invoice line item tied to a specific order item
+// (matched by order_item_id) and recalculates the invoice totals atomically.
+// It is a no-op if the invoice or line item doesn't exist.
+func (r *InvoiceRepository) RemoveOrderLineItem(bookingID uuid.UUID, orgID uuid.UUID, orderItemID uuid.UUID) error {
+	inv, err := r.GetByBookingID(bookingID, orgID)
+	if err != nil {
+		return nil // no invoice yet, nothing to do
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	_, err = tx.Exec(`DELETE FROM invoice_line_items WHERE invoice_id=$1 AND order_item_id=$2`, inv.ID, orderItemID)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(`
+		UPDATE invoices
+		SET subtotal   = (SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1),
+		    tax        = ROUND((SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1) * tax_rate / 100, 2),
+		    total      = ROUND((SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1) * (1 + tax_rate / 100), 2),
+		    updated_at = $2
+		WHERE id = $1`, inv.ID, time.Now())
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.InvoiceLineItem, error) {
 	rows, err := r.db.Query(`
-		SELECT id, invoice_id, order_id, description, quantity, unit_price, total, created_at
+		SELECT id, invoice_id, order_id, order_item_id, description, quantity, unit_price, total, created_at
 		FROM invoice_line_items WHERE invoice_id = $1
 		ORDER BY created_at ASC`, invoiceID)
 	if err != nil {
@@ -249,12 +335,15 @@ func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.Invoic
 	var items []models.InvoiceLineItem
 	for rows.Next() {
 		var item models.InvoiceLineItem
-		var orderID uuid.NullUUID
-		if err := rows.Scan(&item.ID, &item.InvoiceID, &orderID, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
+		var orderID, orderItemID uuid.NullUUID
+		if err := rows.Scan(&item.ID, &item.InvoiceID, &orderID, &orderItemID, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		if orderID.Valid {
 			item.OrderID = &orderID.UUID
+		}
+		if orderItemID.Valid {
+			item.OrderItemID = &orderItemID.UUID
 		}
 		items = append(items, item)
 	}

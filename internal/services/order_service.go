@@ -79,6 +79,25 @@ func (s *OrderService) AddItems(orderID uuid.UUID, orgID uuid.UUID, req *models.
 	return order, nil
 }
 
+// RemoveItem removes a single item from an open order and removes its invoice line item if one exists.
+func (s *OrderService) RemoveItem(itemID uuid.UUID, orderID uuid.UUID, orgID uuid.UUID) error {
+	order, err := s.repo.GetByID(orderID, orgID)
+	if err != nil {
+		return errors.New("order not found")
+	}
+
+	if _, err := s.repo.RemoveItem(itemID, orderID, orgID); err != nil {
+		return err
+	}
+
+	if order.BookingID != nil {
+		if invErr := s.invoice.RemoveOrderLineItem(*order.BookingID, orgID, itemID); invErr != nil {
+			fmt.Printf("warning: failed to remove invoice line item for order item %s: %v\n", itemID, invErr)
+		}
+	}
+	return nil
+}
+
 // CloseAllOrders closes every open order for the org. Returns the count closed.
 func (s *OrderService) CloseAllOrders(orgID uuid.UUID) (int64, error) {
 	return s.repo.CloseOrdersForDay(orgID)
@@ -111,8 +130,10 @@ func (s *OrderService) appendToInvoice(order *models.Order, orgID uuid.UUID, ite
 
 	orderID := order.ID
 	for _, item := range items {
+		itemID := item.ID
 		lineItem := &models.InvoiceLineItem{
 			OrderID:     &orderID,
+			OrderItemID: &itemID,
 			Description: fmt.Sprintf("%s × %d", item.ItemName, item.Quantity),
 			Quantity:    item.Quantity,
 			UnitPrice:   item.UnitPrice,

@@ -26,6 +26,7 @@ type InvoiceLineItem struct {
 	ID          uuid.UUID  `json:"id"`
 	InvoiceID   uuid.UUID  `json:"invoice_id"`
 	OrderID     *uuid.UUID `json:"order_id,omitempty"`
+	OrderItemID *uuid.UUID `json:"order_item_id,omitempty"`
 	Description string     `json:"description"`
 	Quantity    int        `json:"quantity"`
 	UnitPrice   float64    `json:"unit_price"`

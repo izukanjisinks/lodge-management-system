@@ -20,9 +20,11 @@ func RegisterOrderRoutes(h *handlers.OrderHandler) {
 	http.HandleFunc("POST /api/v1/orders/walk-in",
 		withAuthAndRole(h.PlaceWalkInOrder, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
-	// Add items to an existing order
+	// Add / remove items on an existing order
 	http.HandleFunc("POST /api/v1/orders/{id}/items",
 		withAuthAndRole(h.AddItems, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
+	http.HandleFunc("DELETE /api/v1/orders/{id}/items/{item_id}",
+		withAuthAndRole(h.RemoveItem, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
 	// Manually close all open orders for the org — admin and manager only
 	http.HandleFunc("PATCH /api/v1/orders/close-all",

@@ -288,6 +288,34 @@ func (r *OrderRepository) CloseOrdersForDay(orgID uuid.UUID) (int64, error) {
 	return res.RowsAffected()
 }
 
+// RemoveItem deletes a single item from an open order.
+// Returns the deleted item's subtotal so the caller can remove the matching invoice line item.
+func (r *OrderRepository) RemoveItem(itemID uuid.UUID, orderID uuid.UUID, orgID uuid.UUID) (float64, error) {
+	// Confirm order exists, belongs to org, and is still open
+	var status string
+	err := r.db.QueryRow(`SELECT status FROM orders WHERE id=$1 AND org_id=$2`, orderID, orgID).Scan(&status)
+	if err != nil {
+		return 0, fmt.Errorf("order not found")
+	}
+	if status != models.OrderStatusOpen {
+		return 0, fmt.Errorf("cannot remove items from a closed order")
+	}
+
+	var subtotal float64
+	err = r.db.QueryRow(`SELECT subtotal FROM order_items WHERE id=$1 AND order_id=$2`, itemID, orderID).Scan(&subtotal)
+	if err != nil {
+		return 0, fmt.Errorf("order item not found")
+	}
+
+	_, err = r.db.Exec(`DELETE FROM order_items WHERE id=$1 AND order_id=$2`, itemID, orderID)
+	if err != nil {
+		return 0, err
+	}
+
+	_, _ = r.db.Exec(`UPDATE orders SET updated_at=$1 WHERE id=$2`, time.Now(), orderID)
+	return subtotal, nil
+}
+
 // GetItemsTotal returns the sum of all item subtotals for an order.
 func (r *OrderRepository) GetItemsTotal(orderID uuid.UUID) (float64, error) {
 	var total float64

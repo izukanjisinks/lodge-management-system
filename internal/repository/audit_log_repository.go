@@ -32,7 +32,7 @@ func (r *AuditLogRepository) Insert(log *models.AuditLog) error {
 	return err
 }
 
-func (r *AuditLogRepository) List(orgID uuid.UUID, entityType, entityID, action string, page, pageSize int) ([]models.AuditLog, int, error) {
+func (r *AuditLogRepository) List(orgID uuid.UUID, entityType, entityID, action string, from, to *time.Time, page, pageSize int) ([]models.AuditLog, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"org_id = $1"}
 	i := 2
@@ -53,6 +53,16 @@ func (r *AuditLogRepository) List(orgID uuid.UUID, entityType, entityID, action 
 	if action != "" {
 		where = append(where, fmt.Sprintf("action = $%d", i))
 		args = append(args, action)
+		i++
+	}
+	if from != nil {
+		where = append(where, fmt.Sprintf("created_at >= $%d", i))
+		args = append(args, *from)
+		i++
+	}
+	if to != nil {
+		where = append(where, fmt.Sprintf("created_at <= $%d", i))
+		args = append(args, *to)
 		i++
 	}
 

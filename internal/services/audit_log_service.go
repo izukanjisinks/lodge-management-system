@@ -1,6 +1,8 @@
 package services
 
 import (
+	"time"
+
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
 
@@ -15,6 +17,6 @@ func NewAuditLogService(repo *repository.AuditLogRepository) *AuditLogService {
 	return &AuditLogService{repo: repo}
 }
 
-func (s *AuditLogService) List(orgID uuid.UUID, entityType, entityID, action string, page, pageSize int) ([]models.AuditLog, int, error) {
-	return s.repo.List(orgID, entityType, entityID, action, page, pageSize)
+func (s *AuditLogService) List(orgID uuid.UUID, entityType, entityID, action string, from, to *time.Time, page, pageSize int) ([]models.AuditLog, int, error) {
+	return s.repo.List(orgID, entityType, entityID, action, from, to, page, pageSize)
 }

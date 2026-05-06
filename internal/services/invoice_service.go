@@ -76,7 +76,7 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 
 	inv := &models.Invoice{
 		InvoiceNumber: invoiceNumber,
-		BookingID:     bookingID,
+		BookingID:     &bookingID,
 		ClientID:      b.ClientID,
 		ClientType:    b.ClientType,
 		ClientName:    b.ClientName,
@@ -88,6 +88,75 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 		Status:        models.InvoiceStatusDraft,
 		IssuedDate:    &now,
 		DueDate:       &dueDate,
+	}
+
+	return s.repo.Create(inv, orgID)
+}
+
+// GenerateCorporateInvoice creates one consolidated invoice for a corporate booking.
+// bookingIDs contains all guest bookings that belong to this corporate transaction.
+// corporateClientID is the company being billed.
+func (s *InvoiceService) GenerateCorporateInvoice(corporateClientID uuid.UUID, orgID uuid.UUID, bookingIDs []uuid.UUID) error {
+	// Idempotent — don't create a second invoice
+	existing, _ := s.repo.GetByCorporateClientID(corporateClientID, orgID)
+	if existing != nil {
+		return nil
+	}
+
+	var lineItems []models.InvoiceLineItem
+	var subtotal float64
+
+	for _, bookingID := range bookingIDs {
+		b, err := s.booking.GetByID(bookingID, orgID)
+		if err != nil {
+			continue
+		}
+		room, err := s.room.GetByID(b.RoomID, orgID)
+		if err != nil {
+			continue
+		}
+		nights := int(math.Ceil(b.CheckOut.Sub(b.CheckIn).Hours() / 24))
+		if nights < 1 {
+			nights = 1
+		}
+		roomTotal := float64(nights) * room.PricePerNight
+		subtotal += roomTotal
+
+		bID := b.ID
+		lineItems = append(lineItems, models.InvoiceLineItem{
+			BookingID:   &bID,
+			Description: fmt.Sprintf("%s — %s — %d night(s) @ %.2f/night", b.ClientName, room.Name, nights, room.PricePerNight),
+			Quantity:    nights,
+			UnitPrice:   room.PricePerNight,
+			Total:       roomTotal,
+		})
+	}
+
+	if len(lineItems) == 0 {
+		return errors.New("no valid bookings to invoice")
+	}
+
+	taxAmount := math.Round((subtotal*defaultTaxRate/100)*100) / 100
+	total := math.Round((subtotal+taxAmount)*100) / 100
+
+	invoiceNumber, err := s.repo.GenerateInvoiceNumber()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	inv := &models.Invoice{
+		InvoiceNumber:     invoiceNumber,
+		CorporateClientID: &corporateClientID,
+		ClientID:          corporateClientID,
+		ClientType:        models.BookingClientTypeCorporate,
+		LineItems:         lineItems,
+		Subtotal:          subtotal,
+		TaxRate:           defaultTaxRate,
+		TaxAmount:         taxAmount,
+		Total:             total,
+		Status:            models.InvoiceStatusDraft,
+		IssuedDate:        &now,
 	}
 
 	return s.repo.Create(inv, orgID)

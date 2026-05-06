@@ -152,25 +152,44 @@ func (s *OrderService) List(orgID uuid.UUID, orderType, status string, bookingID
 }
 
 // appendToInvoice writes one invoice line item per order item onto the booking's invoice.
+// For corporate guest bookings it targets the consolidated corporate invoice instead.
 // Non-fatal — logs on failure so the order itself is never rolled back.
 func (s *OrderService) appendToInvoice(order *models.Order, orgID uuid.UUID, items []models.OrderItem) {
 	if order.BookingID == nil || len(items) == 0 {
 		return
 	}
 
-	inv, err := s.invoice.GetByBookingID(*order.BookingID, orgID)
+	b, err := s.booking.GetByID(*order.BookingID, orgID)
 	if err != nil {
-		// Invoice doesn't exist yet (booking not yet confirmed) — skip silently
+		return
+	}
+
+	var inv *models.Invoice
+	if b.CorporateClientID != nil {
+		inv, err = s.invoice.GetByCorporateClientID(*b.CorporateClientID, orgID)
+	} else {
+		inv, err = s.invoice.GetByBookingID(*order.BookingID, orgID)
+	}
+	if err != nil {
 		return
 	}
 
 	orderID := order.ID
+	bookingID := *order.BookingID
+	isCorporateGuest := b.CorporateClientID != nil
 	for _, item := range items {
 		itemID := item.ID
+		var description string
+		if isCorporateGuest {
+			description = fmt.Sprintf("%s — %s × %d", b.ClientName, item.ItemName, item.Quantity)
+		} else {
+			description = fmt.Sprintf("%s × %d", item.ItemName, item.Quantity)
+		}
 		lineItem := &models.InvoiceLineItem{
+			BookingID:   &bookingID,
 			OrderID:     &orderID,
 			OrderItemID: &itemID,
-			Description: fmt.Sprintf("%s × %d", item.ItemName, item.Quantity),
+			Description: description,
 			Quantity:    item.Quantity,
 			UnitPrice:   item.UnitPrice,
 			Total:       item.Subtotal,

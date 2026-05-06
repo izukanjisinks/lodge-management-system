@@ -39,9 +39,9 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 
 	_, err = tx.Exec(`
 		INSERT INTO invoices
-		    (id, invoice_number, booking_id, subtotal, tax_rate, tax, total, status, issued_at, due_date, notes, org_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-		inv.ID, inv.InvoiceNumber, inv.BookingID,
+		    (id, invoice_number, booking_id, corporate_client_id, subtotal, tax_rate, tax, total, status, issued_at, due_date, notes, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		inv.ID, inv.InvoiceNumber, inv.BookingID, inv.CorporateClientID,
 		inv.Subtotal, inv.TaxRate, inv.TaxAmount, inv.Total,
 		inv.Status, inv.IssuedDate, inv.DueDate, inv.Notes,
 		orgID, inv.CreatedAt, inv.UpdatedAt,
@@ -55,9 +55,10 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 		inv.LineItems[i].InvoiceID = inv.ID
 		inv.LineItems[i].CreatedAt = now
 		_, err = tx.Exec(`
-			INSERT INTO invoice_line_items (id, invoice_id, order_id, order_item_id, description, quantity, unit_price, total, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-			inv.LineItems[i].ID, inv.ID, inv.LineItems[i].OrderID, inv.LineItems[i].OrderItemID,
+			INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, description, quantity, unit_price, total, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+			inv.LineItems[i].ID, inv.ID, inv.LineItems[i].BookingID,
+			inv.LineItems[i].OrderID, inv.LineItems[i].OrderItemID,
 			inv.LineItems[i].Description, inv.LineItems[i].Quantity,
 			inv.LineItems[i].UnitPrice, inv.LineItems[i].Total,
 			inv.LineItems[i].CreatedAt,
@@ -76,6 +77,10 @@ func (r *InvoiceRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Invo
 
 func (r *InvoiceRepository) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
 	return r.fetchOne(`WHERE i.booking_id = $1 AND i.org_id = $2`, bookingID, orgID)
+}
+
+func (r *InvoiceRepository) GetByCorporateClientID(corporateClientID uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
+	return r.fetchOne(`WHERE i.corporate_client_id = $1 AND i.org_id = $2`, corporateClientID, orgID)
 }
 
 func (r *InvoiceRepository) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
@@ -98,23 +103,31 @@ func (r *InvoiceRepository) List(orgID uuid.UUID, status string, page, pageSize 
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT i.id, i.invoice_number, i.booking_id,
-		       b.client_id, b.client_type,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.email
-		           WHEN 'corporate'  THEN cp.email
-		       END AS client_email,
+		SELECT i.id, i.invoice_number, i.booking_id, i.corporate_client_id,
+		       COALESCE(b.client_id, corp.id)   AS client_id,
+		       COALESCE(b.client_type, 'corporate') AS client_type,
+		       COALESCE(
+		           CASE b.client_type
+		               WHEN 'individual' THEN ip.full_name
+		               WHEN 'corporate'  THEN bcp.company_name
+		           END,
+		           corp.company_name
+		       ) AS client_name,
+		       COALESCE(
+		           CASE b.client_type
+		               WHEN 'individual' THEN ip.email
+		               WHEN 'corporate'  THEN bcp.email
+		           END,
+		           corp.email
+		       ) AS client_email,
 		       i.subtotal, i.tax_rate, i.tax, i.total,
 		       i.status, i.issued_at, i.due_date, i.paid_date, i.notes,
 		       i.created_at, i.updated_at
 		FROM invoices i
-		JOIN bookings b             ON b.id = i.booking_id
-		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN bookings            b   ON b.id = i.booking_id
+		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
+		LEFT JOIN corporate_profiles  bcp ON b.client_type = 'corporate'  AND bcp.id = b.client_id
+		LEFT JOIN corporate_profiles  corp ON corp.id = i.corporate_client_id
 		WHERE %s
 		ORDER BY i.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
@@ -207,26 +220,34 @@ func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, orgID uuid.UUID, status s
 	return err
 }
 
-// fetchOne is a shared helper used by GetByID and GetByBookingID.
+// fetchOne is a shared helper used by GetByID, GetByBookingID, and GetByCorporateClientID.
 func (r *InvoiceRepository) fetchOne(whereClause string, args ...interface{}) (*models.Invoice, error) {
 	row := r.db.QueryRow(fmt.Sprintf(`
-		SELECT i.id, i.invoice_number, i.booking_id,
-		       b.client_id, b.client_type,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.email
-		           WHEN 'corporate'  THEN cp.email
-		       END AS client_email,
+		SELECT i.id, i.invoice_number, i.booking_id, i.corporate_client_id,
+		       COALESCE(b.client_id, corp.id)   AS client_id,
+		       COALESCE(b.client_type, 'corporate') AS client_type,
+		       COALESCE(
+		           CASE b.client_type
+		               WHEN 'individual' THEN ip.full_name
+		               WHEN 'corporate'  THEN bcp.company_name
+		           END,
+		           corp.company_name
+		       ) AS client_name,
+		       COALESCE(
+		           CASE b.client_type
+		               WHEN 'individual' THEN ip.email
+		               WHEN 'corporate'  THEN bcp.email
+		           END,
+		           corp.email
+		       ) AS client_email,
 		       i.subtotal, i.tax_rate, i.tax, i.total,
 		       i.status, i.issued_at, i.due_date, i.paid_date, i.notes,
 		       i.created_at, i.updated_at
 		FROM invoices i
-		JOIN bookings b             ON b.id = i.booking_id
-		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN bookings            b   ON b.id = i.booking_id
+		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
+		LEFT JOIN corporate_profiles  bcp ON b.client_type = 'corporate'  AND bcp.id = b.client_id
+		LEFT JOIN corporate_profiles  corp ON corp.id = i.corporate_client_id
 		%s`, whereClause), args...)
 
 	inv, err := scanInvoice(row)
@@ -259,9 +280,9 @@ func (r *InvoiceRepository) AppendOrderLineItem(invoiceID uuid.UUID, orgID uuid.
 	}()
 
 	_, err = tx.Exec(`
-		INSERT INTO invoice_line_items (id, invoice_id, order_id, order_item_id, description, quantity, unit_price, total, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		item.ID, invoiceID, item.OrderID, item.OrderItemID,
+		INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, description, quantity, unit_price, total, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		item.ID, invoiceID, item.BookingID, item.OrderID, item.OrderItemID,
 		item.Description, item.Quantity, item.UnitPrice, item.Total,
 		item.CreatedAt,
 	)
@@ -324,9 +345,9 @@ func (r *InvoiceRepository) RemoveOrderLineItem(bookingID uuid.UUID, orgID uuid.
 
 func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.InvoiceLineItem, error) {
 	rows, err := r.db.Query(`
-		SELECT id, invoice_id, order_id, order_item_id, description, quantity, unit_price, total, created_at
+		SELECT id, invoice_id, booking_id, order_id, order_item_id, description, quantity, unit_price, total, created_at
 		FROM invoice_line_items WHERE invoice_id = $1
-		ORDER BY created_at ASC`, invoiceID)
+		ORDER BY booking_id NULLS FIRST, created_at ASC`, invoiceID)
 	if err != nil {
 		return nil, err
 	}
@@ -335,9 +356,12 @@ func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.Invoic
 	var items []models.InvoiceLineItem
 	for rows.Next() {
 		var item models.InvoiceLineItem
-		var orderID, orderItemID uuid.NullUUID
-		if err := rows.Scan(&item.ID, &item.InvoiceID, &orderID, &orderItemID, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
+		var bookingID, orderID, orderItemID uuid.NullUUID
+		if err := rows.Scan(&item.ID, &item.InvoiceID, &bookingID, &orderID, &orderItemID, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
 			return nil, err
+		}
+		if bookingID.Valid {
+			item.BookingID = &bookingID.UUID
 		}
 		if orderID.Valid {
 			item.OrderID = &orderID.UUID
@@ -372,10 +396,11 @@ type invoiceScanner interface {
 
 func scanInvoice(row invoiceScanner) (*models.Invoice, error) {
 	var inv models.Invoice
+	var bookingID, corporateClientID uuid.NullUUID
 	var clientEmail, notes sql.NullString
 	var issuedAt, dueDate, paidDate sql.NullTime
 	err := row.Scan(
-		&inv.ID, &inv.InvoiceNumber, &inv.BookingID,
+		&inv.ID, &inv.InvoiceNumber, &bookingID, &corporateClientID,
 		&inv.ClientID, &inv.ClientType, &inv.ClientName, &clientEmail,
 		&inv.Subtotal, &inv.TaxRate, &inv.TaxAmount, &inv.Total,
 		&inv.Status, &issuedAt, &dueDate, &paidDate, &notes,
@@ -383,6 +408,12 @@ func scanInvoice(row invoiceScanner) (*models.Invoice, error) {
 	)
 	if err != nil {
 		return nil, err
+	}
+	if bookingID.Valid {
+		inv.BookingID = &bookingID.UUID
+	}
+	if corporateClientID.Valid {
+		inv.CorporateClientID = &corporateClientID.UUID
 	}
 	if clientEmail.Valid {
 		inv.ClientEmail = clientEmail.String

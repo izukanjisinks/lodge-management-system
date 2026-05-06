@@ -249,6 +249,13 @@ func (s *BookingService) CreateCorporate(userID uuid.UUID, orgID uuid.UUID, req 
 		return nil, err
 	}
 
+	// Generate consolidated invoice for the corporate client
+	if s.invoice != nil {
+		if invErr := s.invoice.GenerateCorporateInvoice(corp.ID, orgID, bookingIDs); invErr != nil {
+			log.Printf("[booking] warning: failed to generate corporate invoice for corp %s: %v", corp.ID, invErr)
+		}
+	}
+
 	// Fetch the created bookings for the response
 	var bookings []models.Booking
 	var totalAmount float64
@@ -354,10 +361,10 @@ func (s *BookingService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, newStatus s
 		return nil, err
 	}
 
-	// Auto-generate invoice when booking is confirmed
-	if newStatus == models.BookingStatusConfirmed && s.invoice != nil {
+	// Auto-generate invoice when booking is confirmed.
+	// Corporate guest bookings are covered by the consolidated corporate invoice — skip them.
+	if newStatus == models.BookingStatusConfirmed && s.invoice != nil && b.CorporateClientID == nil {
 		if err := s.invoice.GenerateForBooking(id, orgID); err != nil {
-			// Log but don't fail the status update — invoice can be regenerated
 			fmt.Printf("warning: failed to generate invoice for booking %s: %v\n", id, err)
 		}
 	}

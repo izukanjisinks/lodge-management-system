@@ -86,6 +86,13 @@ func (s *ClientService) DeleteIndividual(id uuid.UUID, orgID uuid.UUID) error {
 	return s.repo.DeleteIndividual(id, orgID)
 }
 
+func (s *ClientService) LookupIndividualByIDNumber(orgID uuid.UUID, idNumber string) (*models.IndividualClient, error) {
+	if idNumber == "" {
+		return nil, errors.New("id_number is required")
+	}
+	return s.repo.LookupIndividualByIDNumber(orgID, idNumber)
+}
+
 // ─── Corporate ────────────────────────────────────────────────────────────────
 
 func (s *ClientService) CreateCorporate(orgID uuid.UUID, c *models.CorporateClient) error {
@@ -159,4 +166,11 @@ func (s *ClientService) UpdateCorporate(id uuid.UUID, orgID uuid.UUID, updates *
 
 func (s *ClientService) DeleteCorporate(id uuid.UUID, orgID uuid.UUID) error {
 	return s.repo.DeleteCorporate(id, orgID)
+}
+
+func (s *ClientService) SearchCorporate(orgID uuid.UUID, search string) ([]models.CorporateClient, error) {
+	if search == "" {
+		return []models.CorporateClient{}, nil
+	}
+	return s.repo.SearchCorporate(orgID, search, 10)
 }

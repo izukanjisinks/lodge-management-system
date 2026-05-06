@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
@@ -36,7 +37,27 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		bookingID = &parsed
 	}
 
-	orders, total, err := h.service.List(orgID, orderType, status, bookingID, pag.Page, pag.PageSize)
+	var from, to *time.Time
+	if v := r.URL.Query().Get("from"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "Invalid from date, expected YYYY-MM-DD")
+			return
+		}
+		from = &t
+	}
+	if v := r.URL.Query().Get("to"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "Invalid to date, expected YYYY-MM-DD")
+			return
+		}
+		// Include the full day
+		end := t.Add(24*time.Hour - time.Second)
+		to = &end
+	}
+
+	orders, total, err := h.service.List(orgID, orderType, status, bookingID, from, to, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return

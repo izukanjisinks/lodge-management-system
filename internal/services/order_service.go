@@ -1,8 +1,11 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"time"
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
@@ -11,17 +14,19 @@ import (
 )
 
 type OrderService struct {
-	repo    *repository.OrderRepository
-	invoice *repository.InvoiceRepository
-	booking *repository.BookingRepository
+	repo     *repository.OrderRepository
+	invoice  *repository.InvoiceRepository
+	booking  *repository.BookingRepository
+	auditLog *repository.AuditLogRepository
 }
 
 func NewOrderService(
 	repo *repository.OrderRepository,
 	invoice *repository.InvoiceRepository,
 	booking *repository.BookingRepository,
+	auditLog *repository.AuditLogRepository,
 ) *OrderService {
-	return &OrderService{repo: repo, invoice: invoice, booking: booking}
+	return &OrderService{repo: repo, invoice: invoice, booking: booking, auditLog: auditLog}
 }
 
 // PlaceOrder creates a new in-house order tied to a confirmed/checked-in booking
@@ -100,7 +105,38 @@ func (s *OrderService) RemoveItem(itemID uuid.UUID, orderID uuid.UUID, orgID uui
 
 // CloseAllOrders closes every open order for the org. Returns the count closed.
 func (s *OrderService) CloseAllOrders(orgID uuid.UUID) (int64, error) {
-	return s.repo.CloseOrdersForDay(orgID)
+	count, err := s.repo.CloseOrdersForDay(orgID)
+	if err != nil {
+		return 0, err
+	}
+	if count > 0 {
+		s.writeOrdersClosedAuditLog(orgID, count)
+	}
+	return count, nil
+}
+
+func (s *OrderService) writeOrdersClosedAuditLog(orgID uuid.UUID, count int64) {
+	payload := models.OrdersClosedPayload{
+		OrdersClosed: count,
+		ClosedAt:     time.Now().UTC().Format(time.RFC3339),
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("[order-service] failed to marshal audit payload for orders.closed: %v", err)
+		return
+	}
+	entry := &models.AuditLog{
+		OrgID:      orgID,
+		ActorType:  models.AuditActorSystem,
+		ActorName:  "order-service",
+		Action:     models.AuditActionOrdersClosed,
+		EntityType: models.AuditEntityOrder,
+		EntityID:   orgID,
+		Payload:    raw,
+	}
+	if err := s.auditLog.Insert(entry); err != nil {
+		log.Printf("[order-service] failed to write audit log for orders.closed (org %s): %v", orgID, err)
+	}
 }
 
 func (s *OrderService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, error) {
@@ -111,8 +147,8 @@ func (s *OrderService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, er
 	return o, nil
 }
 
-func (s *OrderService) List(orgID uuid.UUID, orderType, status string, bookingID *uuid.UUID, page, pageSize int) ([]models.Order, int, error) {
-	return s.repo.List(orgID, orderType, status, bookingID, page, pageSize)
+func (s *OrderService) List(orgID uuid.UUID, orderType, status string, bookingID *uuid.UUID, from, to *time.Time, page, pageSize int) ([]models.Order, int, error) {
+	return s.repo.List(orgID, orderType, status, bookingID, from, to, page, pageSize)
 }
 
 // appendToInvoice writes one invoice line item per order item onto the booking's invoice.

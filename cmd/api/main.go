@@ -79,7 +79,7 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 	roomHandler := handlers.NewRoomHandler(services.NewRoomService(roomRepo))
 	clientHandler := handlers.NewClientHandler(services.NewClientService(clientRepo))
-	bookingSvc := services.NewBookingService(bookingRepo, roomRepo)
+	bookingSvc := services.NewBookingService(bookingRepo, roomRepo, clientRepo)
 	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo)
 	bookingSvc.SetInvoiceService(invoiceSvc)
 
@@ -118,7 +118,7 @@ func main() {
 	menuRepo := repository.NewMenuRepository()
 	orderRepo := repository.NewOrderRepository()
 	menuHandler := handlers.NewMenuHandler(services.NewMenuService(menuRepo))
-	orderHandler := handlers.NewOrderHandler(services.NewOrderService(orderRepo, invoiceRepo, bookingRepo))
+	orderHandler := handlers.NewOrderHandler(services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo))
 
 	reviewRepo := repository.NewReviewRepository()
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))

@@ -74,19 +74,46 @@ func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	var req models.CreateBookingRequest
-	if err := utils.DecodeJson(r, &req); err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+	// Peek at client_type to route to the correct path.
+	// DecodeJson restores the body after reading so it can be decoded again below.
+	var peek struct {
+		ClientType string `json:"client_type"`
+	}
+	if err := utils.DecodeJson(r, &peek); err != nil || peek.ClientType == "" {
+		utils.RespondError(w, http.StatusBadRequest, "client_type is required")
 		return
 	}
 
-	booking, err := h.service.Create(userID, orgID, &req)
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
+	switch peek.ClientType {
+	case models.BookingClientTypeIndividual:
+		var req models.CreateIndividualBookingRequest
+		if err := utils.DecodeJson(r, &req); err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+		booking, err := h.service.CreateIndividual(userID, orgID, &req)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		utils.RespondJSON(w, http.StatusCreated, booking)
 
-	utils.RespondJSON(w, http.StatusCreated, booking)
+	case models.BookingClientTypeCorporate:
+		var req models.CreateCorporateBookingRequest
+		if err := utils.DecodeJson(r, &req); err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+		resp, err := h.service.CreateCorporate(userID, orgID, &req)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		utils.RespondJSON(w, http.StatusCreated, resp)
+
+	default:
+		utils.RespondError(w, http.StatusBadRequest, "client_type must be 'individual' or 'corporate'")
+	}
 }
 
 func (h *BookingHandler) Update(w http.ResponseWriter, r *http.Request) {

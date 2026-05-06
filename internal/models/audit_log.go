@@ -17,9 +17,11 @@ const (
 	AuditEntityOrder   = "order"
 	AuditEntityRoom    = "room"
 
-	AuditActionBookingOverstayed     = "booking.overstayed"
-	AuditActionBookingStatusChanged  = "booking.status_changed"
+	AuditActionBookingOverstayed      = "booking.overstayed"
+	AuditActionBookingStatusChanged   = "booking.status_changed"
 	AuditActionBookingOverstayCleared = "booking.overstay_cleared"
+
+	AuditActionOrdersClosed = "orders.closed"
 )
 
 type AuditLog struct {
@@ -33,6 +35,12 @@ type AuditLog struct {
 	EntityID   uuid.UUID       `json:"entity_id"`
 	Payload    json.RawMessage `json:"payload"`
 	CreatedAt  time.Time       `json:"created_at"`
+}
+
+// OrdersClosedPayload is the payload written when the system closes all open orders for an org.
+type OrdersClosedPayload struct {
+	OrdersClosed int64  `json:"orders_closed"`
+	ClosedAt     string `json:"closed_at"`
 }
 
 // OverstayedPayload is the payload written when the nightly job marks a booking as overstayed.

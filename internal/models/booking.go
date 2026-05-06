@@ -53,36 +53,96 @@ var ValidBookingTransitions = map[string][]string{
 }
 
 type Booking struct {
-	ID              uuid.UUID `json:"id"`
-	BookingNumber   string    `json:"booking_number"`
-	UserID          uuid.UUID `json:"user_id"`
-	RoomID          uuid.UUID `json:"room_id"`
-	RoomName        string    `json:"room_name"`
-	ClientID        uuid.UUID `json:"client_id"`
-	ClientType      string    `json:"client_type"`
-	ClientName      string    `json:"client_name"`
-	CheckIn         time.Time `json:"check_in"`
-	CheckOut        time.Time `json:"check_out"`
-	Guests          int       `json:"guests"`
-	Nights          int       `json:"nights"`
-	RoomCost        float64   `json:"room_cost"`
-	TotalAmount     float64   `json:"total_amount"`
-	Status          string    `json:"status"`
-	Overstayed      bool      `json:"overstayed"`
-	SpecialRequests string    `json:"special_requests,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                uuid.UUID  `json:"id"`
+	BookingNumber     string     `json:"booking_number"`
+	UserID            uuid.UUID  `json:"user_id"`
+	RoomID            uuid.UUID  `json:"room_id"`
+	RoomName          string     `json:"room_name"`
+	ClientID          uuid.UUID  `json:"client_id"`
+	ClientType        string     `json:"client_type"`
+	ClientName        string     `json:"client_name"`
+	CorporateClientID *uuid.UUID `json:"corporate_client_id,omitempty"`
+	CheckIn           time.Time  `json:"check_in"`
+	CheckOut          time.Time  `json:"check_out"`
+	Guests            int        `json:"guests"`
+	Nights            int        `json:"nights"`
+	RoomCost          float64    `json:"room_cost"`
+	TotalAmount       float64    `json:"total_amount"`
+	Status            string     `json:"status"`
+	Overstayed        bool       `json:"overstayed"`
+	SpecialRequests   string     `json:"special_requests,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
+
+// ─── Individual booking request ───────────────────────────────────────────────
+
+type NewIndividualClientDetails struct {
+	FullName        string `json:"full_name"`
+	Email           string `json:"email"`
+	Phone           string `json:"phone"`
+	IDPassportNumber string `json:"id_passport_number"`
+}
+
+type CreateIndividualBookingRequest struct {
+	ClientID        *uuid.UUID                  `json:"client_id,omitempty"`
+	Client          *NewIndividualClientDetails  `json:"client,omitempty"`
+	RoomID          uuid.UUID                   `json:"room_id"`
+	CheckIn         DateOnly                    `json:"check_in"`
+	CheckOut        DateOnly                    `json:"check_out"`
+	Guests          int                         `json:"guests"`
+	SpecialRequests string                      `json:"special_requests,omitempty"`
+}
+
+// ─── Corporate booking request ────────────────────────────────────────────────
+
+type NewCorporateClientDetails struct {
+	CompanyName      string `json:"company_name"`
+	ContactPerson    string `json:"contact_person"`
+	Email            string `json:"email"`
+	Phone            string `json:"phone"`
+	CompanyRegNumber string `json:"company_reg_number"`
+	Industry         string `json:"industry"`
+}
+
+type CorporateGuestRequest struct {
+	ClientID        *uuid.UUID `json:"client_id,omitempty"`
+	FullName        string     `json:"full_name"`
+	Email           string     `json:"email"`
+	Phone           string     `json:"phone"`
+	IDNumber        string     `json:"id_number"`
+	RoomID          uuid.UUID  `json:"room_id"`
+	CheckIn         DateOnly   `json:"check_in"`
+	CheckOut        DateOnly   `json:"check_out"`
+	SpecialRequests string     `json:"special_requests,omitempty"`
+}
+
+type CreateCorporateBookingRequest struct {
+	ClientID *uuid.UUID                 `json:"client_id,omitempty"`
+	Client   *NewCorporateClientDetails `json:"client,omitempty"`
+	Guests   []CorporateGuestRequest    `json:"guests"`
+}
+
+// ─── Guest self-service booking request ──────────────────────────────────────
 
 type CreateBookingRequest struct {
 	RoomID          uuid.UUID `json:"room_id"`
-	ClientID        uuid.UUID `json:"client_id"`
-	ClientType      string    `json:"client_type"`
 	CheckIn         DateOnly  `json:"check_in"`
 	CheckOut        DateOnly  `json:"check_out"`
 	Guests          int       `json:"guests"`
 	SpecialRequests string    `json:"special_requests,omitempty"`
 }
+
+// ─── Corporate booking response ───────────────────────────────────────────────
+
+type CorporateBookingResponse struct {
+	CorporateClientID uuid.UUID `json:"corporate_client_id"`
+	CompanyName       string    `json:"company_name"`
+	Bookings          []Booking `json:"bookings"`
+	TotalAmount       float64   `json:"total_amount"`
+}
+
+// ─── Update requests (unchanged) ─────────────────────────────────────────────
 
 type UpdateBookingRequest struct {
 	CheckIn         *DateOnly `json:"check_in,omitempty"`

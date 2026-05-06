@@ -59,6 +59,38 @@ func (r *ClientRepository) CreateIndividualTx(tx *sql.Tx, c *models.IndividualCl
 	return err
 }
 
+// CreateIndividualInTx inserts a new individual profile scoped to an org within an existing transaction.
+func (r *ClientRepository) CreateIndividualInTx(tx *sql.Tx, c *models.IndividualClient, orgID uuid.UUID) error {
+	c.ID = uuid.New()
+	now := time.Now()
+	c.CreatedAt = now
+	c.UpdatedAt = now
+	_, err := tx.Exec(`
+		INSERT INTO individual_profiles
+		    (id, full_name, email, phone, id_passport_number, nationality, status, notes, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		c.ID, c.FullName, c.Email, c.Phone, c.IDPassportNumber,
+		c.Nationality, c.Status, c.Notes, orgID, now, now,
+	)
+	return err
+}
+
+// CreateCorporateInTx inserts a new corporate profile scoped to an org within an existing transaction.
+func (r *ClientRepository) CreateCorporateInTx(tx *sql.Tx, c *models.CorporateClient, orgID uuid.UUID) error {
+	c.ID = uuid.New()
+	now := time.Now()
+	c.CreatedAt = now
+	c.UpdatedAt = now
+	_, err := tx.Exec(`
+		INSERT INTO corporate_profiles
+		    (id, company_name, contact_person, email, phone, company_reg_number, industry, status, notes, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		c.ID, c.CompanyName, c.ContactPerson, c.Email, c.Phone,
+		c.CompanyRegNumber, c.Industry, c.Status, c.Notes, orgID, now, now,
+	)
+	return err
+}
+
 // GetIndividualByUserID returns the individual profile linked to a user account.
 func (r *ClientRepository) GetIndividualByUserID(userID uuid.UUID) (*models.IndividualClient, error) {
 	query := `
@@ -247,6 +279,43 @@ func (r *ClientRepository) DeleteCorporate(id uuid.UUID, orgID uuid.UUID) error 
 	return nil
 }
 
+// LookupIndividualByIDNumber returns the individual client matching an exact
+// NRC or passport number within the org — used by the booking dialog pre-flight.
+func (r *ClientRepository) LookupIndividualByIDNumber(orgID uuid.UUID, idNumber string) (*models.IndividualClient, error) {
+	return r.scanIndividual(r.db.QueryRow(`
+		SELECT id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at
+		FROM individual_profiles
+		WHERE org_id = $1 AND id_passport_number = $2`, orgID, idNumber))
+}
+
+// SearchCorporate returns corporate clients matching a search term against
+// company name or email — used by the booking dialog pre-flight.
+func (r *ClientRepository) SearchCorporate(orgID uuid.UUID, search string, limit int) ([]models.CorporateClient, error) {
+	fmt.Printf("DEBUG SearchCorporate: org_id=%s search=%q\n", orgID, search)
+	rows, err := r.db.Query(`
+		SELECT id, company_name, contact_person, email, phone, company_reg_number, industry, status, notes, created_at, updated_at
+		FROM corporate_profiles
+		WHERE org_id = $1
+		  AND (company_name ILIKE $2 OR email ILIKE $2)
+		ORDER BY company_name ASC
+		LIMIT $3`, orgID, "%"+search+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	clients := []models.CorporateClient{}
+	for rows.Next() {
+		c, err := r.scanCorporate(rows)
+		if err != nil {
+			return nil, err
+		}
+		clients = append(clients, *c)
+	}
+	fmt.Printf("DEBUG SearchCorporate: found %d result(s)\n", len(clients))
+	return clients, rows.Err()
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // buildClientWhere builds a WHERE clause with optional search and status filters.
@@ -257,7 +326,7 @@ func (r *ClientRepository) buildClientWhere(orgID uuid.UUID, search, status stri
 	i := 2
 
 	if search != "" {
-		conditions = append(conditions, fmt.Sprintf("(email ILIKE $%d OR full_name ILIKE $%d OR company_name ILIKE $%d)", i, i, i))
+		conditions = append(conditions, fmt.Sprintf("(email ILIKE $%d OR full_name ILIKE $%d OR company_name ILIKE $%d OR id_passport_number ILIKE $%d)", i, i, i, i))
 		args = append(args, "%"+search+"%")
 		i++
 	}

@@ -20,6 +20,10 @@ func NewBookingRepository() *BookingRepository {
 	return &BookingRepository{db: database.DB}
 }
 
+func (r *BookingRepository) Begin() (*sql.Tx, error) {
+	return r.db.Begin()
+}
+
 func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 	b.ID = uuid.New()
 	now := time.Now()
@@ -28,13 +32,31 @@ func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 
 	_, err := r.db.Exec(`
 		INSERT INTO bookings
-		    (id, user_id, room_id, client_id, client_type, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-		b.ID, b.UserID, b.RoomID, b.ClientID, b.ClientType,
+		    (id, user_id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		b.ID, b.UserID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
 		orgID, b.CreatedAt, b.UpdatedAt,
 	)
 	return err
+}
+
+// CreateInTx inserts a booking within an existing transaction.
+func (r *BookingRepository) CreateInTx(tx *sql.Tx, b *models.Booking, orgID uuid.UUID) error {
+	b.ID = uuid.New()
+	now := time.Now()
+	b.CreatedAt = now
+	b.UpdatedAt = now
+
+	return tx.QueryRow(`
+		INSERT INTO bookings
+		    (id, user_id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		RETURNING booking_number`,
+		b.ID, b.UserID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
+		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
+		orgID, now, now,
+	).Scan(&b.BookingNumber)
 }
 
 // GetByIDUnscoped fetches a booking by ID with no org filter — use only in guest/review flows
@@ -47,6 +69,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
+		       b.corporate_client_id,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
@@ -69,6 +92,7 @@ func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Book
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
+		       b.corporate_client_id,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
@@ -127,6 +151,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
+		       b.corporate_client_id,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
@@ -346,9 +371,11 @@ type bookingScanner interface {
 func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
 	var roomName, clientName, specialRequests sql.NullString
+	var corporateClientID uuid.NullUUID
 	err := row.Scan(
 		&b.ID, &b.BookingNumber, &b.UserID, &b.RoomID, &roomName,
 		&b.ClientID, &b.ClientType, &clientName,
+		&corporateClientID,
 		&b.CheckIn, &b.CheckOut, &b.Guests,
 		&b.Nights, &b.RoomCost, &b.TotalAmount,
 		&b.Status, &b.Overstayed, &specialRequests,
@@ -365,6 +392,9 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	}
 	if specialRequests.Valid {
 		b.SpecialRequests = specialRequests.String
+	}
+	if corporateClientID.Valid {
+		b.CorporateClientID = &corporateClientID.UUID
 	}
 	return &b, nil
 }

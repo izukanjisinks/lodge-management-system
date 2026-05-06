@@ -113,6 +113,18 @@ func (h *ClientHandler) DeleteIndividual(w http.ResponseWriter, r *http.Request)
 	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Individual client deleted successfully"})
 }
 
+func (h *ClientHandler) LookupIndividualByIDNumber(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	idNumber := r.URL.Query().Get("id_number")
+
+	client, err := h.service.LookupIndividualByIDNumber(orgID, idNumber)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "client not found")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, client)
+}
+
 // ─── Corporate ────────────────────────────────────────────────────────────────
 
 func (h *ClientHandler) ListCorporate(w http.ResponseWriter, r *http.Request) {
@@ -189,6 +201,18 @@ func (h *ClientHandler) UpdateCorporate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	utils.RespondJSON(w, http.StatusOK, client)
+}
+
+func (h *ClientHandler) SearchCorporate(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	search := r.URL.Query().Get("search")
+
+	clients, err := h.service.SearchCorporate(orgID, search)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, clients)
 }
 
 func (h *ClientHandler) DeleteCorporate(w http.ResponseWriter, r *http.Request) {

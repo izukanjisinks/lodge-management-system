@@ -67,6 +67,7 @@ func (s *MenuService) CreateMenuItem(orgID uuid.UUID, req *models.CreateMenuItem
 	item := &models.MenuItem{
 		Name:        req.Name,
 		Description: req.Description,
+		Category:    req.Category,
 		Price:       req.Price,
 		IsAvailable: true,
 	}

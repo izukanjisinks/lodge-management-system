@@ -118,9 +118,12 @@ func (j *OverdueCheckoutJob) writeAuditLog(b repository.OverdueBookingRef, exten
 	}
 }
 
-// durationUntilMidnight returns the duration from now until the next midnight UTC.
+// durationUntilJobTime returns the duration from now until the next 22:05 UTC (00:05 CAT).
 func durationUntilMidnight() time.Duration {
 	now := time.Now().UTC()
-	next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
+	next := time.Date(now.Year(), now.Month(), now.Day(), 22, 30, 0, 0, time.UTC)
+	if !next.After(now) {
+		next = next.Add(24 * time.Hour)
+	}
 	return time.Until(next)
 }

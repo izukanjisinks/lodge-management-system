@@ -5,20 +5,21 @@ import (
 	"time"
 
 	"lodge-system/internal/repository"
+	"lodge-system/internal/services"
 )
 
 // CloseOrdersJob runs nightly and closes all open orders from the current day
 // for each organization that has auto_close_orders enabled.
 type CloseOrdersJob struct {
-	orderRepo    *repository.OrderRepository
+	orderSvc     *services.OrderService
 	settingsRepo *repository.OrganizationSettingsRepository
 }
 
 func NewCloseOrdersJob(
-	orderRepo *repository.OrderRepository,
+	orderSvc *services.OrderService,
 	settingsRepo *repository.OrganizationSettingsRepository,
 ) *CloseOrdersJob {
-	return &CloseOrdersJob{orderRepo: orderRepo, settingsRepo: settingsRepo}
+	return &CloseOrdersJob{orderSvc: orderSvc, settingsRepo: settingsRepo}
 }
 
 // Start launches the job in a background goroutine, firing once at the next midnight UTC
@@ -47,7 +48,7 @@ func (j *CloseOrdersJob) run() {
 
 	totalClosed := int64(0)
 	for _, orgID := range orgIDs {
-		n, err := j.orderRepo.CloseOrdersForDay(orgID)
+		n, err := j.orderSvc.CloseAllOrders(orgID)
 		if err != nil {
 			log.Printf("[close-orders] failed to close orders for org %s: %v", orgID, err)
 			continue

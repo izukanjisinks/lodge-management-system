@@ -118,7 +118,8 @@ func main() {
 	menuRepo := repository.NewMenuRepository()
 	orderRepo := repository.NewOrderRepository()
 	menuHandler := handlers.NewMenuHandler(services.NewMenuService(menuRepo))
-	orderHandler := handlers.NewOrderHandler(services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo))
+	orderSvc := services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo)
+	orderHandler := handlers.NewOrderHandler(orderSvc)
 
 	reviewRepo := repository.NewReviewRepository()
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
@@ -126,7 +127,7 @@ func main() {
 	// Background jobs
 	jobs.NewOverdueCheckoutJob(bookingRepo, invoiceRepo, auditLogRepo, orgSettingsRepo).Start()
 	log.Println("Overdue checkout job scheduled")
-	jobs.NewCloseOrdersJob(orderRepo, orgSettingsRepo).Start()
+	jobs.NewCloseOrdersJob(orderSvc, orgSettingsRepo).Start()
 	log.Println("Close orders job scheduled")
 
 	// Register routes

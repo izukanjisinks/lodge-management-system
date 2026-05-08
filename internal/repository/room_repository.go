@@ -52,40 +52,48 @@ func (r *RoomRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, e
 	return scanRoom(row)
 }
 
-// GuestList lists rooms with an optional org_id filter — used by public guest endpoints.
-func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+// GuestList lists rooms with optional filters — used by public guest endpoints.
+func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType, orgName string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	args := []interface{}{}
 	where := []string{"1=1"}
 	i := 1
 
 	if orgID != nil {
-		where = append(where, fmt.Sprintf("org_id = $%d", i))
+		where = append(where, fmt.Sprintf("r.org_id = $%d", i))
 		args = append(args, *orgID)
 		i++
 	}
 	if roomType != "" {
-		where = append(where, fmt.Sprintf("type = $%d", i))
+		where = append(where, fmt.Sprintf("r.type = $%d", i))
 		args = append(args, roomType)
 		i++
 	}
 	if isAvailable != nil {
-		where = append(where, fmt.Sprintf("is_available = $%d", i))
+		where = append(where, fmt.Sprintf("r.is_available = $%d", i))
 		args = append(args, *isAvailable)
+		i++
+	}
+	if orgName != "" {
+		where = append(where, fmt.Sprintf("o.name ILIKE $%d", i))
+		args = append(args, "%"+orgName+"%")
 		i++
 	}
 
 	whereStr := strings.Join(where, " AND ")
 
 	var total int
-	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM rooms WHERE %s`, whereStr), args...).Scan(&total); err != nil {
+	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM rooms r LEFT JOIN organizations o ON o.id = r.org_id WHERE %s`, whereStr), args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
-		FROM rooms WHERE %s
-		ORDER BY name ASC
+		SELECT r.id, r.org_id, r.name, r.type, r.capacity, r.price_per_night, r.amenities, r.images, r.is_available, r.description, r.created_at, r.updated_at,
+		       o.name, o.email, o.address, o.phone, o.logo_url
+		FROM rooms r
+		LEFT JOIN organizations o ON o.id = r.org_id
+		WHERE %s
+		ORDER BY r.name ASC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
 	if err != nil {
 		return nil, 0, err
@@ -94,11 +102,41 @@ func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType string, isAvailabl
 
 	var rooms []models.Room
 	for rows.Next() {
-		room, err := scanRoom(rows)
-		if err != nil {
+		var room models.Room
+		var orgID sql.NullString
+		var description sql.NullString
+		var orgName, orgEmail, orgAddress, orgPhone, orgLogoURL sql.NullString
+		if err := rows.Scan(
+			&room.ID, &orgID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
+			pq.Array(&room.Amenities), pq.Array(&room.Images), &room.IsAvailable, &description,
+			&room.CreatedAt, &room.UpdatedAt,
+			&orgName, &orgEmail, &orgAddress, &orgPhone, &orgLogoURL,
+		); err != nil {
 			return nil, 0, err
 		}
-		rooms = append(rooms, *room)
+		if orgID.Valid {
+			parsed, _ := uuid.Parse(orgID.String)
+			room.OrgID = &parsed
+		}
+		if description.Valid {
+			room.Description = description.String
+		}
+		if room.Amenities == nil {
+			room.Amenities = []string{}
+		}
+		if room.Images == nil {
+			room.Images = []string{}
+		}
+		if orgName.Valid {
+			room.Organization = &models.RoomOrganization{
+				Name:    orgName.String,
+				Email:   orgEmail.String,
+				Address: orgAddress.String,
+				Phone:   orgPhone.String,
+				LogoURL: orgLogoURL.String,
+			}
+		}
+		rooms = append(rooms, room)
 	}
 	return rooms, total, rows.Err()
 }

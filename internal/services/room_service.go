@@ -49,11 +49,11 @@ func (s *RoomService) GetByIDUnscoped(id uuid.UUID) (*models.Room, error) {
 	return s.repo.GetByIDUnscoped(id)
 }
 
-func (s *RoomService) GuestList(orgID *uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+func (s *RoomService) GuestList(orgID *uuid.UUID, roomType, orgName string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	if roomType != "" && !models.ValidRoomTypes[roomType] {
 		return nil, 0, errors.New("invalid room type filter")
 	}
-	return s.repo.GuestList(orgID, roomType, isAvailable, page, pageSize)
+	return s.repo.GuestList(orgID, roomType, orgName, isAvailable, page, pageSize)
 }
 
 func (s *RoomService) List(orgID uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {

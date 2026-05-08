@@ -59,6 +59,7 @@ func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 
 	pag := utils.ParsePagination(r)
 	roomType := r.URL.Query().Get("type")
+	orgName := r.URL.Query().Get("org_name")
 
 	var isAvailable *bool
 	if v := r.URL.Query().Get("is_available"); v != "" {
@@ -66,7 +67,7 @@ func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 		isAvailable = &b
 	}
 
-	rooms, total, err := h.service.GuestList(orgID, roomType, isAvailable, pag.Page, pag.PageSize)
+	rooms, total, err := h.service.GuestList(orgID, roomType, orgName, isAvailable, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

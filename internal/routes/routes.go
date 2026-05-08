@@ -39,7 +39,7 @@ func RegisterRoutes(
 	RegisterWorkflowAdminRoutes(workflowAdminHandler)
 	RegisterMenuRoutes(menuHandler)
 	RegisterOrderRoutes(orderHandler)
-	RegisterGuestRoutes(guestAuthHandler, guestBookingHandler, roomHandler, menuHandler)
+	RegisterGuestRoutes(guestAuthHandler, guestBookingHandler, roomHandler, menuHandler, mealPlanHandler)
 	RegisterReviewRoutes(reviewHandler)
 	RegisterBackofficeRoutes(backofficeAuthHandler, backofficeUserHandler, backofficeOrgHandler)
 	RegisterAuditLogRoutes(auditLogHandler)

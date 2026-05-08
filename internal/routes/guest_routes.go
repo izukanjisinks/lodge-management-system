@@ -11,6 +11,7 @@ func RegisterGuestRoutes(
 	guestBookingHandler *handlers.GuestBookingHandler,
 	roomHandler *handlers.RoomHandler,
 	menuHandler *handlers.MenuHandler,
+	mealPlanHandler *handlers.MealPlanHandler,
 ) {
 	// Public — no auth required
 	http.HandleFunc("POST /api/v1/guest/auth/register", withPublic(guestAuthHandler.Register))
@@ -18,6 +19,8 @@ func RegisterGuestRoutes(
 	http.HandleFunc("GET /api/v1/guest/rooms", withPublic(roomHandler.GuestList))
 	http.HandleFunc("GET /api/v1/guest/rooms/{id}", withPublic(roomHandler.GuestGetByID))
 	http.HandleFunc("GET /api/v1/guest/menu", withPublic(menuHandler.GuestGetMenu))
+	http.HandleFunc("GET /api/v1/guest/meal-plans", withPublic(mealPlanHandler.GuestList))
+	http.HandleFunc("GET /api/v1/guest/meal-plans/{id}", withPublic(mealPlanHandler.GuestGetByID))
 
 	// Authenticated guest — profile
 	http.HandleFunc("GET /api/v1/guest/me", withGuestAuth(guestAuthHandler.Me))

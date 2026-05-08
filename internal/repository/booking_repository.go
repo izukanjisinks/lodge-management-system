@@ -69,7 +69,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
-		       b.corporate_client_id,
+		       b.corporate_client_id, corp.company_name AS corporate_client_name,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
@@ -77,9 +77,10 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		       b.status, b.overstayed, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
-		JOIN rooms                    r   ON r.id = b.room_id
-		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		JOIN rooms                    r    ON r.id = b.room_id
+		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
+		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
 		WHERE b.id = $1`, id)
 	return scanBooking(row)
 }
@@ -92,7 +93,7 @@ func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Book
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
-		       b.corporate_client_id,
+		       b.corporate_client_id, corp.company_name AS corporate_client_name,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
@@ -100,9 +101,10 @@ func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Book
 		       b.status, b.overstayed, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
-		JOIN rooms                    r   ON r.id = b.room_id
-		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		JOIN rooms                    r    ON r.id = b.room_id
+		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
+		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
 		WHERE b.id = $1 AND b.org_id = $2`, id, orgID)
 	return scanBooking(row)
 }
@@ -151,7 +153,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 		           WHEN 'individual' THEN ip.full_name
 		           WHEN 'corporate'  THEN cp.company_name
 		       END AS client_name,
-		       b.corporate_client_id,
+		       b.corporate_client_id, corp.company_name AS corporate_client_name,
 		       b.check_in, b.check_out, b.guests,
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
@@ -159,9 +161,10 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 		       b.status, b.overstayed, b.special_requests,
 		       b.created_at, b.updated_at
 		FROM bookings b
-		JOIN rooms                    r   ON r.id = b.room_id
-		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp  ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		JOIN rooms                    r    ON r.id = b.room_id
+		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
+		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
 		WHERE %s
 		ORDER BY b.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
@@ -370,12 +373,12 @@ type bookingScanner interface {
 
 func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
-	var roomName, clientName, specialRequests sql.NullString
+	var roomName, clientName, corporateClientName, specialRequests sql.NullString
 	var corporateClientID uuid.NullUUID
 	err := row.Scan(
 		&b.ID, &b.BookingNumber, &b.UserID, &b.RoomID, &roomName,
 		&b.ClientID, &b.ClientType, &clientName,
-		&corporateClientID,
+		&corporateClientID, &corporateClientName,
 		&b.CheckIn, &b.CheckOut, &b.Guests,
 		&b.Nights, &b.RoomCost, &b.TotalAmount,
 		&b.Status, &b.Overstayed, &specialRequests,
@@ -390,11 +393,14 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	if clientName.Valid {
 		b.ClientName = clientName.String
 	}
-	if specialRequests.Valid {
-		b.SpecialRequests = specialRequests.String
-	}
 	if corporateClientID.Valid {
 		b.CorporateClientID = &corporateClientID.UUID
+	}
+	if corporateClientName.Valid {
+		b.CorporateClientName = corporateClientName.String
+	}
+	if specialRequests.Valid {
+		b.SpecialRequests = specialRequests.String
 	}
 	return &b, nil
 }

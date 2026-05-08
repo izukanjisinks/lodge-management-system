@@ -61,7 +61,8 @@ type Booking struct {
 	ClientID          uuid.UUID  `json:"client_id"`
 	ClientType        string     `json:"client_type"`
 	ClientName        string     `json:"client_name"`
-	CorporateClientID *uuid.UUID `json:"corporate_client_id,omitempty"`
+	CorporateClientID   *uuid.UUID `json:"corporate_client_id,omitempty"`
+	CorporateClientName string     `json:"corporate_client_name,omitempty"`
 	CheckIn           time.Time  `json:"check_in"`
 	CheckOut          time.Time  `json:"check_out"`
 	Guests            int        `json:"guests"`

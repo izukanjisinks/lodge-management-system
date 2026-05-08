@@ -75,7 +75,6 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: /api/v1
-        VITE_BASE_URL: /management-dashboard/
         VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY}
         VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN}
         VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID}

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
@@ -28,19 +27,6 @@ func (s *BookingService) SetInvoiceService(invoice *InvoiceService) {
 	s.invoice = invoice
 }
 
-func formatClientError(err error) error {
-	e := err.Error()
-	switch {
-	case strings.Contains(e, "individual_profiles_email_key"):
-		return errors.New("a client with this email already exists")
-	case strings.Contains(e, "uq_individual_profiles_id_passport_number"):
-		return errors.New("a client with this NRC/passport number already exists")
-	case strings.Contains(e, "corporate_profiles_email_key"):
-		return errors.New("a company with this email already exists")
-	default:
-		return errors.New("failed to create client")
-	}
-}
 
 func (s *BookingService) CreateIndividual(userID uuid.UUID, orgID uuid.UUID, req *models.CreateIndividualBookingRequest) (*models.Booking, error) {
 	// Resolve client — look up existing or create on the fly
@@ -62,7 +48,7 @@ func (s *BookingService) CreateIndividual(userID uuid.UUID, orgID uuid.UUID, req
 			Status:           models.ClientStatusActive,
 		}
 		if err := s.client.CreateIndividual(c, orgID); err != nil {
-			return nil, formatClientError(err)
+			return nil, formatConstraintError(err)
 		}
 		clientID = c.ID
 	}
@@ -218,7 +204,7 @@ func (s *BookingService) CreateCorporate(userID uuid.UUID, orgID uuid.UUID, req 
 			}
 			if err = s.client.CreateIndividualInTx(tx, individual, orgID); err != nil {
 				log.Printf("[booking] guest %d: failed to create individual client (org %s, name %q): %v", i+1, orgID, individual.FullName, err)
-				err = fmt.Errorf("guest %d: %w", i+1, formatClientError(err))
+				err = fmt.Errorf("guest %d: %w", i+1, formatConstraintError(err))
 				return nil, err
 			}
 			guestClientID = individual.ID

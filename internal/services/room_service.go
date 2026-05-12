@@ -38,7 +38,10 @@ func (s *RoomService) Create(room *models.Room, orgID uuid.UUID) error {
 		room.Images = []string{}
 	}
 	room.IsAvailable = true
-	return s.repo.Create(room, orgID)
+	if err := s.repo.Create(room, orgID); err != nil {
+		return formatConstraintError(err)
+	}
+	return nil
 }
 
 func (s *RoomService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, error) {
@@ -104,7 +107,7 @@ func (s *RoomService) Update(id uuid.UUID, orgID uuid.UUID, updates *models.Room
 	}
 	room.IsAvailable = updates.IsAvailable
 	if err := s.repo.Update(room, orgID); err != nil {
-		return nil, err
+		return nil, formatConstraintError(err)
 	}
 	return s.repo.GetByID(id, orgID)
 }

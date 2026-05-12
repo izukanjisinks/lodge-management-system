@@ -136,6 +136,8 @@ func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType, orgName string, i
 				LogoURL: orgLogoURL.String,
 			}
 		}
+		bookedDates, _ := r.GetBookedDates(room.ID)
+		room.BookedDates = bookedDates
 		rooms = append(rooms, room)
 	}
 	return rooms, total, rows.Err()
@@ -181,6 +183,8 @@ func (r *RoomRepository) List(orgID uuid.UUID, roomType string, isAvailable *boo
 		if err != nil {
 			return nil, 0, err
 		}
+		bookedDates, _ := r.GetBookedDates(room.ID)
+		room.BookedDates = bookedDates
 		rooms = append(rooms, *room)
 	}
 	return rooms, total, rows.Err()
@@ -256,6 +260,33 @@ func (r *RoomRepository) Delete(id uuid.UUID, orgID uuid.UUID) error {
 		return fmt.Errorf("room not found")
 	}
 	return nil
+}
+
+// GetBookedDates returns all confirmed/checked_in booking date ranges for a room.
+func (r *RoomRepository) GetBookedDates(roomID uuid.UUID) ([]models.BookedDate, error) {
+	rows, err := r.db.Query(`
+		SELECT TO_CHAR(check_in, 'YYYY-MM-DD'), TO_CHAR(check_out, 'YYYY-MM-DD'), status
+		FROM bookings
+		WHERE room_id = $1
+		  AND status IN ('confirmed', 'checked_in')
+		ORDER BY check_in ASC`, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dates []models.BookedDate
+	for rows.Next() {
+		var d models.BookedDate
+		if err := rows.Scan(&d.CheckIn, &d.CheckOut, &d.Status); err != nil {
+			return nil, err
+		}
+		dates = append(dates, d)
+	}
+	if dates == nil {
+		dates = []models.BookedDate{}
+	}
+	return dates, rows.Err()
 }
 
 type roomScanner interface {

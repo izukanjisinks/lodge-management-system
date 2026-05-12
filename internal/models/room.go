@@ -22,6 +22,12 @@ var ValidRoomTypes = map[string]bool{
 	RoomTypeConference: true,
 }
 
+type BookedDate struct {
+	CheckIn  string `json:"check_in"`
+	CheckOut string `json:"check_out"`
+	Status   string `json:"status"`
+}
+
 type RoomOrganization struct {
 	Name    string `json:"name"`
 	Email   string `json:"email,omitempty"`
@@ -42,6 +48,7 @@ type Room struct {
 	IsAvailable   bool             `json:"is_available"`
 	Description   string           `json:"description,omitempty"`
 	Organization  *RoomOrganization `json:"organization,omitempty"`
+	BookedDates   []BookedDate      `json:"booked_dates,omitempty"`
 	CreatedAt     time.Time        `json:"created_at"`
 	UpdatedAt     time.Time        `json:"updated_at"`
 }

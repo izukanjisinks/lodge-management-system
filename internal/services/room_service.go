@@ -45,11 +45,21 @@ func (s *RoomService) Create(room *models.Room, orgID uuid.UUID) error {
 }
 
 func (s *RoomService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, error) {
-	return s.repo.GetByID(id, orgID)
+	room, err := s.repo.GetByID(id, orgID)
+	if err != nil {
+		return nil, err
+	}
+	room.BookedDates, _ = s.repo.GetBookedDates(id)
+	return room, nil
 }
 
 func (s *RoomService) GetByIDUnscoped(id uuid.UUID) (*models.Room, error) {
-	return s.repo.GetByIDUnscoped(id)
+	room, err := s.repo.GetByIDUnscoped(id)
+	if err != nil {
+		return nil, err
+	}
+	room.BookedDates, _ = s.repo.GetBookedDates(id)
+	return room, nil
 }
 
 func (s *RoomService) GuestList(orgID *uuid.UUID, roomType, orgName string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {

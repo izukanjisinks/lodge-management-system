@@ -224,17 +224,6 @@ func (r *BookingRepository) UpdateStatusTx(id uuid.UUID, orgID uuid.UUID, newSta
 		return err
 	}
 
-	// Sync room availability
-	switch newStatus {
-	case models.BookingStatusConfirmed:
-		_, err = tx.Exec(`UPDATE rooms SET is_available=FALSE, updated_at=$1 WHERE id=$2`, time.Now(), roomID)
-	case models.BookingStatusCheckedOut, models.BookingStatusCancelled:
-		_, err = tx.Exec(`UPDATE rooms SET is_available=TRUE, updated_at=$1 WHERE id=$2`, time.Now(), roomID)
-	}
-	if err != nil {
-		return err
-	}
-
 	return tx.Commit()
 }
 

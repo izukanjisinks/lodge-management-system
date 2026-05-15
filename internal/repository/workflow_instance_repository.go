@@ -61,7 +61,7 @@ func (r *WorkflowInstanceRepository) Create(instance *models.WorkflowInstance) e
 // GetByID retrieves a workflow instance by ID, scoped to org.
 func (r *WorkflowInstanceRepository) GetByID(id, orgID string) (*models.WorkflowInstance, error) {
 	query := `
-		SELECT id, workflow_id, current_step_id, status, task_details,
+		SELECT id, org_id, workflow_id, current_step_id, status, task_details,
 		       created_by, created_at, updated_at, completed_at, due_date, priority
 		FROM workflow_instances
 		WHERE id = $1 AND org_id = $2
@@ -72,6 +72,7 @@ func (r *WorkflowInstanceRepository) GetByID(id, orgID string) (*models.Workflow
 
 	err := r.db.QueryRow(query, id, orgID).Scan(
 		&instance.ID,
+		&instance.OrgID,
 		&instance.WorkflowID,
 		&instance.CurrentStepID,
 		&instance.Status,
@@ -99,7 +100,7 @@ func (r *WorkflowInstanceRepository) GetByID(id, orgID string) (*models.Workflow
 // GetByTaskID retrieves a workflow instance by task ID (from task_details), scoped to org.
 func (r *WorkflowInstanceRepository) GetByTaskID(taskID, orgID string) (*models.WorkflowInstance, error) {
 	query := `
-		SELECT id, workflow_id, current_step_id, status, task_details,
+		SELECT id, org_id, workflow_id, current_step_id, status, task_details,
 		       created_by, created_at, updated_at, completed_at, due_date, priority
 		FROM workflow_instances
 		WHERE task_details->>'task_id' = $1 AND org_id = $2
@@ -112,6 +113,7 @@ func (r *WorkflowInstanceRepository) GetByTaskID(taskID, orgID string) (*models.
 
 	err := r.db.QueryRow(query, taskID, orgID).Scan(
 		&instance.ID,
+		&instance.OrgID,
 		&instance.WorkflowID,
 		&instance.CurrentStepID,
 		&instance.Status,

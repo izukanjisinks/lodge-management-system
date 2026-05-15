@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"lodge-system/internal/middleware"
@@ -184,7 +185,12 @@ func (h *WorkflowAdminHandler) DeleteWorkflow(w http.ResponseWriter, r *http.Req
 
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	if err := h.workflowRepo.Delete(workflowID, orgID.String()); err != nil {
-		http.Error(w, "Failed to delete workflow", http.StatusInternalServerError)
+		if err.Error() == "workflow not found" {
+			http.Error(w, "Workflow not found", http.StatusNotFound)
+			return
+		}
+		fmt.Printf("DeleteWorkflow error: %v\n", err)
+		http.Error(w, "Failed to delete workflow: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -237,14 +243,11 @@ func (h *WorkflowAdminHandler) GetStepByID(w http.ResponseWriter, r *http.Reques
 
 // CreateWorkflowStepRequest represents the request body for creating a step
 type CreateWorkflowStepRequest struct {
-	WorkflowID           string   `json:"workflow_id"`
-	StepName             string   `json:"step_name"`
-	StepOrder            int      `json:"step_order"`
-	Initial              bool     `json:"initial"`
-	Final                bool     `json:"final"`
-	AllowedRoles         []string `json:"allowed_roles"`
-	RequiresAllApprovers bool     `json:"requires_all_approvers"`
-	MinApprovals         int      `json:"min_approvals"`
+	WorkflowID string `json:"workflow_id"`
+	StepName   string `json:"step_name"`
+	StepOrder  int    `json:"step_order"`
+	Initial    bool   `json:"initial"`
+	Final      bool   `json:"final"`
 }
 
 // CreateWorkflowStep creates a new workflow step
@@ -270,16 +273,12 @@ func (h *WorkflowAdminHandler) CreateWorkflowStep(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Create the step model
 	step := &models.WorkflowStep{
-		WorkflowID:           req.WorkflowID,
-		StepName:             req.StepName,
-		StepOrder:            req.StepOrder,
-		Initial:              req.Initial,
-		Final:                req.Final,
-		AllowedRoles:         req.AllowedRoles,
-		RequiresAllApprovers: req.RequiresAllApprovers,
-		MinApprovals:         req.MinApprovals,
+		WorkflowID: req.WorkflowID,
+		StepName:   req.StepName,
+		StepOrder:  req.StepOrder,
+		Initial:    req.Initial,
+		Final:      req.Final,
 	}
 
 	// Create the step
@@ -298,13 +297,10 @@ func (h *WorkflowAdminHandler) CreateWorkflowStep(w http.ResponseWriter, r *http
 
 // UpdateWorkflowStepRequest represents the request body for updating a step
 type UpdateWorkflowStepRequest struct {
-	StepName             *string   `json:"step_name"`
-	StepOrder            *int      `json:"step_order"`
-	Initial              *bool     `json:"initial"`
-	Final                *bool     `json:"final"`
-	AllowedRoles         *[]string `json:"allowed_roles"`
-	RequiresAllApprovers *bool     `json:"requires_all_approvers"`
-	MinApprovals         *int      `json:"min_approvals"`
+	StepName  *string `json:"step_name"`
+	StepOrder *int    `json:"step_order"`
+	Initial   *bool   `json:"initial"`
+	Final     *bool   `json:"final"`
 }
 
 // UpdateWorkflowStep updates an existing workflow step
@@ -340,15 +336,6 @@ func (h *WorkflowAdminHandler) UpdateWorkflowStep(w http.ResponseWriter, r *http
 	}
 	if req.Final != nil {
 		step.Final = *req.Final
-	}
-	if req.AllowedRoles != nil {
-		step.AllowedRoles = *req.AllowedRoles
-	}
-	if req.RequiresAllApprovers != nil {
-		step.RequiresAllApprovers = *req.RequiresAllApprovers
-	}
-	if req.MinApprovals != nil {
-		step.MinApprovals = *req.MinApprovals
 	}
 
 	// Update step
@@ -429,12 +416,13 @@ func (h *WorkflowAdminHandler) GetValidTransitions(w http.ResponseWriter, r *htt
 
 // CreateWorkflowTransitionRequest represents the request body for creating a transition
 type CreateWorkflowTransitionRequest struct {
-	WorkflowID     string  `json:"workflow_id"`
-	FromStepID     string  `json:"from_step_id"`
-	ToStepID       string  `json:"to_step_id"`
-	ActionName     string  `json:"action_name"`
-	ConditionType  *string `json:"condition_type"`
-	ConditionValue *string `json:"condition_value"`
+	WorkflowID     string   `json:"workflow_id"`
+	FromStepID     string   `json:"from_step_id"`
+	ToStepID       string   `json:"to_step_id"`
+	ActionName     string   `json:"action_name"`
+	AllowedRoles   []string `json:"allowed_roles"`
+	ConditionType  *string  `json:"condition_type"`
+	ConditionValue *string  `json:"condition_value"`
 }
 
 // CreateWorkflowTransition creates a new workflow transition
@@ -474,12 +462,12 @@ func (h *WorkflowAdminHandler) CreateWorkflowTransition(w http.ResponseWriter, r
 		return
 	}
 
-	// Create the transition model
 	transition := &models.WorkflowTransition{
 		WorkflowID:     req.WorkflowID,
 		FromStepID:     req.FromStepID,
 		ToStepID:       req.ToStepID,
 		ActionName:     req.ActionName,
+		AllowedRoles:   req.AllowedRoles,
 		ConditionType:  req.ConditionType,
 		ConditionValue: req.ConditionValue,
 	}
@@ -500,9 +488,10 @@ func (h *WorkflowAdminHandler) CreateWorkflowTransition(w http.ResponseWriter, r
 
 // UpdateWorkflowTransitionRequest represents the request body for updating a transition
 type UpdateWorkflowTransitionRequest struct {
-	ActionName     *string `json:"action_name"`
-	ConditionType  *string `json:"condition_type"`
-	ConditionValue *string `json:"condition_value"`
+	ActionName     *string   `json:"action_name"`
+	AllowedRoles   *[]string `json:"allowed_roles"`
+	ConditionType  *string   `json:"condition_type"`
+	ConditionValue *string   `json:"condition_value"`
 }
 
 // UpdateWorkflowTransition updates an existing workflow transition
@@ -529,6 +518,9 @@ func (h *WorkflowAdminHandler) UpdateWorkflowTransition(w http.ResponseWriter, r
 	// Update fields if provided
 	if req.ActionName != nil {
 		transition.ActionName = *req.ActionName
+	}
+	if req.AllowedRoles != nil {
+		transition.AllowedRoles = *req.AllowedRoles
 	}
 	if req.ConditionType != nil {
 		transition.ConditionType = req.ConditionType

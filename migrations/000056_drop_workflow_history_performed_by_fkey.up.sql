@@ -1,0 +1,1 @@
+ALTER TABLE workflow_history DROP CONSTRAINT IF EXISTS workflow_history_performed_by_fkey;

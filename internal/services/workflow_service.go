@@ -1,7 +1,6 @@
 package services
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 
@@ -19,6 +18,7 @@ type WorkflowService struct {
 	historyRepo  *repository.WorkflowHistoryRepository
 	userRepo     *repository.UserRepository
 	clientRepo   *repository.ClientRepository
+	guestRepo    *repository.GuestRepository
 	emailService *email.EmailService
 }
 
@@ -29,6 +29,7 @@ func NewWorkflowService(
 	historyRepo *repository.WorkflowHistoryRepository,
 	userRepo *repository.UserRepository,
 	clientRepo *repository.ClientRepository,
+	guestRepo *repository.GuestRepository,
 	emailService *email.EmailService,
 ) *WorkflowService {
 	return &WorkflowService{
@@ -38,6 +39,7 @@ func NewWorkflowService(
 		historyRepo:  historyRepo,
 		userRepo:     userRepo,
 		clientRepo:   clientRepo,
+		guestRepo:    guestRepo,
 		emailService: emailService,
 	}
 }
@@ -57,7 +59,7 @@ func (s *WorkflowService) InitiateWorkflow(
 		return nil, fmt.Errorf("workflow not found for type %s: %w", workflowType, err)
 	}
 
-	firstActionStep, initialStepID, err := s.workflowRepo.GetFirstActionStep(workflow.ID)
+	firstActionStep, firstTransition, initialStepID, err := s.workflowRepo.GetFirstActionStep(workflow.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get first action step: %w", err)
 	}
@@ -76,7 +78,7 @@ func (s *WorkflowService) InitiateWorkflow(
 		return nil, fmt.Errorf("failed to create instance: %w", err)
 	}
 
-	assigneeID, err := s.determineAssignee(orgID, firstActionStep, taskDetails)
+	assigneeID, err := s.determineAssignee(orgID, firstTransition.AllowedRoles, taskDetails)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine assignee: %w", err)
 	}
@@ -101,23 +103,18 @@ func (s *WorkflowService) InitiateWorkflow(
 		go s.notifyTaskAssignment(task, assignee, instance)
 	}
 
-	initiatorUUID, err := uuid.Parse(initiatorID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid initiator ID: %w", err)
-	}
-
-	initiatorUser, err := s.userRepo.GetUserByID(initiatorUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get initiator: %w", err)
+	initiatorName := taskDetails.SenderDetails.SenderName
+	if initiatorName == "" {
+		initiatorName = initiatorID
 	}
 
 	history := &models.WorkflowHistory{
 		InstanceID:      instance.ID,
 		FromStepID:      &initialStepID,
 		ToStepID:        firstActionStep.ID,
-		ActionTaken:     "submit",
+		ActionTaken:     firstTransition.ActionName,
 		PerformedBy:     initiatorID,
-		PerformedByName: initiatorUser.Email,
+		PerformedByName: initiatorName,
 		Comments:        fmt.Sprintf("Initiated %s workflow", workflow.Name),
 	}
 
@@ -129,6 +126,9 @@ func (s *WorkflowService) InitiateWorkflow(
 }
 
 // ProcessAction processes an action on a workflow instance, scoped to org.
+// action must be "approve" or "reject" — semantic intents, not DB action_name values.
+// approve → advance along the first valid outbound transition from the current step.
+// reject  → terminate the instance immediately regardless of step configuration.
 func (s *WorkflowService) ProcessAction(
 	instanceID string,
 	action string,
@@ -136,44 +136,73 @@ func (s *WorkflowService) ProcessAction(
 	comments string,
 	orgID string,
 ) error {
+	if action != "approve" && action != "reject" {
+		return errors.New("action must be 'approve' or 'reject'")
+	}
+
 	instance, err := s.instanceRepo.GetByID(instanceID, orgID)
 	if err != nil {
 		return fmt.Errorf("instance not found: %w", err)
 	}
 
-	if instance.Status == "completed" || instance.Status == "cancelled" {
+	if instance.Status == "completed" || instance.Status == "cancelled" || instance.Status == "rejected" {
 		return errors.New("workflow instance is already closed")
+	}
+
+	if instance.CurrentStepID == "" {
+		return errors.New("workflow instance has no current step — data may be corrupt")
 	}
 
 	currentStep, err := s.workflowRepo.GetStepByID(instance.CurrentStepID)
 	if err != nil {
 		return fmt.Errorf("current step not found: %w", err)
 	}
-
-	if err := s.checkPermission(performedByID, currentStep); err != nil {
-		return err
+	if currentStep.ID == "" {
+		return fmt.Errorf("step '%s' not found in workflow_steps", instance.CurrentStepID)
 	}
 
-	isRejection := action == "reject" || action == "rejected" || action == "deny"
+	isRejection := action == "reject"
 	isCompletingFinalStep := currentStep.Final && !isRejection
 
+	var transition *models.WorkflowTransition
 	var nextStep *models.WorkflowStep
 
-	if isCompletingFinalStep {
+	if isRejection || isCompletingFinalStep {
+		// Instance terminates here — fetch any outbound transition only to check allowed_roles.
 		nextStep = currentStep
+		transitions, _ := s.workflowRepo.GetValidTransitions(currentStep.ID)
+		if len(transitions) > 0 {
+			transition = &transitions[0]
+		}
 	} else {
-		transition, err := s.workflowRepo.GetTransitionByAction(currentStep.ID, action)
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("action '%s' is not valid from current step '%s'", action, currentStep.StepName)
+		// Approve on a non-final step — advance to the next step via the first valid transition.
+		transitions, err := s.workflowRepo.GetValidTransitions(currentStep.ID)
+		if err != nil || len(transitions) == 0 {
+			return fmt.Errorf("no valid transition found from step '%s'", currentStep.StepName)
 		}
-		if err != nil {
-			return fmt.Errorf("failed to get transition: %w", err)
+		transition = &transitions[0]
+		if transition.ToStepID == "" {
+			return fmt.Errorf("transition '%s' has no destination step — workflow may be misconfigured", transition.ID)
 		}
-
 		nextStep, err = s.workflowRepo.GetStepByID(transition.ToStepID)
 		if err != nil {
 			return fmt.Errorf("next step not found: %w", err)
 		}
+		if nextStep.ID == "" {
+			return fmt.Errorf("destination step '%s' not found in workflow_steps", transition.ToStepID)
+		}
+	}
+
+	if nextStep.ID == "" {
+		return errors.New("could not resolve next step — workflow may be misconfigured")
+	}
+
+	var allowedRoles []string
+	if transition != nil {
+		allowedRoles = transition.AllowedRoles
+	}
+	if err := s.checkPermission(performedByID, allowedRoles); err != nil {
+		return err
 	}
 
 	newStatus := "in_progress"
@@ -219,7 +248,7 @@ func (s *WorkflowService) ProcessAction(
 			}
 		}
 	} else {
-		assigneeID, err := s.determineAssignee(instance.OrgID, nextStep, instance.TaskDetails)
+		assigneeID, err := s.determineAssignee(instance.OrgID, transition.AllowedRoles, instance.TaskDetails)
 		if err != nil {
 			return fmt.Errorf("failed to determine assignee: %w", err)
 		}
@@ -296,25 +325,30 @@ func (s *WorkflowService) GetInstanceByTaskID(taskID, orgID string) (*models.Wor
 
 // determineAssignee finds the user with the required role who has the fewest pending tasks,
 // scoped to the given org so tasks are never assigned cross-org.
-func (s *WorkflowService) determineAssignee(orgID string, step *models.WorkflowStep, taskDetails models.TaskDetails) (string, error) {
-	if len(step.AllowedRoles) == 0 {
-		return "", errors.New("no allowed roles defined for step")
+func (s *WorkflowService) determineAssignee(orgID string, allowedRoles []string, taskDetails models.TaskDetails) (string, error) {
+	if len(allowedRoles) == 0 {
+		return "", errors.New("no allowed roles defined for transition")
 	}
 
 	orgUUID, _ := uuid.Parse(orgID)
 
-	for _, roleName := range step.AllowedRoles {
+	for _, roleName := range allowedRoles {
 		user, err := s.userRepo.GetUserWithFewestTasksByRole(orgUUID, roleName)
 		if err == nil && user != nil {
 			return user.UserID.String(), nil
 		}
 	}
 
-	return "", fmt.Errorf("no active user found with any of the allowed roles: %v", step.AllowedRoles)
+	return "", fmt.Errorf("no active user found with any of the allowed roles: %v", allowedRoles)
 }
 
-// checkPermission verifies the user's role is allowed to act on the current step
-func (s *WorkflowService) checkPermission(userID string, step *models.WorkflowStep) error {
+// checkPermission verifies the user's role is allowed to trigger the transition.
+// If allowedRoles is empty, any authenticated user may act.
+func (s *WorkflowService) checkPermission(userID string, allowedRoles []string) error {
+	if len(allowedRoles) == 0 {
+		return nil
+	}
+
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		return fmt.Errorf("invalid user ID: %w", err)
@@ -329,7 +363,7 @@ func (s *WorkflowService) checkPermission(userID string, step *models.WorkflowSt
 		return fmt.Errorf("user %s has no role assigned", user.Email)
 	}
 
-	for _, allowedRole := range step.AllowedRoles {
+	for _, allowedRole := range allowedRoles {
 		if user.Role.Name == allowedRole {
 			return nil
 		}
@@ -361,11 +395,21 @@ func (s *WorkflowService) notifyGuestBookingOutcome(orgID string, details models
 	var subject, htmlBody string
 	switch entityStatus {
 	case models.BookingStatusConfirmed:
-		subject = "Your Booking is Confirmed — The Sanctuary"
-		htmlBody = email.BookingApprovedTemplate(profile.FullName, details.TaskID, details.TaskDescription)
+		subject = "Your Booking is Confirmed — Mwakwanda"
+		htmlBody = email.BookingApprovedTemplate(profile.FullName, func() string {
+			if details.TaskRef != "" {
+				return details.TaskRef
+			}
+			return details.TaskID
+		}(), details.TaskDescription)
 	case models.BookingStatusCancelled:
-		subject = "Booking Update — The Sanctuary"
-		htmlBody = email.BookingRejectedTemplate(profile.FullName, details.TaskID, details.TaskDescription)
+		subject = "Booking Update — Mwakwanda"
+		htmlBody = email.BookingRejectedTemplate(profile.FullName, func() string {
+			if details.TaskRef != "" {
+				return details.TaskRef
+			}
+			return details.TaskID
+		}(), details.TaskDescription)
 	default:
 		return
 	}
@@ -390,9 +434,13 @@ func (s *WorkflowService) notifyTaskAssignment(task *models.AssignedTask, assign
 
 	if task.TaskDetails != nil && task.TaskDetails.TaskType == "booking" {
 		subject = fmt.Sprintf("Booking Approval Required — %s", task.TaskDetails.SenderDetails.SenderName)
+		bookingRef := task.TaskDetails.TaskRef
+		if bookingRef == "" {
+			bookingRef = task.TaskDetails.TaskID
+		}
 		htmlBody = email.BookingTaskAssignedTemplate(
 			assignee.FullName,
-			task.TaskDetails.TaskID,
+			bookingRef,
 			task.TaskDetails.TaskDescription,
 			task.TaskDetails.SenderDetails.SenderName,
 			task.TaskDetails.SenderDetails.Position,

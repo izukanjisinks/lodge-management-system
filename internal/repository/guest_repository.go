@@ -79,6 +79,14 @@ func (r *GuestRepository) CreateIndividualProfile(guestID uuid.UUID, g *models.G
 	return err
 }
 
+func (r *GuestRepository) UpdateIndividualProfileOrg(guestID uuid.UUID, orgID uuid.UUID) error {
+	_, err := r.db.Exec(`
+		UPDATE individual_profiles SET org_id=$1, updated_at=$2 WHERE guest_id=$3`,
+		orgID, time.Now(), guestID,
+	)
+	return err
+}
+
 func (r *GuestRepository) UpdateIndividualProfileIDPassport(profileID uuid.UUID, idPassport string) error {
 	_, err := r.db.Exec(`
 		UPDATE individual_profiles SET id_passport_number=$1, updated_at=$2 WHERE id=$3`,

@@ -105,6 +105,10 @@ func (s *GuestAuthService) UpdateProfileIDPassport(profileID uuid.UUID, idPasspo
 	return s.guestRepo.UpdateIndividualProfileIDPassport(profileID, idPassport)
 }
 
+func (s *GuestAuthService) UpdateProfileOrg(guestID uuid.UUID, orgID uuid.UUID) error {
+	return s.guestRepo.UpdateIndividualProfileOrg(guestID, orgID)
+}
+
 func (s *GuestAuthService) UpdateProfile(id uuid.UUID, req *models.GuestUpdateRequest) (*models.Guest, error) {
 	guest, err := s.guestRepo.GetByID(id)
 	if err != nil {

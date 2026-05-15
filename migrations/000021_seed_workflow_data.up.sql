@@ -95,10 +95,10 @@ LIMIT 1;
 -- ---------------------------------------------------------------------------
 -- Steps
 -- ---------------------------------------------------------------------------
-INSERT INTO workflow_steps (id, workflow_id, step_name, step_order, initial, final, allowed_roles, requires_all_approvers, min_approvals)
+INSERT INTO workflow_steps (id, workflow_id, step_name, step_order, initial, final)
 VALUES
-    (gen_random_uuid(), v_workflow_id, 'Submission', 1, TRUE,  FALSE, '["receptionist","admin"]'::jsonb, FALSE, 1),
-    (gen_random_uuid(), v_workflow_id, 'Approval',   2, FALSE, TRUE,  '["manager","admin"]'::jsonb,      FALSE, 1)
+    (gen_random_uuid(), v_workflow_id, 'Submission', 1, TRUE,  FALSE),
+    (gen_random_uuid(), v_workflow_id, 'Approval',   2, FALSE, TRUE)
 ON CONFLICT (workflow_id, step_order) DO NOTHING;
 
 SELECT id INTO v_step_submission FROM workflow_steps WHERE workflow_id = v_workflow_id AND step_order = 1 LIMIT 1;
@@ -107,13 +107,14 @@ SELECT id INTO v_step_approval   FROM workflow_steps WHERE workflow_id = v_workf
 -- ---------------------------------------------------------------------------
 -- Transition: Submission → Approval
 -- ---------------------------------------------------------------------------
-INSERT INTO workflow_transitions (id, workflow_id, from_step_id, to_step_id, action_name, condition_type, condition_value)
+INSERT INTO workflow_transitions (id, workflow_id, from_step_id, to_step_id, action_name, allowed_roles, condition_type, condition_value)
 VALUES (
     gen_random_uuid(),
     v_workflow_id,
     v_step_submission,
     v_step_approval,
     'Submit for Approval',
+    '["receptionist","admin","manager"]'::jsonb,
     'always',
     ''
 )

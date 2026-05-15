@@ -341,14 +341,17 @@ func (r *ClientRepository) buildClientWhere(orgID uuid.UUID, search, status stri
 
 func (r *ClientRepository) scanIndividual(row rowScanner) (*models.IndividualClient, error) {
 	var c models.IndividualClient
-	var nationality, notes sql.NullString
+	var idPassport, nationality, notes sql.NullString
 
 	err := row.Scan(
-		&c.ID, &c.FullName, &c.Email, &c.Phone, &c.IDPassportNumber,
+		&c.ID, &c.FullName, &c.Email, &c.Phone, &idPassport,
 		&nationality, &c.Status, &notes, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if idPassport.Valid {
+		c.IDPassportNumber = idPassport.String
 	}
 	if nationality.Valid {
 		c.Nationality = nationality.String

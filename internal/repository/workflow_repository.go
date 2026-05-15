@@ -208,8 +208,7 @@ func (r *WorkflowRepository) GetAllActiveWithCounts(orgID string) ([]models.Work
 // GetStepsByWorkflowID retrieves all steps for a workflow
 func (r *WorkflowRepository) GetStepsByWorkflowID(workflowID string) ([]models.WorkflowStep, error) {
 	query := `
-		SELECT id, workflow_id, step_name, step_order, initial, final,
-		       allowed_roles, requires_all_approvers, min_approvals, created_at
+		SELECT id, workflow_id, step_name, step_order, initial, final, created_at
 		FROM workflow_steps
 		WHERE workflow_id = $1
 		ORDER BY step_order
@@ -224,29 +223,17 @@ func (r *WorkflowRepository) GetStepsByWorkflowID(workflowID string) ([]models.W
 	var steps []models.WorkflowStep
 	for rows.Next() {
 		var step models.WorkflowStep
-		var allowedRolesJSON []byte
-
-		err := rows.Scan(
+		if err := rows.Scan(
 			&step.ID,
 			&step.WorkflowID,
 			&step.StepName,
 			&step.StepOrder,
 			&step.Initial,
 			&step.Final,
-			&allowedRolesJSON,
-			&step.RequiresAllApprovers,
-			&step.MinApprovals,
 			&step.CreatedAt,
-		)
-		if err != nil {
+		); err != nil {
 			return nil, err
 		}
-
-		// Parse allowed_roles JSON
-		if err := json.Unmarshal(allowedRolesJSON, &step.AllowedRoles); err != nil {
-			return nil, fmt.Errorf("failed to parse allowed_roles: %w", err)
-		}
-
 		steps = append(steps, step)
 	}
 
@@ -256,15 +243,12 @@ func (r *WorkflowRepository) GetStepsByWorkflowID(workflowID string) ([]models.W
 // GetStepByID retrieves a specific workflow step
 func (r *WorkflowRepository) GetStepByID(stepID string) (*models.WorkflowStep, error) {
 	query := `
-		SELECT id, workflow_id, step_name, step_order, initial, final,
-		       allowed_roles, requires_all_approvers, min_approvals, created_at
+		SELECT id, workflow_id, step_name, step_order, initial, final, created_at
 		FROM workflow_steps
 		WHERE id = $1
 	`
 
 	var step models.WorkflowStep
-	var allowedRolesJSON []byte
-
 	err := r.db.QueryRow(query, stepID).Scan(
 		&step.ID,
 		&step.WorkflowID,
@@ -272,37 +256,21 @@ func (r *WorkflowRepository) GetStepByID(stepID string) (*models.WorkflowStep, e
 		&step.StepOrder,
 		&step.Initial,
 		&step.Final,
-		&allowedRolesJSON,
-		&step.RequiresAllApprovers,
-		&step.MinApprovals,
 		&step.CreatedAt,
 	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse allowed_roles JSON
-	if err := json.Unmarshal(allowedRolesJSON, &step.AllowedRoles); err != nil {
-		return nil, fmt.Errorf("failed to parse allowed_roles: %w", err)
-	}
-
-	return &step, nil
+	return &step, err
 }
 
 // GetInitialStep retrieves the initial step of a workflow
 func (r *WorkflowRepository) GetInitialStep(workflowID string) (*models.WorkflowStep, error) {
 	query := `
-		SELECT id, workflow_id, step_name, step_order, initial, final,
-		       allowed_roles, requires_all_approvers, min_approvals, created_at
+		SELECT id, workflow_id, step_name, step_order, initial, final, created_at
 		FROM workflow_steps
 		WHERE workflow_id = $1 AND initial = true
 		LIMIT 1
 	`
 
 	var step models.WorkflowStep
-	var allowedRolesJSON []byte
-
 	err := r.db.QueryRow(query, workflowID).Scan(
 		&step.ID,
 		&step.WorkflowID,
@@ -310,33 +278,39 @@ func (r *WorkflowRepository) GetInitialStep(workflowID string) (*models.Workflow
 		&step.StepOrder,
 		&step.Initial,
 		&step.Final,
-		&allowedRolesJSON,
-		&step.RequiresAllApprovers,
-		&step.MinApprovals,
 		&step.CreatedAt,
 	)
+	return &step, err
+}
 
+type transitionScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanTransition(row transitionScanner) (*models.WorkflowTransition, error) {
+	var tr models.WorkflowTransition
+	var allowedRolesJSON []byte
+	err := row.Scan(
+		&tr.ID, &tr.WorkflowID, &tr.FromStepID, &tr.ToStepID, &tr.ActionName,
+		&allowedRolesJSON, &tr.ConditionType, &tr.ConditionValue, &tr.CreatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
-
-	// Parse allowed_roles JSON
-	if err := json.Unmarshal(allowedRolesJSON, &step.AllowedRoles); err != nil {
+	if err := json.Unmarshal(allowedRolesJSON, &tr.AllowedRoles); err != nil {
 		return nil, fmt.Errorf("failed to parse allowed_roles: %w", err)
 	}
-
-	return &step, nil
+	return &tr, nil
 }
 
 // GetTransitionsByWorkflowID retrieves all transitions for a workflow
 func (r *WorkflowRepository) GetTransitionsByWorkflowID(workflowID string) ([]models.WorkflowTransition, error) {
 	query := `
 		SELECT id, workflow_id, from_step_id, to_step_id, action_name,
-		       condition_type, condition_value, created_at
+		       allowed_roles, condition_type, condition_value, created_at
 		FROM workflow_transitions
 		WHERE workflow_id = $1
 	`
-
 	rows, err := r.db.Query(query, workflowID)
 	if err != nil {
 		return nil, err
@@ -345,23 +319,12 @@ func (r *WorkflowRepository) GetTransitionsByWorkflowID(workflowID string) ([]mo
 
 	var transitions []models.WorkflowTransition
 	for rows.Next() {
-		var tr models.WorkflowTransition
-		err := rows.Scan(
-			&tr.ID,
-			&tr.WorkflowID,
-			&tr.FromStepID,
-			&tr.ToStepID,
-			&tr.ActionName,
-			&tr.ConditionType,
-			&tr.ConditionValue,
-			&tr.CreatedAt,
-		)
+		tr, err := scanTransition(rows)
 		if err != nil {
 			return nil, err
 		}
-		transitions = append(transitions, tr)
+		transitions = append(transitions, *tr)
 	}
-
 	return transitions, nil
 }
 
@@ -369,11 +332,10 @@ func (r *WorkflowRepository) GetTransitionsByWorkflowID(workflowID string) ([]mo
 func (r *WorkflowRepository) GetValidTransitions(fromStepID string) ([]models.WorkflowTransition, error) {
 	query := `
 		SELECT id, workflow_id, from_step_id, to_step_id, action_name,
-		       condition_type, condition_value, created_at
+		       allowed_roles, condition_type, condition_value, created_at
 		FROM workflow_transitions
 		WHERE from_step_id = $1
 	`
-
 	rows, err := r.db.Query(query, fromStepID)
 	if err != nil {
 		return nil, err
@@ -382,23 +344,12 @@ func (r *WorkflowRepository) GetValidTransitions(fromStepID string) ([]models.Wo
 
 	var transitions []models.WorkflowTransition
 	for rows.Next() {
-		var tr models.WorkflowTransition
-		err := rows.Scan(
-			&tr.ID,
-			&tr.WorkflowID,
-			&tr.FromStepID,
-			&tr.ToStepID,
-			&tr.ActionName,
-			&tr.ConditionType,
-			&tr.ConditionValue,
-			&tr.CreatedAt,
-		)
+		tr, err := scanTransition(rows)
 		if err != nil {
 			return nil, err
 		}
-		transitions = append(transitions, tr)
+		transitions = append(transitions, *tr)
 	}
-
 	return transitions, nil
 }
 
@@ -406,57 +357,23 @@ func (r *WorkflowRepository) GetValidTransitions(fromStepID string) ([]models.Wo
 func (r *WorkflowRepository) GetTransitionByID(id string) (*models.WorkflowTransition, error) {
 	query := `
 		SELECT id, workflow_id, from_step_id, to_step_id, action_name,
-		       condition_type, condition_value, created_at
+		       allowed_roles, condition_type, condition_value, created_at
 		FROM workflow_transitions
 		WHERE id = $1
 	`
-
-	var tr models.WorkflowTransition
-	err := r.db.QueryRow(query, id).Scan(
-		&tr.ID,
-		&tr.WorkflowID,
-		&tr.FromStepID,
-		&tr.ToStepID,
-		&tr.ActionName,
-		&tr.ConditionType,
-		&tr.ConditionValue,
-		&tr.CreatedAt,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &tr, nil
+	return scanTransition(r.db.QueryRow(query, id))
 }
 
 // GetTransitionByAction retrieves a specific transition based on action
 func (r *WorkflowRepository) GetTransitionByAction(fromStepID, action string) (*models.WorkflowTransition, error) {
 	query := `
 		SELECT id, workflow_id, from_step_id, to_step_id, action_name,
-		       condition_type, condition_value, created_at
+		       allowed_roles, condition_type, condition_value, created_at
 		FROM workflow_transitions
 		WHERE from_step_id = $1 AND action_name = $2
 		LIMIT 1
 	`
-
-	var tr models.WorkflowTransition
-	err := r.db.QueryRow(query, fromStepID, action).Scan(
-		&tr.ID,
-		&tr.WorkflowID,
-		&tr.FromStepID,
-		&tr.ToStepID,
-		&tr.ActionName,
-		&tr.ConditionType,
-		&tr.ConditionValue,
-		&tr.CreatedAt,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &tr, nil
+	return scanTransition(r.db.QueryRow(query, fromStepID, action))
 }
 
 // Create creates a new workflow template.
@@ -489,59 +406,33 @@ func (r *WorkflowRepository) Create(workflow *models.Workflow) error {
 
 // CreateStep creates a new workflow step
 func (r *WorkflowRepository) CreateStep(step *models.WorkflowStep) error {
-	query := `
-		INSERT INTO workflow_steps (
-			id, workflow_id, step_name, step_order, initial, final,
-			allowed_roles, requires_all_approvers, min_approvals
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING created_at
-	`
-
 	step.ID = uuid.New().String()
-
-	// Marshal allowed_roles to JSON
-	allowedRolesJSON, err := json.Marshal(step.AllowedRoles)
-	if err != nil {
-		return fmt.Errorf("failed to marshal allowed_roles: %w", err)
-	}
-
-	return r.db.QueryRow(
-		query,
-		step.ID,
-		step.WorkflowID,
-		step.StepName,
-		step.StepOrder,
-		step.Initial,
-		step.Final,
-		allowedRolesJSON,
-		step.RequiresAllApprovers,
-		step.MinApprovals,
+	return r.db.QueryRow(`
+		INSERT INTO workflow_steps (id, workflow_id, step_name, step_order, initial, final)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING created_at`,
+		step.ID, step.WorkflowID, step.StepName, step.StepOrder, step.Initial, step.Final,
 	).Scan(&step.CreatedAt)
 }
 
 // CreateTransition creates a new workflow transition
 func (r *WorkflowRepository) CreateTransition(transition *models.WorkflowTransition) error {
-	query := `
-		INSERT INTO workflow_transitions (
-			id, workflow_id, from_step_id, to_step_id, action_name,
-			condition_type, condition_value
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING created_at
-	`
-
 	transition.ID = uuid.New().String()
 
-	return r.db.QueryRow(
-		query,
-		transition.ID,
-		transition.WorkflowID,
-		transition.FromStepID,
-		transition.ToStepID,
-		transition.ActionName,
-		transition.ConditionType,
-		transition.ConditionValue,
+	allowedRolesJSON, err := json.Marshal(transition.AllowedRoles)
+	if err != nil {
+		return fmt.Errorf("failed to marshal allowed_roles: %w", err)
+	}
+
+	return r.db.QueryRow(`
+		INSERT INTO workflow_transitions (
+			id, workflow_id, from_step_id, to_step_id, action_name,
+			allowed_roles, condition_type, condition_value
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING created_at`,
+		transition.ID, transition.WorkflowID, transition.FromStepID, transition.ToStepID,
+		transition.ActionName, allowedRolesJSON, transition.ConditionType, transition.ConditionValue,
 	).Scan(&transition.CreatedAt)
 }
 
@@ -573,76 +464,40 @@ func (r *WorkflowRepository) Update(workflow *models.Workflow) error {
 
 // UpdateStep updates an existing workflow step
 func (r *WorkflowRepository) UpdateStep(step *models.WorkflowStep) error {
-	query := `
+	result, err := r.db.Exec(`
 		UPDATE workflow_steps
-		SET step_name = $1, step_order = $2, initial = $3, final = $4,
-		    allowed_roles = $5, requires_all_approvers = $6, min_approvals = $7
-		WHERE id = $8
-	`
-
-	// Marshal allowed_roles to JSON
-	allowedRolesJSON, err := json.Marshal(step.AllowedRoles)
-	if err != nil {
-		return fmt.Errorf("failed to marshal allowed_roles: %w", err)
-	}
-
-	result, err := r.db.Exec(
-		query,
-		step.StepName,
-		step.StepOrder,
-		step.Initial,
-		step.Final,
-		allowedRolesJSON,
-		step.RequiresAllApprovers,
-		step.MinApprovals,
-		step.ID,
+		SET step_name = $1, step_order = $2, initial = $3, final = $4
+		WHERE id = $5`,
+		step.StepName, step.StepOrder, step.Initial, step.Final, step.ID,
 	)
-
 	if err != nil {
 		return err
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
+	if n, _ := result.RowsAffected(); n == 0 {
 		return fmt.Errorf("workflow step not found")
 	}
-
 	return nil
 }
 
 // UpdateTransition updates an existing workflow transition
 func (r *WorkflowRepository) UpdateTransition(transition *models.WorkflowTransition) error {
-	query := `
+	allowedRolesJSON, err := json.Marshal(transition.AllowedRoles)
+	if err != nil {
+		return fmt.Errorf("failed to marshal allowed_roles: %w", err)
+	}
+
+	result, err := r.db.Exec(`
 		UPDATE workflow_transitions
-		SET action_name = $1, condition_type = $2, condition_value = $3
-		WHERE id = $4
-	`
-
-	result, err := r.db.Exec(
-		query,
-		transition.ActionName,
-		transition.ConditionType,
-		transition.ConditionValue,
-		transition.ID,
+		SET action_name = $1, allowed_roles = $2, condition_type = $3, condition_value = $4
+		WHERE id = $5`,
+		transition.ActionName, allowedRolesJSON, transition.ConditionType, transition.ConditionValue, transition.ID,
 	)
-
 	if err != nil {
 		return err
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
+	if n, _ := result.RowsAffected(); n == 0 {
 		return fmt.Errorf("workflow transition not found")
 	}
-
 	return nil
 }
 
@@ -734,54 +589,44 @@ func (r *WorkflowRepository) DeleteTransition(id string) error {
 	return nil
 }
 
-// GetFirstActionStep gets the first actionable step in a workflow (the step after submission)
-// This is the step you transition to from the initial step via "submit" action
-// For example: Initial Step (Draft) -> [submit] -> First Action Step (Pending Review)
-// This combines the logic of: get initial step -> find submit transition -> get next step
-// Much more efficient than doing 3 separate queries
-func (r *WorkflowRepository) GetFirstActionStep(workflowID string) (*models.WorkflowStep, string, error) {
-	query := `
-		SELECT
-			ws.id, ws.workflow_id, ws.step_name, ws.step_order, ws.initial, ws.final,
-			ws.allowed_roles, ws.requires_all_approvers, ws.min_approvals, ws.created_at,
-			initial.id as initial_step_id
+// GetFirstActionStep gets the first actionable step and the transition leading to it
+// (from the initial step). Returns the step, the transition (with allowed_roles), and
+// the initial step's ID.
+func (r *WorkflowRepository) GetFirstActionStep(workflowID string) (*models.WorkflowStep, *models.WorkflowTransition, string, error) {
+	var step models.WorkflowStep
+	var transition models.WorkflowTransition
+	var initialStepID string
+	var allowedRolesJSON []byte
+
+	err := r.db.QueryRow(`
+		SELECT ws.id, ws.workflow_id, ws.step_name, ws.step_order, ws.initial, ws.final,
+		       ws.created_at,
+		       wt.id, wt.workflow_id, wt.from_step_id, wt.to_step_id,
+		       wt.action_name, wt.allowed_roles, wt.condition_type, wt.condition_value, wt.created_at,
+		       initial.id AS initial_step_id
 		FROM workflow_steps ws
 		INNER JOIN workflow_transitions wt ON ws.id = wt.to_step_id
 		INNER JOIN workflow_steps initial ON wt.from_step_id = initial.id
 		WHERE ws.workflow_id = $1
 		  AND initial.initial = true
 		ORDER BY ws.step_order ASC
-		LIMIT 1
-	`
-
-	var step models.WorkflowStep
-	var initialStepID string
-	var allowedRolesJSON []byte
-
-	err := r.db.QueryRow(query, workflowID).Scan(
-		&step.ID,
-		&step.WorkflowID,
-		&step.StepName,
-		&step.StepOrder,
-		&step.Initial,
-		&step.Final,
-		&allowedRolesJSON,
-		&step.RequiresAllApprovers,
-		&step.MinApprovals,
-		&step.CreatedAt,
-		&initialStepID,
+		LIMIT 1`, workflowID,
+	).Scan(
+		&step.ID, &step.WorkflowID, &step.StepName, &step.StepOrder,
+		&step.Initial, &step.Final, &step.CreatedAt,
+		&transition.ID, &transition.WorkflowID, &transition.FromStepID, &transition.ToStepID,
+		&transition.ActionName, &allowedRolesJSON, &transition.ConditionType, &transition.ConditionValue,
+		&transition.CreatedAt, &initialStepID,
 	)
-
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 
-	// Parse allowed_roles JSON
-	if err := json.Unmarshal(allowedRolesJSON, &step.AllowedRoles); err != nil {
-		return nil, "", fmt.Errorf("failed to parse allowed_roles: %w", err)
+	if err := json.Unmarshal(allowedRolesJSON, &transition.AllowedRoles); err != nil {
+		transition.AllowedRoles = []string{}
 	}
 
-	return &step, initialStepID, nil
+	return &step, &transition, initialStepID, nil
 }
 
 // UpdateEntityStatus updates the status of the real entity that a workflow instance tracks.

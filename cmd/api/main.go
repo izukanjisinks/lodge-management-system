@@ -66,7 +66,9 @@ func main() {
 
 	userService.SetEmailService(emailService)
 
-	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, clientRepo, emailService)
+	guestRepo := repository.NewGuestRepository()
+
+	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, clientRepo, guestRepo, emailService)
 
 	// Seed predefined roles
 	if err := roleService.InitializePredefinedRoles(); err != nil {
@@ -91,7 +93,6 @@ func main() {
 	workflowAdminHandler := handlers.NewWorkflowAdminHandler(workflowRepo)
 	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyService, userService)
 
-	guestRepo := repository.NewGuestRepository()
 	guestAuthSvc := services.NewGuestAuthService(guestRepo)
 	guestAuthSvc.SetEmailService(emailService)
 	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, guestAuthSvc)

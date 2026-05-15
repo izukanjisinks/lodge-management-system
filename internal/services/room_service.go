@@ -37,7 +37,6 @@ func (s *RoomService) Create(room *models.Room, orgID uuid.UUID) error {
 	if room.Images == nil {
 		room.Images = []string{}
 	}
-	room.IsAvailable = true
 	if err := s.repo.Create(room, orgID); err != nil {
 		return formatConstraintError(err)
 	}

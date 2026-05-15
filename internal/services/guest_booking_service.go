@@ -42,6 +42,13 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		return nil, errors.New("guest profile not found — please complete your registration")
 	}
 
+	if req.IDPassportNumber != "" && profile.IDPassportNumber != req.IDPassportNumber {
+		if err := s.guestAuth.UpdateProfileIDPassport(profile.ID, req.IDPassportNumber); err != nil {
+			return nil, fmt.Errorf("failed to save ID/passport number: %w", err)
+		}
+		profile.IDPassportNumber = req.IDPassportNumber
+	}
+
 	// Look up the room without an org filter — guests have no org in their JWT.
 	// orgID is derived from the room itself and used for all subsequent scoped calls.
 	room, err := s.roomRepo.GetByIDUnscoped(req.RoomID)
@@ -69,7 +76,6 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 	}
 
 	b := &models.Booking{
-		UserID:          userID,
 		RoomID:          req.RoomID,
 		ClientID:        profile.ID,
 		ClientType:      models.BookingClientTypeIndividual,

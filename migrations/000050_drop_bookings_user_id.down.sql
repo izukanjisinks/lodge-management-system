@@ -1,0 +1,1 @@
+ALTER TABLE bookings ADD COLUMN user_id UUID REFERENCES users(user_id) ON DELETE RESTRICT;

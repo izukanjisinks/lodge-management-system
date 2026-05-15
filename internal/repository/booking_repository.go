@@ -32,9 +32,9 @@ func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 
 	_, err := r.db.Exec(`
 		INSERT INTO bookings
-		    (id, user_id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-		b.ID, b.UserID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
+		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		b.ID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
 		orgID, b.CreatedAt, b.UpdatedAt,
 	)
@@ -50,10 +50,10 @@ func (r *BookingRepository) CreateInTx(tx *sql.Tx, b *models.Booking, orgID uuid
 
 	return tx.QueryRow(`
 		INSERT INTO bookings
-		    (id, user_id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		RETURNING booking_number`,
-		b.ID, b.UserID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
+		b.ID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
 		orgID, now, now,
 	).Scan(&b.BookingNumber)
@@ -63,7 +63,7 @@ func (r *BookingRepository) CreateInTx(tx *sql.Tx, b *models.Booking, orgID uuid
 // where the caller has already verified ownership via client_id.
 func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
-		SELECT b.id, b.booking_number, b.user_id, b.room_id, r.name AS room_name,
+		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -87,7 +87,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 
 func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
-		SELECT b.id, b.booking_number, b.user_id, b.room_id, r.name AS room_name,
+		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -147,7 +147,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT b.id, b.booking_number, b.user_id, b.room_id, r.name AS room_name,
+		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -365,7 +365,7 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var roomName, clientName, corporateClientName, specialRequests sql.NullString
 	var corporateClientID uuid.NullUUID
 	err := row.Scan(
-		&b.ID, &b.BookingNumber, &b.UserID, &b.RoomID, &roomName,
+		&b.ID, &b.BookingNumber, &b.RoomID, &roomName,
 		&b.ClientID, &b.ClientType, &clientName,
 		&corporateClientID, &corporateClientName,
 		&b.CheckIn, &b.CheckOut, &b.Guests,

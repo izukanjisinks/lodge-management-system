@@ -28,7 +28,7 @@ func (s *BookingService) SetInvoiceService(invoice *InvoiceService) {
 }
 
 
-func (s *BookingService) CreateIndividual(userID uuid.UUID, orgID uuid.UUID, req *models.CreateIndividualBookingRequest) (*models.Booking, error) {
+func (s *BookingService) CreateIndividual(orgID uuid.UUID, req *models.CreateIndividualBookingRequest) (*models.Booking, error) {
 	// Resolve client — look up existing or create on the fly
 	var clientID uuid.UUID
 	if req.ClientID != nil {
@@ -91,7 +91,6 @@ func (s *BookingService) CreateIndividual(userID uuid.UUID, orgID uuid.UUID, req
 	}
 
 	b := &models.Booking{
-		UserID:          userID,
 		RoomID:          req.RoomID,
 		ClientID:        clientID,
 		ClientType:      models.BookingClientTypeIndividual,
@@ -108,7 +107,7 @@ func (s *BookingService) CreateIndividual(userID uuid.UUID, orgID uuid.UUID, req
 	return s.repo.GetByID(b.ID, orgID)
 }
 
-func (s *BookingService) CreateCorporate(userID uuid.UUID, orgID uuid.UUID, req *models.CreateCorporateBookingRequest) (*models.CorporateBookingResponse, error) {
+func (s *BookingService) CreateCorporate(orgID uuid.UUID, req *models.CreateCorporateBookingRequest) (*models.CorporateBookingResponse, error) {
 	if len(req.Guests) == 0 {
 		return nil, errors.New("at least one guest is required for a corporate booking")
 	}
@@ -211,7 +210,6 @@ func (s *BookingService) CreateCorporate(userID uuid.UUID, orgID uuid.UUID, req 
 		}
 
 		b := &models.Booking{
-			UserID:            userID,
 			RoomID:            g.RoomID,
 			ClientID:          guestClientID,
 			ClientType:        models.BookingClientTypeIndividual,

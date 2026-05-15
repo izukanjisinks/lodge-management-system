@@ -68,18 +68,41 @@ func (r *GuestRepository) EmailExists(email string) (bool, error) {
 	return count > 0, err
 }
 
+// CreateIndividualProfile creates an individual_profiles record linked to a guest account.
+// org_id is NULL since guests are cross-org.
+func (r *GuestRepository) CreateIndividualProfile(guestID uuid.UUID, g *models.Guest) error {
+	_, err := r.db.Exec(`
+		INSERT INTO individual_profiles (id, guest_id, full_name, email, phone, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, 'active', $6, $6)`,
+		uuid.New(), guestID, g.FullName, g.Email, g.Phone, time.Now(),
+	)
+	return err
+}
+
+func (r *GuestRepository) UpdateIndividualProfileIDPassport(profileID uuid.UUID, idPassport string) error {
+	_, err := r.db.Exec(`
+		UPDATE individual_profiles SET id_passport_number=$1, updated_at=$2 WHERE id=$3`,
+		idPassport, time.Now(), profileID,
+	)
+	return err
+}
+
 func (r *GuestRepository) GetIndividualProfileByGuestID(guestID uuid.UUID) (*models.IndividualClient, error) {
 	query := `
 		SELECT id, full_name, email, phone, id_passport_number, nationality, status, notes, created_at, updated_at
 		FROM individual_profiles WHERE guest_id = $1`
 	var c models.IndividualClient
+	var idPassport, nationality, notes sql.NullString
 	err := r.db.QueryRow(query, guestID).Scan(
-		&c.ID, &c.FullName, &c.Email, &c.Phone, &c.IDPassportNumber,
-		&c.Nationality, &c.Status, &c.Notes, &c.CreatedAt, &c.UpdatedAt,
+		&c.ID, &c.FullName, &c.Email, &c.Phone, &idPassport,
+		&nationality, &c.Status, &notes, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("individual profile not found for guest")
 	}
+	c.IDPassportNumber = idPassport.String
+	c.Nationality = nationality.String
+	c.Notes = notes.String
 	return &c, nil
 }
 

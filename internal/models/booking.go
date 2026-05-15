@@ -55,7 +55,6 @@ var ValidBookingTransitions = map[string][]string{
 type Booking struct {
 	ID                uuid.UUID  `json:"id"`
 	BookingNumber     string     `json:"booking_number"`
-	UserID            uuid.UUID  `json:"user_id"`
 	RoomID            uuid.UUID  `json:"room_id"`
 	RoomName          string     `json:"room_name"`
 	ClientID          uuid.UUID  `json:"client_id"`
@@ -127,11 +126,12 @@ type CreateCorporateBookingRequest struct {
 // ─── Guest self-service booking request ──────────────────────────────────────
 
 type CreateBookingRequest struct {
-	RoomID          uuid.UUID `json:"room_id"`
-	CheckIn         DateOnly  `json:"check_in"`
-	CheckOut        DateOnly  `json:"check_out"`
-	Guests          int       `json:"guests"`
-	SpecialRequests string    `json:"special_requests,omitempty"`
+	RoomID           uuid.UUID `json:"room_id"`
+	CheckIn          DateOnly  `json:"check_in"`
+	CheckOut         DateOnly  `json:"check_out"`
+	Guests           int       `json:"guests"`
+	SpecialRequests  string    `json:"special_requests,omitempty"`
+	IDPassportNumber string    `json:"id_passport_number,omitempty"`
 }
 
 // ─── Corporate booking response ───────────────────────────────────────────────

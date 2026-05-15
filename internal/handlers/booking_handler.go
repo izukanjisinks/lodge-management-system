@@ -67,7 +67,7 @@ func (h *BookingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	_, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
@@ -91,7 +91,7 @@ func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 			return
 		}
-		booking, err := h.service.CreateIndividual(userID, orgID, &req)
+		booking, err := h.service.CreateIndividual(orgID, &req)
 		if err != nil {
 			utils.RespondError(w, http.StatusBadRequest, err.Error())
 			return
@@ -104,7 +104,7 @@ func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 			return
 		}
-		resp, err := h.service.CreateCorporate(userID, orgID, &req)
+		resp, err := h.service.CreateCorporate(orgID, &req)
 		if err != nil {
 			utils.RespondError(w, http.StatusBadRequest, err.Error())
 			return

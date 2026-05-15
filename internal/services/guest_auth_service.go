@@ -55,6 +55,10 @@ func (s *GuestAuthService) Register(req *models.GuestRegisterRequest) (*models.G
 		return nil, fmt.Errorf("failed to create guest account: %w", err)
 	}
 
+	if err := s.guestRepo.CreateIndividualProfile(guest.ID, guest); err != nil {
+		return nil, fmt.Errorf("failed to create guest profile: %w", err)
+	}
+
 	if s.emailService != nil {
 		go func() {
 			body := email.GuestWelcomeTemplate(req.FullName)
@@ -95,6 +99,10 @@ func (s *GuestAuthService) GetByID(id uuid.UUID) (*models.Guest, error) {
 
 func (s *GuestAuthService) GetProfileByGuestID(guestID uuid.UUID) (*models.IndividualClient, error) {
 	return s.guestRepo.GetIndividualProfileByGuestID(guestID)
+}
+
+func (s *GuestAuthService) UpdateProfileIDPassport(profileID uuid.UUID, idPassport string) error {
+	return s.guestRepo.UpdateIndividualProfileIDPassport(profileID, idPassport)
 }
 
 func (s *GuestAuthService) UpdateProfile(id uuid.UUID, req *models.GuestUpdateRequest) (*models.Guest, error) {

@@ -18,7 +18,7 @@ func RegisterWorkflowRoutes(h *handlers.WorkflowHandler) {
 		withAuthAndRole(h.GetTaskDetails, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
 	http.HandleFunc("POST /api/v1/workflow/instances",
-		withAuthAndRole(h.InitiateWorkflow, models.RoleAdmin, models.RoleManager))
+		withAuthAndRole(h.InitiateWorkflow, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
 	http.HandleFunc("GET /api/v1/workflow/task/{task_id}/instance",
 		withAuthAndRole(h.GetInstanceByTaskID, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))

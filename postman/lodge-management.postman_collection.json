@@ -1364,7 +1364,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"workflow_id\": \"{{workflow_id}}\",\n  \"step_name\": \"Pending Review\",\n  \"step_order\": 2,\n  \"initial\": false,\n  \"final\": false,\n  \"allowed_roles\": [\"manager\"],\n  \"requires_all_approvers\": false,\n  \"min_approvals\": 1\n}"
+              "raw": "{\n  \"workflow_id\": \"{{workflow_id}}\",\n  \"step_name\": \"Pending Review\",\n  \"step_order\": 2,\n  \"initial\": false,\n  \"final\": false\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/admin/workflow-steps",
@@ -1408,7 +1408,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"step_name\": \"Manager Review\",\n  \"allowed_roles\": [\"manager\", \"admin\"],\n  \"min_approvals\": 1\n}"
+              "raw": "{\n  \"step_name\": \"Manager Review\",\n  \"step_order\": 2,\n  \"initial\": false,\n  \"final\": true\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/admin/workflow-steps/{{step_id}}",
@@ -1464,7 +1464,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"workflow_id\": \"{{workflow_id}}\",\n  \"from_step_id\": \"<from-step-uuid>\",\n  \"to_step_id\": \"<to-step-uuid>\",\n  \"action_name\": \"approve\"\n}"
+              "raw": "{\n  \"workflow_id\": \"{{workflow_id}}\",\n  \"from_step_id\": \"<from-step-uuid>\",\n  \"to_step_id\": \"<to-step-uuid>\",\n  \"action_name\": \"Submit for Approval\",\n  \"allowed_roles\": [\"receptionist\", \"admin\", \"manager\"]\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/admin/workflow-transitions",
@@ -1495,7 +1495,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"action_name\": \"approve\",\n  \"condition_type\": \"user_role\",\n  \"condition_value\": \"manager\"\n}"
+              "raw": "{\n  \"action_name\": \"Submit for Approval\",\n  \"allowed_roles\": [\"manager\", \"admin\"]\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/admin/workflow-transitions/{{transition_id}}",
@@ -1585,7 +1585,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"workflow_type\": \"BOOKING_APPROVAL\",\n  \"task_details\": {\n    \"task_id\": \"{{booking_id}}\",\n    \"task_type\": \"booking\",\n    \"task_description\": \"New booking request from John Doe\",\n    \"sender_details\": {\n      \"sender_id\": \"{{individual_client_id}}\",\n      \"sender_name\": \"John Doe\"\n    }\n  },\n  \"priority\": \"medium\"\n}"
+              "raw": "{\n  \"workflow_type\": \"BOOKING_APPROVAL\",\n  \"task_details\": {\n    \"task_id\": \"{{booking_id}}\",\n    \"task_ref\": \"BK-001001\",\n    \"task_type\": \"booking\",\n    \"task_description\": \"New booking request from John Doe\",\n    \"sender_details\": {\n      \"sender_id\": \"{{individual_client_id}}\",\n      \"sender_name\": \"John Doe\",\n      \"position\": \"individual\",\n      \"department\": \"Guest\"\n    }\n  },\n  \"priority\": \"medium\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/workflow/instances",
@@ -1610,7 +1610,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "workflow", "instances", "{{instance_id}}", "action"]
             },
-            "description": "Approve or reject a workflow instance. Only instances belonging to the caller's org can be actioned — cross-org access returns 404."
+            "description": "Approve or reject a workflow instance. `action` must be `\"approve\"` or `\"reject\"` — any other value returns 400. Only instances belonging to the caller's org can be actioned."
           },
           "response": []
         },

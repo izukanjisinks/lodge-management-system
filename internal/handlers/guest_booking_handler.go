@@ -19,14 +19,9 @@ func NewGuestBookingHandler(service *services.GuestBookingService) *GuestBooking
 	return &GuestBookingHandler{service: service}
 }
 
-func guestFromContext(r *http.Request) (*models.User, bool) {
-	user, ok := r.Context().Value(middleware.UserKey).(*models.User)
-	return user, ok && user != nil
-}
-
 // Create handles POST /api/v1/guest/bookings
 func (h *GuestBookingHandler) Create(w http.ResponseWriter, r *http.Request) {
-	user, ok := guestFromContext(r)
+	guestID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
@@ -38,7 +33,7 @@ func (h *GuestBookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	booking, err := h.service.Create(user.UserID, &req)
+	booking, err := h.service.Create(guestID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -49,14 +44,14 @@ func (h *GuestBookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // List handles GET /api/v1/guest/bookings
 func (h *GuestBookingHandler) List(w http.ResponseWriter, r *http.Request) {
-	user, ok := guestFromContext(r)
+	guestID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	pag := utils.ParsePagination(r)
-	bookings, total, err := h.service.ListForGuest(user.UserID, pag.Page, pag.PageSize)
+	bookings, total, err := h.service.ListForGuest(guestID, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -72,7 +67,7 @@ func (h *GuestBookingHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /api/v1/guest/bookings/{id}
 func (h *GuestBookingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	user, ok := guestFromContext(r)
+	guestID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
@@ -84,7 +79,7 @@ func (h *GuestBookingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	booking, err := h.service.GetByID(user.UserID, id)
+	booking, err := h.service.GetByID(guestID, id)
 	if err != nil {
 		if err.Error() == "forbidden" {
 			utils.RespondError(w, http.StatusForbidden, "Access denied")
@@ -99,7 +94,7 @@ func (h *GuestBookingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 // Cancel handles PATCH /api/v1/guest/bookings/{id}/cancel
 func (h *GuestBookingHandler) Cancel(w http.ResponseWriter, r *http.Request) {
-	user, ok := guestFromContext(r)
+	guestID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
@@ -111,7 +106,7 @@ func (h *GuestBookingHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Cancel(user.UserID, id); err != nil {
+	if err := h.service.Cancel(guestID, id); err != nil {
 		if err.Error() == "forbidden" {
 			utils.RespondError(w, http.StatusForbidden, "Access denied")
 			return

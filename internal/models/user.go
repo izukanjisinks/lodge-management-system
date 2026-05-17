@@ -8,6 +8,9 @@ import (
 
 type User struct {
 	UserID               uuid.UUID  `json:"user_id"`
+	OrgID                *uuid.UUID `json:"org_id,omitempty"`
+	OrgName              string     `json:"org_name,omitempty"`
+	OrgLogoURL           string     `json:"org_logo_url,omitempty"`
 	FullName             string     `json:"full_name"`
 	Email                string     `json:"email"`
 	Password             string     `json:"-"`

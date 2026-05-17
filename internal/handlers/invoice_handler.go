@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
@@ -19,10 +20,11 @@ func NewInvoiceHandler(service *services.InvoiceService) *InvoiceHandler {
 }
 
 func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	pag := utils.ParsePagination(r)
 	status := r.URL.Query().Get("status")
 
-	invoices, total, err := h.service.List(status, pag.Page, pag.PageSize)
+	invoices, total, err := h.service.List(orgID, status, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -42,8 +44,9 @@ func (h *InvoiceHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid invoice ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	inv, err := h.service.GetByID(id)
+	inv, err := h.service.GetByID(id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -58,8 +61,9 @@ func (h *InvoiceHandler) GetByBookingID(w http.ResponseWriter, r *http.Request) 
 		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	inv, err := h.service.GetByBookingID(bookingID)
+	inv, err := h.service.GetByBookingID(bookingID, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -74,6 +78,7 @@ func (h *InvoiceHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid invoice ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var req models.UpdateInvoiceStatusRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
@@ -81,7 +86,7 @@ func (h *InvoiceHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inv, err := h.service.UpdateStatus(id, &req)
+	inv, err := h.service.UpdateStatus(id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

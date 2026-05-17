@@ -10,9 +10,20 @@ import (
 	"github.com/google/uuid"
 )
 
+type TokenType string
+
+const (
+	TokenTypeStaff     TokenType = "staff"
+	TokenTypeGuest     TokenType = "guest"
+	TokenTypeBackoffice TokenType = "backoffice"
+)
+
 type CustomClaims struct {
-	Email  string    `json:"email"`
-	UserID uuid.UUID `json:"userId"`
+	Email     string    `json:"email"`
+	UserID    uuid.UUID `json:"userId"`
+	OrgID     uuid.UUID `json:"orgId"`
+	Role      string    `json:"role"`
+	TokenType TokenType `json:"tokenType"`
 	jwt.RegisteredClaims
 }
 
@@ -24,10 +35,45 @@ func getSecretKey() []byte {
 	return []byte(secret)
 }
 
-func GenerateToken(email string, userId uuid.UUID) (string, error) {
+func GenerateStaffToken(email string, userID, orgID uuid.UUID, role string) (string, error) {
 	claims := CustomClaims{
-		Email:  email,
-		UserID: userId,
+		Email:     email,
+		UserID:    userID,
+		OrgID:     orgID,
+		Role:      role,
+		TokenType: TokenTypeStaff,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(getSecretKey())
+}
+
+func GenerateGuestToken(email string, guestID uuid.UUID) (string, error) {
+	claims := CustomClaims{
+		Email:     email,
+		UserID:    guestID,
+		TokenType: TokenTypeGuest,
+		Role:      "guest",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(getSecretKey())
+}
+
+func GenerateBackofficeToken(email string, userID uuid.UUID) (string, error) {
+	claims := CustomClaims{
+		Email:     email,
+		UserID:    userID,
+		TokenType: TokenTypeBackoffice,
+		Role:      "backoffice",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -68,4 +114,10 @@ func ExtractEmailFromToken(tokenString string) (string, error) {
 		return "", err
 	}
 	return claims.Email, nil
+}
+
+// GenerateToken is kept for backward compatibility during migration.
+// Prefer GenerateStaffToken, GenerateGuestToken, or GenerateBackofficeToken.
+func GenerateToken(email string, userId uuid.UUID) (string, error) {
+	return GenerateStaffToken(email, userId, uuid.Nil, "")
 }

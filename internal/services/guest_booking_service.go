@@ -11,24 +11,21 @@ import (
 )
 
 type GuestBookingService struct {
-	bookingRepo  *repository.BookingRepository
-	roomRepo     *repository.RoomRepository
-	mealPlanRepo *repository.MealPlanRepository
-	guestAuth    *GuestAuthService
-	workflow     *WorkflowService
+	bookingRepo *repository.BookingRepository
+	roomRepo    *repository.RoomRepository
+	guestAuth   *GuestAuthService
+	workflow    *WorkflowService
 }
 
 func NewGuestBookingService(
 	bookingRepo *repository.BookingRepository,
 	roomRepo *repository.RoomRepository,
-	mealPlanRepo *repository.MealPlanRepository,
 	guestAuth *GuestAuthService,
 ) *GuestBookingService {
 	return &GuestBookingService{
-		bookingRepo:  bookingRepo,
-		roomRepo:     roomRepo,
-		mealPlanRepo: mealPlanRepo,
-		guestAuth:    guestAuth,
+		bookingRepo: bookingRepo,
+		roomRepo:    roomRepo,
+		guestAuth:   guestAuth,
 	}
 }
 
@@ -40,23 +37,37 @@ func (s *GuestBookingService) SetWorkflowService(workflow *WorkflowService) {
 // Create makes a booking on behalf of the logged-in guest.
 // client_id and client_type are resolved automatically from the JWT user.
 func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBookingRequest) (*models.Booking, error) {
-	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	profile, err := s.guestAuth.GetProfileByGuestID(userID)
 	if err != nil {
 		return nil, errors.New("guest profile not found — please complete your registration")
 	}
 
-	room, err := s.roomRepo.GetByID(req.RoomID)
+	if req.IDPassportNumber != "" && profile.IDPassportNumber != req.IDPassportNumber {
+		if err := s.guestAuth.UpdateProfileIDPassport(profile.ID, req.IDPassportNumber); err != nil {
+			return nil, fmt.Errorf("failed to save ID/passport number: %w", err)
+		}
+		profile.IDPassportNumber = req.IDPassportNumber
+	}
+
+	// Look up the room without an org filter — guests have no org in their JWT.
+	// orgID is derived from the room itself and used for all subsequent scoped calls.
+	room, err := s.roomRepo.GetByIDUnscoped(req.RoomID)
 	if err != nil {
 		return nil, errors.New("room not found")
 	}
+	orgID := uuid.Nil
+	if room.OrgID != nil {
+		orgID = *room.OrgID
+	}
+
 	if req.Guests > room.Capacity {
 		return nil, fmt.Errorf("room capacity is %d, requested %d guests", room.Capacity, req.Guests)
 	}
-	if req.CheckOut.Before(req.CheckIn) || req.CheckOut.Equal(req.CheckIn) {
+	if req.CheckOut.Before(req.CheckIn.Time) || req.CheckOut.Equal(req.CheckIn.Time) {
 		return nil, errors.New("check_out must be after check_in")
 	}
 
-	available, err := s.bookingRepo.IsRoomAvailable(req.RoomID, req.CheckIn, req.CheckOut, nil)
+	available, err := s.bookingRepo.IsRoomAvailable(req.RoomID, req.CheckIn.Time, req.CheckOut.Time, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -64,30 +75,26 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		return nil, errors.New("room is not available for the selected dates")
 	}
 
-	if req.MealPlanID != nil {
-		if _, err := s.mealPlanRepo.GetByID(*req.MealPlanID); err != nil {
-			return nil, errors.New("meal plan not found")
-		}
-	}
-
 	b := &models.Booking{
-		UserID:          userID,
 		RoomID:          req.RoomID,
 		ClientID:        profile.ID,
 		ClientType:      models.BookingClientTypeIndividual,
-		MealPlanID:      req.MealPlanID,
-		CheckIn:         req.CheckIn,
-		CheckOut:        req.CheckOut,
+		CheckIn:         req.CheckIn.Time,
+		CheckOut:        req.CheckOut.Time,
 		Guests:          req.Guests,
 		Status:          models.BookingStatusPending,
 		SpecialRequests: req.SpecialRequests,
 	}
 
-	if err := s.bookingRepo.Create(b); err != nil {
+	if err := s.bookingRepo.Create(b, orgID); err != nil {
 		return nil, err
 	}
 
-	created, err := s.bookingRepo.GetByID(b.ID)
+	if err := s.guestAuth.UpdateProfileOrg(userID, orgID); err != nil {
+		fmt.Printf("warning: failed to stamp org on guest profile for guest %s: %v\n", userID, err)
+	}
+
+	created, err := s.bookingRepo.GetByIDUnscoped(b.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +103,7 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 		go func() {
 			taskDetails := models.TaskDetails{
 				TaskID:          created.ID.String(),
+				TaskRef:         created.BookingNumber,
 				TaskType:        "booking",
 				TaskDescription: fmt.Sprintf("Review booking request for %s — %s to %s (%d guest(s))", created.ClientName, created.CheckIn.Format("2006-01-02"), created.CheckOut.Format("2006-01-02"), created.Guests),
 				SenderDetails: models.SenderDetails{
@@ -111,6 +119,7 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 				userID.String(),
 				"medium",
 				nil,
+				orgID.String(),
 			); err != nil {
 				fmt.Printf("warning: failed to initiate booking approval workflow for booking %s: %v\n", created.ID, err)
 			}
@@ -122,22 +131,22 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 
 // ListForGuest returns all bookings belonging to the logged-in guest.
 func (s *GuestBookingService) ListForGuest(userID uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
-	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	profile, err := s.guestAuth.GetProfileByGuestID(userID)
 	if err != nil {
 		return nil, 0, errors.New("guest profile not found")
 	}
 
-	return s.bookingRepo.List("", models.BookingClientTypeIndividual, &profile.ID, page, pageSize)
+	return s.bookingRepo.List(uuid.Nil, "", models.BookingClientTypeIndividual, &profile.ID, page, pageSize)
 }
 
 // GetByID returns a single booking, scoped to the guest — 403 if it doesn't belong to them.
 func (s *GuestBookingService) GetByID(userID uuid.UUID, bookingID uuid.UUID) (*models.Booking, error) {
-	profile, err := s.guestAuth.GetProfileByUserID(userID)
+	profile, err := s.guestAuth.GetProfileByGuestID(userID)
 	if err != nil {
 		return nil, errors.New("guest profile not found")
 	}
 
-	b, err := s.bookingRepo.GetByID(bookingID)
+	b, err := s.bookingRepo.GetByIDUnscoped(bookingID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -166,5 +175,10 @@ func (s *GuestBookingService) Cancel(userID uuid.UUID, bookingID uuid.UUID) erro
 		return fmt.Errorf("cannot cancel a booking with status %q", b.Status)
 	}
 
-	return s.bookingRepo.UpdateStatusTx(bookingID, models.BookingStatusCancelled)
+	// Derive orgID from the room so the status update is scoped correctly.
+	orgID := uuid.Nil
+	if room, err := s.roomRepo.GetByIDUnscoped(b.RoomID); err == nil && room.OrgID != nil {
+		orgID = *room.OrgID
+	}
+	return s.bookingRepo.UpdateStatusTx(bookingID, orgID, models.BookingStatusCancelled)
 }

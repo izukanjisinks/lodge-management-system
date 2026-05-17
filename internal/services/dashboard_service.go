@@ -3,6 +3,8 @@ package services
 import (
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 type DashboardService struct {
@@ -13,28 +15,28 @@ func NewDashboardService(repo *repository.DashboardRepository) *DashboardService
 	return &DashboardService{repo: repo}
 }
 
-func (s *DashboardService) GetStaffStats() (*models.DashboardStats, error) {
-	statCards, err := s.repo.StatCards()
+func (s *DashboardService) GetStaffStats(orgID uuid.UUID) (*models.DashboardStats, error) {
+	statCards, err := s.repo.StatCards(orgID)
 	if err != nil {
 		return nil, err
 	}
 
-	roomSummary, err := s.repo.RoomSummary()
+	roomSummary, err := s.repo.RoomSummary(orgID)
 	if err != nil {
 		return nil, err
 	}
 
-	revenueByMonth, err := s.repo.RevenueByMonth(12)
+	revenueByMonth, err := s.repo.RevenueByMonth(orgID, 12)
 	if err != nil {
 		return nil, err
 	}
 
-	reservationsByDay, err := s.repo.ReservationsByDay(14)
+	reservationsByDay, err := s.repo.ReservationsByDay(orgID, 14)
 	if err != nil {
 		return nil, err
 	}
 
-	recentBookings, err := s.repo.RecentBookings(5)
+	recentBookings, err := s.repo.RecentBookings(orgID, 5)
 	if err != nil {
 		return nil, err
 	}

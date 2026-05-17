@@ -22,28 +22,30 @@ func NewUserRepository() *UserRepository {
 
 func (r *UserRepository) Create(user *models.User) error {
 	query := `
-		INSERT INTO users (user_id, full_name, email, password, role_id, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+		INSERT INTO users (user_id, full_name, email, password, role_id, org_id, is_active, change_password, password_changed_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 	user.UserID = uuid.New()
 	now := time.Now()
 	user.CreatedAt = now
 	user.UpdatedAt = now
 	_, err := r.db.Exec(query,
-		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.IsActive, user.CreatedAt, user.UpdatedAt)
+		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.OrgID,
+		user.IsActive, user.ChangePassword, user.PasswordChangedAt, user.CreatedAt, user.UpdatedAt)
 	return err
 }
 
 // CreateTx inserts a user within an existing transaction.
 func (r *UserRepository) CreateTx(tx *sql.Tx, user *models.User) error {
 	query := `
-		INSERT INTO users (user_id, full_name, email, password, role_id, is_active, change_password, password_changed_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+		INSERT INTO users (user_id, full_name, email, password, role_id, org_id, is_active, change_password, password_changed_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 	user.UserID = uuid.New()
 	now := time.Now()
 	user.CreatedAt = now
 	user.UpdatedAt = now
 	_, err := tx.Exec(query,
-		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.IsActive, false, now, user.CreatedAt, user.UpdatedAt)
+		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.OrgID,
+		user.IsActive, user.ChangePassword, now, user.CreatedAt, user.UpdatedAt)
 	return err
 }
 
@@ -52,9 +54,10 @@ func (r *UserRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
+		LEFT JOIN organizations o ON u.org_id = o.id
 		WHERE u.user_id = $1`
 
 	return r.scanUser(r.db.QueryRow(query, id))
@@ -65,12 +68,66 @@ func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
+		LEFT JOIN organizations o ON u.org_id = o.id
 		WHERE u.email = $1`
 
 	return r.scanUser(r.db.QueryRow(query, email))
+}
+
+// GetAllByEmail returns all users with the given email across all organizations,
+// joined with their org name. Used by the multi-org login flow to detect when a
+// user belongs to multiple orgs and to return the org list for selection.
+func (r *UserRepository) GetAllByEmail(email string) ([]models.User, error) {
+	query := `
+		SELECT u.user_id, u.org_id, o.name AS org_name
+		FROM users u
+		LEFT JOIN organizations o ON u.org_id = o.id
+		WHERE u.email = $1`
+
+	rows, err := r.db.Query(query, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		var orgID sql.NullString
+		var orgName sql.NullString
+		if err := rows.Scan(&u.UserID, &orgID, &orgName); err != nil {
+			return nil, err
+		}
+		if orgID.Valid {
+			parsed, _ := uuid.Parse(orgID.String)
+			u.OrgID = &parsed
+			u.Role = nil
+		}
+		if orgName.Valid {
+			u.OrgName = orgName.String
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// GetByEmailAndOrg returns a single user matched by both email and org — used for the
+// second step of multi-org login after the user has selected their organization.
+func (r *UserRepository) GetByEmailAndOrg(email string, orgID uuid.UUID) (*models.User, error) {
+	query := `
+		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
+		       u.change_password, u.password_changed_at, u.password_expires_at,
+		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
+		FROM users u
+		LEFT JOIN roles r ON u.role_id = r.role_id
+		LEFT JOIN organizations o ON u.org_id = o.id
+		WHERE u.email = $1 AND u.org_id = $2`
+
+	return r.scanUser(r.db.QueryRow(query, email, orgID))
 }
 
 func (r *UserRepository) GetAllUsers() ([]models.User, error) {
@@ -78,9 +135,10 @@ func (r *UserRepository) GetAllUsers() ([]models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
+		LEFT JOIN organizations o ON u.org_id = o.id
 		ORDER BY u.created_at DESC`
 
 	rows, err := r.db.Query(query)
@@ -100,37 +158,31 @@ func (r *UserRepository) GetAllUsers() ([]models.User, error) {
 	return users, rows.Err()
 }
 
-// List returns paginated users with optional filtering
-func (r *UserRepository) List(search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
-	args := []interface{}{}
-	where := []string{}
-	i := 1
+// List returns paginated users with optional filtering, scoped to the given org.
+func (r *UserRepository) List(orgID uuid.UUID, search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
+	args := []interface{}{orgID}
+	where := []string{"u.org_id = $1"}
+	i := 2
 
-	// Search filter
 	if search != "" {
-		where = append(where, fmt.Sprintf("(u.email ILIKE $%d)", i))
+		where = append(where, fmt.Sprintf("(u.email ILIKE $%d OR u.full_name ILIKE $%d)", i, i))
 		args = append(args, "%"+search+"%")
 		i++
 	}
 
-	// Role filter
 	if roleID != nil {
 		where = append(where, fmt.Sprintf("u.role_id=$%d", i))
 		args = append(args, *roleID)
 		i++
 	}
 
-	// Active status filter
 	if isActive != nil {
 		where = append(where, fmt.Sprintf("u.is_active=$%d", i))
 		args = append(args, *isActive)
 		i++
 	}
 
-	whereStr := "1=1"
-	if len(where) > 0 {
-		whereStr = strings.Join(where, " AND ")
-	}
+	whereStr := strings.Join(where, " AND ")
 
 	// Get total count
 	var total int
@@ -146,9 +198,10 @@ func (r *UserRepository) List(search string, roleID *uuid.UUID, isActive *bool, 
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
+		LEFT JOIN organizations o ON u.org_id = o.id
 		WHERE %s
 		ORDER BY u.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1)
@@ -177,19 +230,19 @@ func (r *UserRepository) Update(user *models.User) error {
 		       password = $6, change_password = $7, password_changed_at = $8,
 		       password_expires_at = $9, failed_login_attempts = $10,
 		       is_locked = $11, locked_until = $12, last_login_at = $13
-		WHERE user_id = $14`
+		WHERE user_id = $14 AND org_id = $15`
 	_, err := r.db.Exec(query,
 		user.FullName, user.Email, user.RoleID, user.IsActive, time.Now(),
 		user.Password, user.ChangePassword, user.PasswordChangedAt,
 		user.PasswordExpiresAt, user.FailedLoginAttempts,
-		user.IsLocked, user.LockedUntil, user.LastLoginAt, user.UserID,
+		user.IsLocked, user.LockedUntil, user.LastLoginAt, user.UserID, user.OrgID,
 	)
 	return err
 }
 
-func (r *UserRepository) Delete(id uuid.UUID) error {
-	query := `DELETE FROM users WHERE user_id = $1`
-	result, err := r.db.Exec(query, id)
+func (r *UserRepository) Delete(id, orgID uuid.UUID) error {
+	query := `DELETE FROM users WHERE user_id = $1 AND org_id = $2`
+	result, err := r.db.Exec(query, id, orgID)
 	if err != nil {
 		return err
 	}
@@ -203,9 +256,9 @@ func (r *UserRepository) Delete(id uuid.UUID) error {
 	return nil
 }
 
-func (r *UserRepository) EmailExists(email string) (bool, error) {
+func (r *UserRepository) EmailExists(email string, orgID uuid.UUID) (bool, error) {
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(1) FROM users WHERE email = $1`, email).Scan(&count)
+	err := r.db.QueryRow(`SELECT COUNT(1) FROM users WHERE email = $1 AND org_id = $2`, email, orgID).Scan(&count)
 	return count > 0, err
 }
 
@@ -219,15 +272,23 @@ func (r *UserRepository) scanUser(row rowScanner) (*models.User, error) {
 	var roleID sql.NullString
 	var rRoleID, rName, rDesc sql.NullString
 	var passwordChangedAt, passwordExpiresAt, lockedUntil, lastLoginAt sql.NullTime
+	var orgName, orgLogoURL sql.NullString
 
 	err := row.Scan(
 		&u.UserID, &u.FullName, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
 		&u.ChangePassword, &passwordChangedAt, &passwordExpiresAt,
 		&u.FailedLoginAttempts, &u.IsLocked, &lockedUntil, &lastLoginAt,
-		&rRoleID, &rName, &rDesc,
+		&rRoleID, &rName, &rDesc, &u.OrgID, &orgName, &orgLogoURL,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if orgName.Valid {
+		u.OrgName = orgName.String
+	}
+	if orgLogoURL.Valid {
+		u.OrgLogoURL = orgLogoURL.String
 	}
 
 	if roleID.Valid {
@@ -283,9 +344,9 @@ func (r *UserRepository) GetRoleByName(name string) (*models.Role, error) {
 	return &role, nil
 }
 
-// GetUserWithFewestTasksByRole finds a user with the specified role who has the fewest pending tasks
-// This enables load balancing when assigning workflow tasks
-func (r *UserRepository) GetUserWithFewestTasksByRole(roleName string) (*models.User, error) {
+// GetUserWithFewestTasksByRole finds a user with the specified role who has the fewest pending tasks,
+// scoped to the given org so tasks are never assigned cross-org.
+func (r *UserRepository) GetUserWithFewestTasksByRole(orgID uuid.UUID, roleName string) (*models.User, error) {
 	query := `
 		SELECT u.user_id, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       r.role_id, r.name, r.description,
@@ -293,7 +354,7 @@ func (r *UserRepository) GetUserWithFewestTasksByRole(roleName string) (*models.
 		FROM users u
 		INNER JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN assigned_tasks at ON at.assigned_to = u.user_id AND at.status = 'pending'
-		WHERE r.name = $1 AND u.is_active = true
+		WHERE r.name = $1 AND u.is_active = true AND u.org_id = $2
 		GROUP BY u.user_id, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		         r.role_id, r.name, r.description
 		ORDER BY task_count ASC, u.created_at ASC
@@ -305,7 +366,7 @@ func (r *UserRepository) GetUserWithFewestTasksByRole(roleName string) (*models.
 	var rRoleID, rName, rDesc sql.NullString
 	var taskCount int
 
-	err := r.db.QueryRow(query, roleName).Scan(
+	err := r.db.QueryRow(query, roleName, orgID).Scan(
 		&u.UserID, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
 		&rRoleID, &rName, &rDesc, &taskCount,
 	)

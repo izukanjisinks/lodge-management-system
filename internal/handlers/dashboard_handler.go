@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"lodge-system/internal/middleware"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 )
@@ -16,7 +17,8 @@ func NewDashboardHandler(service *services.DashboardService) *DashboardHandler {
 }
 
 func (h *DashboardHandler) StaffStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.service.GetStaffStats()
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	stats, err := h.service.GetStaffStats(orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to load dashboard stats")
 		return

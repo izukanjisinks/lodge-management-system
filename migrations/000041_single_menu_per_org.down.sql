@@ -1,0 +1,4 @@
+ALTER TABLE menus DROP CONSTRAINT IF EXISTS uq_menus_org;
+ALTER TABLE menus ALTER COLUMN org_id SET NOT NULL;
+ALTER TABLE menus ADD CONSTRAINT uq_menus_name_org UNIQUE (org_id, name);
+DELETE FROM menus WHERE org_id IS NULL;

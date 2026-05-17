@@ -8,12 +8,12 @@ import (
 )
 
 func RegisterMealPlanRoutes(h *handlers.MealPlanHandler) {
-	// Read — public (website guests select meal plans during reservation)
+	// Read — staff only (org-scoped via JWT)
 	http.HandleFunc("GET /api/v1/meal-plans",
-		withPublic(h.List))
+		withAuth(h.List))
 
 	http.HandleFunc("GET /api/v1/meal-plans/{id}",
-		withPublic(h.GetByID))
+		withAuth(h.GetByID))
 
 	// Write — admin and manager only
 	http.HandleFunc("POST /api/v1/meal-plans",

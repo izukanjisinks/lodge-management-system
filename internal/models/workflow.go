@@ -7,14 +7,12 @@ type WorkflowType string
 
 // Workflow type constants
 const (
-	WorkflowTypeLeaveRequest    WorkflowType = "LEAVE_REQUEST"
 	WorkflowTypeBookingApproval WorkflowType = "BOOKING_APPROVAL"
 )
 
 // GetAllWorkflowTypes returns all available workflow types
 func GetAllWorkflowTypes() []WorkflowType {
 	return []WorkflowType{
-		WorkflowTypeLeaveRequest,
 		WorkflowTypeBookingApproval,
 	}
 }
@@ -30,11 +28,6 @@ type WorkflowTypeInfo struct {
 func GetWorkflowTypeInfo() []WorkflowTypeInfo {
 	return []WorkflowTypeInfo{
 		{
-			Type:        WorkflowTypeLeaveRequest,
-			Name:        "Leave Request",
-			Description: "Workflow for managing employee leave requests and approvals",
-		},
-		{
 			Type:        WorkflowTypeBookingApproval,
 			Name:        "Booking Approval",
 			Description: "Workflow for reviewing and approving guest booking requests",
@@ -45,6 +38,7 @@ func GetWorkflowTypeInfo() []WorkflowTypeInfo {
 // Workflow represents a workflow template (the blueprint)
 type Workflow struct {
 	ID           string        `json:"id"`
+	OrgID        string        `json:"org_id,omitempty"`
 	Name         string        `json:"name"`
 	Description  string        `json:"description"`
 	WorkflowType *WorkflowType `json:"workflow_type,omitempty"` // Unique identifier for workflow purpose
@@ -70,16 +64,13 @@ type WorkflowWithCounts struct {
 
 // WorkflowStep represents a step/stage in a workflow template
 type WorkflowStep struct {
-	ID                   string    `json:"id"`
-	WorkflowID           string    `json:"workflow_id"`
-	StepName             string    `json:"step_name"`
-	StepOrder            int       `json:"step_order"`
-	Initial              bool      `json:"initial"`              // First step in workflow
-	Final                bool      `json:"final"`                // Last step in workflow
-	AllowedRoles         []string  `json:"allowed_roles"`        // Roles that can act on this step
-	RequiresAllApprovers bool      `json:"requires_all_approvers"` // true = all must approve, false = any one
-	MinApprovals         int       `json:"min_approvals"`        // Minimum approvals needed (0 = not used)
-	CreatedAt            time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	WorkflowID string    `json:"workflow_id"`
+	StepName   string    `json:"step_name"`
+	StepOrder  int       `json:"step_order"`
+	Initial    bool      `json:"initial"` // First step in workflow
+	Final      bool      `json:"final"`   // Last step in workflow
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // WorkflowTransition represents a transition between steps
@@ -88,9 +79,10 @@ type WorkflowTransition struct {
 	WorkflowID     string    `json:"workflow_id"`
 	FromStepID     string    `json:"from_step_id"`
 	ToStepID       string    `json:"to_step_id"`
-	ActionName     string    `json:"action_name"`      // "submit", "approve", "reject", "reassign"
-	ConditionType  *string   `json:"condition_type"`   // e.g., "user_role", "assigned_user_only"
-	ConditionValue *string   `json:"condition_value"`  // JSON for complex conditions
+	ActionName     string    `json:"action_name"`    // "submit", "approve", "reject"
+	AllowedRoles   []string  `json:"allowed_roles"`  // Roles that can trigger this transition
+	ConditionType  *string   `json:"condition_type"` // e.g., "user_role", "assigned_user_only"
+	ConditionValue *string   `json:"condition_value"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -98,7 +90,8 @@ type WorkflowTransition struct {
 // This tracks the overall progress of one specific case (e.g., one leave request)
 type WorkflowInstance struct {
 	ID            string      `json:"id"`
-	WorkflowID    string      `json:"workflow_id"`    // References the Workflow template
+	OrgID         string      `json:"org_id,omitempty"`
+	WorkflowID    string      `json:"workflow_id"`     // References the Workflow template
 	CurrentStepID string      `json:"current_step_id"` // Where is this instance currently?
 	Status        string      `json:"status"`          // "pending", "in_progress", "completed", "rejected", "cancelled"
 	TaskDetails   TaskDetails `json:"task_details"`    // The actual data for this instance
@@ -114,6 +107,7 @@ type WorkflowInstance struct {
 // Multiple tasks can exist for the same instance (e.g., parallel approvals)
 type AssignedTask struct {
 	ID          string       `json:"id"`
+	OrgID       string       `json:"org_id,omitempty"`
 	InstanceID  string       `json:"instance_id"` // References WorkflowInstance
 	StepID      string       `json:"step_id"`     // Which step is this task for?
 	StepName    string       `json:"step_name"`   // Denormalized for easy display
@@ -129,11 +123,12 @@ type AssignedTask struct {
 
 // TaskDetails contains the context and data for a workflow instance
 type TaskDetails struct {
-	TaskID          string        `json:"task_id"`   // e.g., leave_request_id, employee_onboarding_id
-	TaskType        string        `json:"task_type"` // e.g., "leave_request", "employee_onboarding"
+	TaskID          string        `json:"task_id"`            // UUID of the entity (booking ID, etc.)
+	TaskRef         string        `json:"task_ref,omitempty"` // Human-readable reference (e.g. BK-001004)
+	TaskType        string        `json:"task_type"`          // e.g., "booking"
 	TaskDescription string        `json:"task_description"`
 	SenderDetails   SenderDetails `json:"sender_details"`
-	Metadata        string        `json:"metadata,omitempty"` // JSON for additional flexible data
+	Metadata        string        `json:"metadata,omitempty"`
 }
 
 // SenderDetails contains information about who initiated the workflow
@@ -148,7 +143,7 @@ type SenderDetails struct {
 type WorkflowHistory struct {
 	ID              string    `json:"id"`
 	InstanceID      string    `json:"instance_id"`
-	FromStepID      *string   `json:"from_step_id"`      // Nullable for initial creation
+	FromStepID      *string   `json:"from_step_id"` // Nullable for initial creation
 	ToStepID        string    `json:"to_step_id"`
 	ActionTaken     string    `json:"action_taken"`      // "submit", "approve", "reject", "reassign"
 	PerformedBy     string    `json:"performed_by"`      // User ID

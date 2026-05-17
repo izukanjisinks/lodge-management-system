@@ -9,6 +9,8 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME:-lodge-management-system}
+    ports:
+      - "${DB_EXTERNAL_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -45,6 +47,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    ports:
+      - "${API_PORT:-8082}:8081"
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -59,7 +63,7 @@ services:
       EMAIL_USERNAME: ${EMAIL_USERNAME}
       EMAIL_PASSWORD: ${EMAIL_PASSWORD}
       EMAIL_FROM: ${EMAIL_FROM}
-      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-The Sanctuary}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Mwakwanda}
       EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
       EMAIL_USE_SSL: ${EMAIL_USE_SSL:-false}
       EMAIL_AUTH_METHOD: ${EMAIL_AUTH_METHOD:-PLAIN}

@@ -26,6 +26,10 @@ func RegisterBookingRoutes(h *handlers.BookingHandler) {
 	http.HandleFunc("PATCH /api/v1/bookings/{id}/status",
 		withAuthAndRole(h.UpdateStatus, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
 
+	// Clear overstayed flag — admin and manager only (set only by the nightly job)
+	http.HandleFunc("PATCH /api/v1/bookings/{id}/clear-overstayed",
+		withAuthAndRole(h.ClearOverstayed, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
+
 	// Delete — admin and manager only
 	http.HandleFunc("DELETE /api/v1/bookings/{id}",
 		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))

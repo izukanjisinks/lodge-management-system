@@ -26,8 +26,8 @@ func (r *WorkflowInstanceRepository) Create(instance *models.WorkflowInstance) e
 	query := `
 		INSERT INTO workflow_instances (
 			id, workflow_id, current_step_id, status, task_details,
-			created_by, due_date, priority
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			created_by, due_date, priority, org_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING created_at, updated_at
 	`
 
@@ -37,6 +37,11 @@ func (r *WorkflowInstanceRepository) Create(instance *models.WorkflowInstance) e
 	taskDetailsJSON, err := json.Marshal(instance.TaskDetails)
 	if err != nil {
 		return fmt.Errorf("failed to marshal task_details: %w", err)
+	}
+
+	var orgID interface{}
+	if instance.OrgID != "" {
+		orgID = instance.OrgID
 	}
 
 	return r.db.QueryRow(
@@ -49,23 +54,25 @@ func (r *WorkflowInstanceRepository) Create(instance *models.WorkflowInstance) e
 		instance.CreatedBy,
 		instance.DueDate,
 		instance.Priority,
+		orgID,
 	).Scan(&instance.CreatedAt, &instance.UpdatedAt)
 }
 
-// GetByID retrieves a workflow instance by ID
-func (r *WorkflowInstanceRepository) GetByID(id string) (*models.WorkflowInstance, error) {
+// GetByID retrieves a workflow instance by ID, scoped to org.
+func (r *WorkflowInstanceRepository) GetByID(id, orgID string) (*models.WorkflowInstance, error) {
 	query := `
-		SELECT id, workflow_id, current_step_id, status, task_details,
+		SELECT id, org_id, workflow_id, current_step_id, status, task_details,
 		       created_by, created_at, updated_at, completed_at, due_date, priority
 		FROM workflow_instances
-		WHERE id = $1
+		WHERE id = $1 AND org_id = $2
 	`
 
 	var instance models.WorkflowInstance
 	var taskDetailsJSON []byte
 
-	err := r.db.QueryRow(query, id).Scan(
+	err := r.db.QueryRow(query, id, orgID).Scan(
 		&instance.ID,
+		&instance.OrgID,
 		&instance.WorkflowID,
 		&instance.CurrentStepID,
 		&instance.Status,
@@ -90,13 +97,13 @@ func (r *WorkflowInstanceRepository) GetByID(id string) (*models.WorkflowInstanc
 	return &instance, nil
 }
 
-// GetByTaskID retrieves a workflow instance by task ID (from task_details)
-func (r *WorkflowInstanceRepository) GetByTaskID(taskID string) (*models.WorkflowInstance, error) {
+// GetByTaskID retrieves a workflow instance by task ID (from task_details), scoped to org.
+func (r *WorkflowInstanceRepository) GetByTaskID(taskID, orgID string) (*models.WorkflowInstance, error) {
 	query := `
-		SELECT id, workflow_id, current_step_id, status, task_details,
+		SELECT id, org_id, workflow_id, current_step_id, status, task_details,
 		       created_by, created_at, updated_at, completed_at, due_date, priority
 		FROM workflow_instances
-		WHERE task_details->>'task_id' = $1
+		WHERE task_details->>'task_id' = $1 AND org_id = $2
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -104,8 +111,9 @@ func (r *WorkflowInstanceRepository) GetByTaskID(taskID string) (*models.Workflo
 	var instance models.WorkflowInstance
 	var taskDetailsJSON []byte
 
-	err := r.db.QueryRow(query, taskID).Scan(
+	err := r.db.QueryRow(query, taskID, orgID).Scan(
 		&instance.ID,
+		&instance.OrgID,
 		&instance.WorkflowID,
 		&instance.CurrentStepID,
 		&instance.Status,
@@ -130,41 +138,39 @@ func (r *WorkflowInstanceRepository) GetByTaskID(taskID string) (*models.Workflo
 	return &instance, nil
 }
 
-// GetByCreator retrieves all workflow instances created by a user
-func (r *WorkflowInstanceRepository) GetByCreator(creatorID string) ([]models.WorkflowInstance, error) {
+// GetByCreator retrieves all workflow instances created by a user, scoped to org.
+func (r *WorkflowInstanceRepository) GetByCreator(orgID, creatorID string) ([]models.WorkflowInstance, error) {
 	query := `
-		SELECT id, workflow_id, current_step_id, status, task_details,
+		SELECT id, org_id, workflow_id, current_step_id, status, task_details,
 		       created_by, created_at, updated_at, completed_at, due_date, priority
 		FROM workflow_instances
-		WHERE created_by = $1
+		WHERE created_by = $1 AND org_id = $2
 		ORDER BY created_at DESC
 	`
-
-	return r.queryInstances(query, creatorID)
+	return r.queryInstances(query, creatorID, orgID)
 }
 
-// GetByStatus retrieves workflow instances by status
-func (r *WorkflowInstanceRepository) GetByStatus(status string) ([]models.WorkflowInstance, error) {
+// GetByStatus retrieves workflow instances by status, scoped to org.
+func (r *WorkflowInstanceRepository) GetByStatus(orgID, status string) ([]models.WorkflowInstance, error) {
 	query := `
-		SELECT id, workflow_id, current_step_id, status, task_details,
+		SELECT id, org_id, workflow_id, current_step_id, status, task_details,
 		       created_by, created_at, updated_at, completed_at, due_date, priority
 		FROM workflow_instances
-		WHERE status = $1
+		WHERE status = $1 AND org_id = $2
 		ORDER BY created_at DESC
 	`
-
-	return r.queryInstances(query, status)
+	return r.queryInstances(query, status, orgID)
 }
 
-// UpdateStep updates the current step of a workflow instance
-func (r *WorkflowInstanceRepository) UpdateStep(instanceID, newStepID, status string) error {
+// UpdateStep updates the current step of a workflow instance, scoped to org.
+func (r *WorkflowInstanceRepository) UpdateStep(instanceID, newStepID, status, orgID string) error {
 	query := `
 		UPDATE workflow_instances
 		SET current_step_id = $1, status = $2, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $3
+		WHERE id = $3 AND org_id = $4
 	`
 
-	result, err := r.db.Exec(query, newStepID, status, instanceID)
+	result, err := r.db.Exec(query, newStepID, status, instanceID, orgID)
 	if err != nil {
 		return err
 	}
@@ -181,17 +187,17 @@ func (r *WorkflowInstanceRepository) UpdateStep(instanceID, newStepID, status st
 	return nil
 }
 
-// Complete marks a workflow instance as completed
-func (r *WorkflowInstanceRepository) Complete(instanceID string) error {
+// Complete marks a workflow instance as completed, scoped to org.
+func (r *WorkflowInstanceRepository) Complete(instanceID, orgID string) error {
 	query := `
 		UPDATE workflow_instances
 		SET status = 'completed',
 		    completed_at = CURRENT_TIMESTAMP,
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
+		WHERE id = $1 AND org_id = $2
 	`
 
-	result, err := r.db.Exec(query, instanceID)
+	result, err := r.db.Exec(query, instanceID, orgID)
 	if err != nil {
 		return err
 	}
@@ -208,16 +214,16 @@ func (r *WorkflowInstanceRepository) Complete(instanceID string) error {
 	return nil
 }
 
-// Cancel marks a workflow instance as cancelled
-func (r *WorkflowInstanceRepository) Cancel(instanceID string) error {
+// Cancel marks a workflow instance as cancelled, scoped to org.
+func (r *WorkflowInstanceRepository) Cancel(instanceID, orgID string) error {
 	query := `
 		UPDATE workflow_instances
 		SET status = 'cancelled',
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
+		WHERE id = $1 AND org_id = $2
 	`
 
-	result, err := r.db.Exec(query, instanceID)
+	result, err := r.db.Exec(query, instanceID, orgID)
 	if err != nil {
 		return err
 	}
@@ -249,6 +255,7 @@ func (r *WorkflowInstanceRepository) queryInstances(query string, args ...interf
 
 		err := rows.Scan(
 			&instance.ID,
+			&instance.OrgID,
 			&instance.WorkflowID,
 			&instance.CurrentStepID,
 			&instance.Status,

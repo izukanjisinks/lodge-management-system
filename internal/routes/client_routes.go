@@ -9,6 +9,8 @@ import (
 
 func RegisterClientRoutes(h *handlers.ClientHandler) {
 	// Individual clients — read: all staff; write: admin, manager, receptionist
+	http.HandleFunc("GET /api/v1/clients/individual/lookup",
+		withAuth(h.LookupIndividualByIDNumber))
 	http.HandleFunc("GET /api/v1/clients/individual",
 		withAuth(h.ListIndividual))
 
@@ -25,6 +27,8 @@ func RegisterClientRoutes(h *handlers.ClientHandler) {
 		withAuthAndRole(h.DeleteIndividual, models.RoleAdmin, models.RoleManager))
 
 	// Corporate clients — same role split
+	http.HandleFunc("GET /api/v1/clients/corporate/search",
+		withAuth(h.SearchCorporate))
 	http.HandleFunc("GET /api/v1/clients/corporate",
 		withAuth(h.ListCorporate))
 

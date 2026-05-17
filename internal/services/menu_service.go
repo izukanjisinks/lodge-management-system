@@ -1,0 +1,126 @@
+package services
+
+import (
+	"errors"
+
+	"lodge-system/internal/models"
+	"lodge-system/internal/repository"
+
+	"github.com/google/uuid"
+)
+
+type MenuService struct {
+	repo *repository.MenuRepository
+}
+
+func NewMenuService(repo *repository.MenuRepository) *MenuService {
+	return &MenuService{repo: repo}
+}
+
+// ── Menu ──────────────────────────────────────────────────────────────────────
+
+func (s *MenuService) GetMenu(orgID uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.GetMenu(orgID)
+	if err != nil {
+		return nil, errors.New("menu not found")
+	}
+	return s.buildResponse(menu, orgID, category, page, pageSize)
+}
+
+func (s *MenuService) UpsertMenu(orgID uuid.UUID, req *models.UpdateMenuRequest, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.UpsertMenu(orgID, req)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildResponse(menu, orgID, category, page, pageSize)
+}
+
+func (s *MenuService) buildResponse(menu *models.Menu, orgID uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+	items, total, err := s.repo.ListMenuItems(menu.ID, orgID, category, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &models.MenuResponse{
+		Menu: *menu,
+		Items: models.MenuItemsPage{
+			Data:     items,
+			Page:     page,
+			PageSize: pageSize,
+			Total:    total,
+		},
+	}, nil
+}
+
+// ── Menu Items ────────────────────────────────────────────────────────────────
+
+func (s *MenuService) CreateMenuItem(orgID uuid.UUID, req *models.CreateMenuItemRequest) (*models.MenuItem, error) {
+	if req.Name == "" {
+		return nil, errors.New("name is required")
+	}
+	if req.Price < 0 {
+		return nil, errors.New("price must be >= 0")
+	}
+	menu, err := s.repo.GetMenu(orgID)
+	if err != nil {
+		return nil, errors.New("menu not found")
+	}
+	item := &models.MenuItem{
+		Name:        req.Name,
+		Description: req.Description,
+		Category:    req.Category,
+		Price:       req.Price,
+		IsAvailable: true,
+	}
+	if err := s.repo.CreateMenuItem(item, menu.ID, orgID); err != nil {
+		return nil, err
+	}
+	return s.repo.GetMenuItemByID(item.ID, orgID)
+}
+
+func (s *MenuService) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models.MenuItem, error) {
+	item, err := s.repo.GetMenuItemByID(id, orgID)
+	if err != nil {
+		return nil, errors.New("menu item not found")
+	}
+	return item, nil
+}
+
+func (s *MenuService) UpdateMenuItem(id uuid.UUID, orgID uuid.UUID, req *models.UpdateMenuItemRequest) (*models.MenuItem, error) {
+	if req.Price != nil && *req.Price < 0 {
+		return nil, errors.New("price must be >= 0")
+	}
+	item, err := s.repo.UpdateMenuItem(id, orgID, req)
+	if err != nil {
+		return nil, errors.New("menu item not found")
+	}
+	return item, nil
+}
+
+func (s *MenuService) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
+	if err := s.repo.DeleteMenuItem(id, orgID); err != nil {
+		return errors.New("menu item not found")
+	}
+	return nil
+}
+
+// ── Guest (public) ────────────────────────────────────────────────────────────
+
+func (s *MenuService) GuestGetMenu(orgID uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.GuestGetMenu(orgID)
+	if err != nil {
+		return nil, errors.New("menu not found")
+	}
+	items, total, err := s.repo.ListAvailableMenuItems(menu.ID, category, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return &models.MenuResponse{
+		Menu: *menu,
+		Items: models.MenuItemsPage{
+			Data:     items,
+			Page:     page,
+			PageSize: pageSize,
+			Total:    total,
+		},
+	}, nil
+}

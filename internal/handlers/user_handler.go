@@ -37,12 +37,14 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	user := &models.User{
 		FullName: req.FullName,
 		Email:    req.Email,
 		Password: req.Password,
 		RoleName: req.Role,
 		IsActive: req.Status != "inactive",
+		OrgID:    &orgID,
 	}
 
 	if err := h.service.Register(user); err != nil {
@@ -70,7 +72,8 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		isActive = &val
 	}
 
-	users, total, err := h.service.ListUsers(search, roleID, isActive, pag.Page, pag.PageSize)
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	users, total, err := h.service.ListUsers(orgID, search, roleID, isActive, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve users")
 		return
@@ -180,7 +183,8 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.DeleteUser(id); err != nil {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	if err := h.service.DeleteUser(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

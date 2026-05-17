@@ -25,13 +25,14 @@ type DashboardReservationPoint struct {
 }
 
 type DashboardRecentBooking struct {
-	ID         string `json:"id"`
-	ClientName string `json:"client_name"`
-	RoomName   string `json:"room_name"`
-	RoomType   string `json:"room_type"`
-	CheckIn    string `json:"check_in"`
-	CheckOut   string `json:"check_out"`
-	Status     string `json:"status"`
+	ID            string `json:"id"`
+	BookingNumber string `json:"booking_number"`
+	ClientName    string `json:"client_name"`
+	RoomName      string `json:"room_name"`
+	RoomType      string `json:"room_type"`
+	CheckIn       string `json:"check_in"`
+	CheckOut      string `json:"check_out"`
+	Status        string `json:"status"`
 }
 
 type DashboardStats struct {

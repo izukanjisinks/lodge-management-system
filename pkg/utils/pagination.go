@@ -20,7 +20,7 @@ type PaginatedResponse struct {
 
 func ParsePagination(r *http.Request) Pagination {
 	page := 1
-	pageSize := 20
+	pageSize := 10
 
 	if p := r.URL.Query().Get("page"); p != "" {
 		if v, err := strconv.Atoi(p); err == nil && v > 0 {

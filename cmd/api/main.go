@@ -8,6 +8,7 @@ import (
 	"lodge-system/internal/config"
 	"lodge-system/internal/database"
 	"lodge-system/internal/handlers"
+	"lodge-system/internal/jobs"
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/repositories"
 	"lodge-system/internal/repository"
@@ -38,6 +39,10 @@ func main() {
 	mealPlanRepo := repository.NewMealPlanRepository()
 	invoiceRepo := repository.NewInvoiceRepository()
 	dashboardRepo := repository.NewDashboardRepository()
+	auditLogRepo := repository.NewAuditLogRepository()
+	auditLogHandler := handlers.NewAuditLogHandler(services.NewAuditLogService(auditLogRepo))
+	orgSettingsRepo := repository.NewOrganizationSettingsRepository()
+	orgSettingsHandler := handlers.NewOrganizationSettingsHandler(services.NewOrganizationSettingsService(orgSettingsRepo))
 
 	workflowRepo := repository.NewWorkflowRepository()
 	instanceRepo := repository.NewWorkflowInstanceRepository()
@@ -61,7 +66,9 @@ func main() {
 
 	userService.SetEmailService(emailService)
 
-	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, clientRepo, emailService)
+	guestRepo := repository.NewGuestRepository()
+
+	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, clientRepo, guestRepo, emailService)
 
 	// Seed predefined roles
 	if err := roleService.InitializePredefinedRoles(); err != nil {
@@ -74,8 +81,8 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 	roomHandler := handlers.NewRoomHandler(services.NewRoomService(roomRepo))
 	clientHandler := handlers.NewClientHandler(services.NewClientService(clientRepo))
-	bookingSvc := services.NewBookingService(bookingRepo, roomRepo, mealPlanRepo)
-	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo, mealPlanRepo)
+	bookingSvc := services.NewBookingService(bookingRepo, roomRepo, clientRepo)
+	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo)
 	bookingSvc.SetInvoiceService(invoiceSvc)
 
 	bookingHandler := handlers.NewBookingHandler(bookingSvc)
@@ -86,15 +93,44 @@ func main() {
 	workflowAdminHandler := handlers.NewWorkflowAdminHandler(workflowRepo)
 	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyService, userService)
 
-	guestAuthSvc := services.NewGuestAuthService(userRepo, roleRepo, clientRepo)
+	orgRepo := repository.NewOrganizationRepository()
+
+	guestAuthSvc := services.NewGuestAuthService(guestRepo)
 	guestAuthSvc.SetEmailService(emailService)
-	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, mealPlanRepo, guestAuthSvc)
+	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, guestAuthSvc)
 	guestBookingSvc.SetWorkflowService(workflowService)
-	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, userService)
+	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, orgRepo)
 	guestBookingHandler := handlers.NewGuestBookingHandler(guestBookingSvc)
+
+	backofficeUserRepo := repository.NewBackofficeUserRepository()
+
+	backofficeAuthSvc := services.NewBackofficeAuthService(backofficeUserRepo)
+	backofficeAuthSvc.SetEmailService(emailService)
+
+	backofficeUserSvc := services.NewBackofficeUserService(backofficeUserRepo)
+	backofficeUserSvc.SetEmailService(emailService)
+
+	backofficeOrgSvc := services.NewBackofficeOrganizationService(orgRepo, userRepo, roleRepo)
+	backofficeOrgSvc.SetEmailService(emailService)
+
+	backofficeAuthHandler := handlers.NewBackofficeAuthHandler(backofficeAuthSvc)
+	backofficeUserHandler := handlers.NewBackofficeUserHandler(backofficeUserSvc)
+	backofficeOrgHandler := handlers.NewBackofficeOrganizationHandler(backofficeOrgSvc)
+
+	menuRepo := repository.NewMenuRepository()
+	orderRepo := repository.NewOrderRepository()
+	menuHandler := handlers.NewMenuHandler(services.NewMenuService(menuRepo))
+	orderSvc := services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo)
+	orderHandler := handlers.NewOrderHandler(orderSvc)
 
 	reviewRepo := repository.NewReviewRepository()
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
+
+	// Background jobs
+	jobs.NewOverdueCheckoutJob(bookingRepo, invoiceRepo, auditLogRepo, orgSettingsRepo).Start()
+	log.Println("Overdue checkout job scheduled")
+	jobs.NewCloseOrdersJob(orderSvc, orgSettingsRepo).Start()
+	log.Println("Close orders job scheduled")
 
 	// Register routes
 	routes.RegisterRoutes(authHandler,
@@ -107,9 +143,16 @@ func main() {
 		dashboardHandler,
 		workflowHandler,
 		workflowAdminHandler,
+		menuHandler,
+		orderHandler,
 		guestAuthHandler,
 		guestBookingHandler,
-		reviewHandler)
+		reviewHandler,
+		backofficeAuthHandler,
+		backofficeUserHandler,
+		backofficeOrgHandler,
+		auditLogHandler,
+		orgSettingsHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally

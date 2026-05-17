@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
@@ -21,11 +22,12 @@ func NewClientHandler(service *services.ClientService) *ClientHandler {
 // ─── Individual ───────────────────────────────────────────────────────────────
 
 func (h *ClientHandler) ListIndividual(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	pag := utils.ParsePagination(r)
 	search := r.URL.Query().Get("search")
 	status := r.URL.Query().Get("status")
 
-	clients, total, err := h.service.ListIndividual(search, status, pag.Page, pag.PageSize)
+	clients, total, err := h.service.ListIndividual(orgID, search, status, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -45,8 +47,9 @@ func (h *ClientHandler) GetIndividualByID(w http.ResponseWriter, r *http.Request
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	client, err := h.service.GetIndividualByID(id)
+	client, err := h.service.GetIndividualByID(id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Individual client not found")
 		return
@@ -56,13 +59,14 @@ func (h *ClientHandler) GetIndividualByID(w http.ResponseWriter, r *http.Request
 }
 
 func (h *ClientHandler) CreateIndividual(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	var c models.IndividualClient
 	if err := utils.DecodeJson(r, &c); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if err := h.service.CreateIndividual(&c); err != nil {
+	if err := h.service.CreateIndividual(orgID, &c); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -76,6 +80,7 @@ func (h *ClientHandler) UpdateIndividual(w http.ResponseWriter, r *http.Request)
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var updates models.IndividualClient
 	if err := utils.DecodeJson(r, &updates); err != nil {
@@ -83,7 +88,7 @@ func (h *ClientHandler) UpdateIndividual(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	client, err := h.service.UpdateIndividual(id, &updates)
+	client, err := h.service.UpdateIndividual(id, orgID, &updates)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -98,8 +103,9 @@ func (h *ClientHandler) DeleteIndividual(w http.ResponseWriter, r *http.Request)
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.DeleteIndividual(id); err != nil {
+	if err := h.service.DeleteIndividual(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -107,14 +113,27 @@ func (h *ClientHandler) DeleteIndividual(w http.ResponseWriter, r *http.Request)
 	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Individual client deleted successfully"})
 }
 
+func (h *ClientHandler) LookupIndividualByIDNumber(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	idNumber := r.URL.Query().Get("id_number")
+
+	client, err := h.service.LookupIndividualByIDNumber(orgID, idNumber)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "client not found")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, client)
+}
+
 // ─── Corporate ────────────────────────────────────────────────────────────────
 
 func (h *ClientHandler) ListCorporate(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	pag := utils.ParsePagination(r)
 	search := r.URL.Query().Get("search")
 	status := r.URL.Query().Get("status")
 
-	clients, total, err := h.service.ListCorporate(search, status, pag.Page, pag.PageSize)
+	clients, total, err := h.service.ListCorporate(orgID, search, status, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -134,8 +153,9 @@ func (h *ClientHandler) GetCorporateByID(w http.ResponseWriter, r *http.Request)
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	client, err := h.service.GetCorporateByID(id)
+	client, err := h.service.GetCorporateByID(id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Corporate client not found")
 		return
@@ -145,13 +165,14 @@ func (h *ClientHandler) GetCorporateByID(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *ClientHandler) CreateCorporate(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	var c models.CorporateClient
 	if err := utils.DecodeJson(r, &c); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if err := h.service.CreateCorporate(&c); err != nil {
+	if err := h.service.CreateCorporate(orgID, &c); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -165,6 +186,7 @@ func (h *ClientHandler) UpdateCorporate(w http.ResponseWriter, r *http.Request) 
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var updates models.CorporateClient
 	if err := utils.DecodeJson(r, &updates); err != nil {
@@ -172,7 +194,7 @@ func (h *ClientHandler) UpdateCorporate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	client, err := h.service.UpdateCorporate(id, &updates)
+	client, err := h.service.UpdateCorporate(id, orgID, &updates)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -181,14 +203,27 @@ func (h *ClientHandler) UpdateCorporate(w http.ResponseWriter, r *http.Request) 
 	utils.RespondJSON(w, http.StatusOK, client)
 }
 
+func (h *ClientHandler) SearchCorporate(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	search := r.URL.Query().Get("search")
+
+	clients, err := h.service.SearchCorporate(orgID, search)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, clients)
+}
+
 func (h *ClientHandler) DeleteCorporate(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.DeleteCorporate(id); err != nil {
+	if err := h.service.DeleteCorporate(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

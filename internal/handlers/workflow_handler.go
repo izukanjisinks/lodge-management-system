@@ -27,11 +27,12 @@ func (h *WorkflowHandler) GetMyTasks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	// Get status filter from query params (optional)
 	status := r.URL.Query().Get("status") // "pending", "completed", etc.
 
-	tasks, err := h.service.GetMyTasks(userID.String(), status)
+	tasks, err := h.service.GetMyTasks(orgID.String(), userID.String(), status)
 	if err != nil {
 		http.Error(w, "Failed to retrieve tasks", http.StatusInternalServerError)
 		return
@@ -51,8 +52,9 @@ func (h *WorkflowHandler) GetMyPendingTasks(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	tasks, err := h.service.GetMyTasks(userID.String(), "pending")
+	tasks, err := h.service.GetMyTasks(orgID.String(), userID.String(), "pending")
 	if err != nil {
 		http.Error(w, "Failed to retrieve pending tasks", http.StatusInternalServerError)
 		return
@@ -99,8 +101,10 @@ func (h *WorkflowHandler) ProcessAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
 	// Process the action
-	err := h.service.ProcessAction(instanceID, req.Action, userID.String(), req.Comments)
+	err := h.service.ProcessAction(instanceID, req.Action, userID.String(), req.Comments, orgID.String())
 	if err != nil {
 		// Check for specific errors
 		if err.Error() == "workflow instance is already closed" {
@@ -132,7 +136,8 @@ func (h *WorkflowHandler) GetInstanceHistory(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	history, err := h.service.GetInstanceHistory(instanceID)
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	history, err := h.service.GetInstanceHistory(instanceID, orgID.String())
 	if err != nil {
 		http.Error(w, "Failed to retrieve history", http.StatusInternalServerError)
 		return
@@ -183,6 +188,8 @@ func (h *WorkflowHandler) InitiateWorkflow(w http.ResponseWriter, r *http.Reques
 		req.Priority = "medium"
 	}
 
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
 	// Initiate workflow
 	instance, err := h.service.InitiateWorkflow(
 		req.WorkflowType,
@@ -190,6 +197,7 @@ func (h *WorkflowHandler) InitiateWorkflow(w http.ResponseWriter, r *http.Reques
 		userID.String(),
 		req.Priority,
 		req.DueDate,
+		orgID.String(),
 	)
 
 	if err != nil {
@@ -213,7 +221,8 @@ func (h *WorkflowHandler) GetInstanceByTaskID(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	instance, err := h.service.GetInstanceByTaskID(taskID)
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	instance, err := h.service.GetInstanceByTaskID(taskID, orgID.String())
 	if err != nil {
 		http.Error(w, "Workflow instance not found", http.StatusNotFound)
 		return
@@ -236,9 +245,10 @@ func (h *WorkflowHandler) GetTaskDetails(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	// Get all tasks for the user to find this one
-	tasks, err := h.service.GetMyTasks(userID.String(), "")
+	tasks, err := h.service.GetMyTasks(orgID.String(), userID.String(), "")
 	if err != nil {
 		http.Error(w, "Failed to retrieve task", http.StatusInternalServerError)
 		return
@@ -259,7 +269,7 @@ func (h *WorkflowHandler) GetTaskDetails(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Get the workflow instance for more context
-	instance, err := h.service.GetInstanceByTaskID(foundTask.InstanceID)
+	instance, err := h.service.GetInstanceByTaskID(foundTask.InstanceID, orgID.String())
 	if err != nil {
 		// Task found but instance not found - just return task
 		w.Header().Set("Content-Type", "application/json")
@@ -268,7 +278,7 @@ func (h *WorkflowHandler) GetTaskDetails(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Get history for full context
-	history, _ := h.service.GetInstanceHistory(instance.ID)
+	history, _ := h.service.GetInstanceHistory(instance.ID, orgID.String())
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

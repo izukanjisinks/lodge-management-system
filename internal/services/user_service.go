@@ -7,7 +7,7 @@ import (
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
-		"lodge-system/internal/utils/email"
+	"lodge-system/internal/utils/email"
 	"lodge-system/internal/utils/password"
 	"lodge-system/pkg/utils"
 
@@ -34,7 +34,11 @@ func (s *UserService) SetPasswordPolicyService(policyService *PasswordPolicyServ
 }
 
 func (s *UserService) Register(user *models.User) error {
-	exists, err := s.repo.EmailExists(user.Email)
+	orgID := uuid.Nil
+	if user.OrgID != nil {
+		orgID = *user.OrgID
+	}
+	exists, err := s.repo.EmailExists(user.Email, orgID)
 	if err != nil {
 		return err
 	}
@@ -94,9 +98,46 @@ func (s *UserService) Register(user *models.User) error {
 }
 
 func (s *UserService) Login(emailAddr, pwd string) (map[string]interface{}, error) {
-	user, err := s.repo.GetUserByEmail(emailAddr)
-	if err != nil {
-		return nil, errors.New("invalid email or password")
+	return s.LoginWithOrg(emailAddr, pwd, uuid.Nil)
+}
+
+// LoginWithOrg handles both steps of the multi-org login flow.
+// When orgID is uuid.Nil, it looks up all users with that email across orgs.
+// - 0 matches → 401
+// - 1 match   → proceed to password check
+// - 2+ matches → return org list for selection (no password check)
+// When orgID is provided, it scopes the lookup to that specific org.
+func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[string]interface{}, error) {
+	var user *models.User
+
+	if orgID == uuid.Nil {
+		matches, err := s.repo.GetAllByEmail(emailAddr)
+		if err != nil || len(matches) == 0 {
+			return nil, errors.New("invalid email or password")
+		}
+		if len(matches) > 1 {
+			orgs := make([]map[string]interface{}, len(matches))
+			for i, m := range matches {
+				orgs[i] = map[string]interface{}{
+					"org_id": m.OrgID,
+					"name":   m.OrgName,
+				}
+			}
+			return map[string]interface{}{
+				"requires_org_selection": true,
+				"organizations":          orgs,
+			}, nil
+		}
+		user, err = s.repo.GetUserByEmail(emailAddr)
+		if err != nil {
+			return nil, errors.New("invalid email or password")
+		}
+	} else {
+		var err error
+		user, err = s.repo.GetByEmailAndOrg(emailAddr, orgID)
+		if err != nil {
+			return nil, errors.New("invalid email or password")
+		}
 	}
 
 	if !user.IsActive {
@@ -145,7 +186,16 @@ func (s *UserService) Login(emailAddr, pwd string) (map[string]interface{}, erro
 		tokenExpiry = 24 * time.Hour
 	}
 
-	token, err := utils.GenerateToken(user.Email, user.UserID)
+	roleName := ""
+	if user.Role != nil {
+		roleName = user.Role.Name
+	}
+	orgIDVal := uuid.Nil
+	if user.OrgID != nil {
+		orgIDVal = *user.OrgID
+	}
+
+	token, err := utils.GenerateStaffToken(user.Email, user.UserID, orgIDVal, roleName)
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +205,10 @@ func (s *UserService) Login(emailAddr, pwd string) (map[string]interface{}, erro
 		"expires_at": time.Now().Add(tokenExpiry),
 		"user": map[string]interface{}{
 			"user_id":         user.UserID,
+			"org_id":          orgIDVal,
+			"org_name":        user.OrgName,
+			"org_logo_url":    user.OrgLogoURL,
+			"full_name":       user.FullName,
 			"email":           user.Email,
 			"role":            user.Role,
 			"is_active":       user.IsActive,
@@ -176,8 +230,8 @@ func (s *UserService) GetAllUsers() ([]models.User, error) {
 	return s.repo.GetAllUsers()
 }
 
-func (s *UserService) ListUsers(search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
-	return s.repo.List(search, roleID, isActive, page, pageSize)
+func (s *UserService) ListUsers(orgID uuid.UUID, search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
+	return s.repo.List(orgID, search, roleID, isActive, page, pageSize)
 }
 
 func (s *UserService) GetUserByID(id uuid.UUID) (*models.User, error) {
@@ -191,7 +245,11 @@ func (s *UserService) UpdateUser(updates *models.User) (*models.User, error) {
 	}
 
 	if updates.Email != "" && updates.Email != existing.Email {
-		exists, err := s.repo.EmailExists(updates.Email)
+		orgID := uuid.Nil
+		if existing.OrgID != nil {
+			orgID = *existing.OrgID
+		}
+		exists, err := s.repo.EmailExists(updates.Email, orgID)
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +284,11 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName,
 	}
 
 	if newEmail != "" && newEmail != user.Email {
-		exists, err := s.repo.EmailExists(newEmail)
+		orgID := uuid.Nil
+		if user.OrgID != nil {
+			orgID = *user.OrgID
+		}
+		exists, err := s.repo.EmailExists(newEmail, orgID)
 		if err != nil {
 			return nil, err
 		}
@@ -308,12 +370,12 @@ func (s *UserService) DeactivateUser(id uuid.UUID) error {
 	return s.repo.Update(user)
 }
 
-func (s *UserService) DeleteUser(id uuid.UUID) error {
+func (s *UserService) DeleteUser(id, orgID uuid.UUID) error {
 	_, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return errors.New("user not found")
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(id, orgID)
 }
 
 func (s *UserService) LockUser(id uuid.UUID) error {
@@ -422,57 +484,6 @@ func (s *UserService) ResetPassword(userID uuid.UUID) error {
 				fmt.Printf("WARNING: Failed to send password reset email to %s: %v\n", userEmail, err)
 			}
 		}()
-	}
-
-	return nil
-}
-
-func (s *UserService) SeedSuperAdmin(emailAddr, pwd string) error {
-	hashed, err := utils.HashPassword(pwd)
-	if err != nil {
-		return err
-	}
-
-	existing, err := s.repo.GetUserByEmail(emailAddr)
-	if err == nil {
-		existing.Password = hashed
-		existing.IsActive = true
-		now := time.Now()
-		existing.PasswordChangedAt = &now
-		if err := s.repo.Update(existing); err != nil {
-			return err
-		}
-		if s.passwordPolicyService != nil {
-			_ = s.passwordPolicyService.RecordPasswordChange(existing.UserID, hashed)
-		}
-		return nil
-	}
-
-	// Get admin role
-	adminRole, err := s.repo.GetRoleByName(models.RoleAdmin)
-	if err != nil {
-		return fmt.Errorf("admin role not found: %w", err)
-	}
-
-	now := time.Now()
-	user := &models.User{
-		Email:             emailAddr,
-		Password:          hashed,
-		RoleID:            &adminRole.RoleID,
-		IsActive:          true,
-		PasswordChangedAt: &now,
-	}
-
-	if s.passwordPolicyService != nil {
-		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
-	}
-
-	if err := s.repo.Create(user); err != nil {
-		return err
-	}
-
-	if s.passwordPolicyService != nil {
-		_ = s.passwordPolicyService.RecordPasswordChange(user.UserID, hashed)
 	}
 
 	return nil

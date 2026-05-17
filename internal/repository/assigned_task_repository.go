@@ -23,18 +23,22 @@ func (r *AssignedTaskRepository) Create(task *models.AssignedTask) error {
 	query := `
 		INSERT INTO assigned_tasks (
 			id, instance_id, step_id, step_name, assigned_to, assigned_by,
-			status, due_date
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			status, due_date, org_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING created_at, updated_at`
 
 	task.ID = uuid.New().String()
+	var orgID interface{}
+	if task.OrgID != "" {
+		orgID = task.OrgID
+	}
 	return r.db.QueryRow(query,
 		task.ID, task.InstanceID, task.StepID, task.StepName,
-		task.AssignedTo, task.AssignedBy, task.Status, task.DueDate,
+		task.AssignedTo, task.AssignedBy, task.Status, task.DueDate, orgID,
 	).Scan(&task.CreatedAt, &task.UpdatedAt)
 }
 
-func (r *AssignedTaskRepository) GetActiveTaskForInstance(instanceID string) (*models.AssignedTask, error) {
+func (r *AssignedTaskRepository) GetActiveTaskForInstance(instanceID, orgID string) (*models.AssignedTask, error) {
 	query := `
 		SELECT at.id, at.instance_id, at.step_id, at.step_name,
 		       at.assigned_to, at.assigned_by, at.status,
@@ -42,20 +46,20 @@ func (r *AssignedTaskRepository) GetActiveTaskForInstance(instanceID string) (*m
 		       wi.task_details
 		FROM assigned_tasks at
 		JOIN workflow_instances wi ON at.instance_id = wi.id
-		WHERE at.instance_id = $1
+		WHERE at.instance_id = $1 AND at.org_id = $2
 		  AND at.status IN ('pending', 'in_progress')
 		ORDER BY at.created_at DESC
 		LIMIT 1`
 
-	return r.scanTask(r.db.QueryRow(query, instanceID))
+	return r.scanTask(r.db.QueryRow(query, instanceID, orgID))
 }
 
-func (r *AssignedTaskRepository) Complete(taskID string) error {
+func (r *AssignedTaskRepository) Complete(taskID, orgID string) error {
 	query := `
 		UPDATE assigned_tasks
 		SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1`
-	result, err := r.db.Exec(query, taskID)
+		WHERE id = $1 AND org_id = $2`
+	result, err := r.db.Exec(query, taskID, orgID)
 	if err != nil {
 		return err
 	}
@@ -69,22 +73,25 @@ func (r *AssignedTaskRepository) Complete(taskID string) error {
 	return nil
 }
 
-func (r *AssignedTaskRepository) GetByAssignee(assigneeID string, statusFilter ...string) ([]models.AssignedTask, error) {
-	query := `
+func (r *AssignedTaskRepository) GetByAssignee(orgID, assigneeID string, statusFilter ...string) ([]models.AssignedTask, error) {
+	args := []interface{}{assigneeID, orgID}
+	where := "at.assigned_to = $1 AND at.org_id = $2"
+	i := 3
+
+	if len(statusFilter) > 0 && statusFilter[0] != "" {
+		where += fmt.Sprintf(" AND at.status = $%d", i)
+		args = append(args, statusFilter[0])
+	}
+
+	query := fmt.Sprintf(`
 		SELECT at.id, at.instance_id, at.step_id, at.step_name,
 		       at.assigned_to, at.assigned_by, at.status,
 		       at.due_date, at.completed_at, at.created_at, at.updated_at,
 		       wi.task_details
 		FROM assigned_tasks at
 		JOIN workflow_instances wi ON at.instance_id = wi.id
-		WHERE at.assigned_to = $1`
-
-	args := []interface{}{assigneeID}
-	if len(statusFilter) > 0 && statusFilter[0] != "" {
-		query += ` AND at.status = $2`
-		args = append(args, statusFilter[0])
-	}
-	query += ` ORDER BY at.created_at DESC`
+		WHERE %s
+		ORDER BY at.created_at DESC`, where)
 
 	rows, err := r.db.Query(query, args...)
 	if err != nil {

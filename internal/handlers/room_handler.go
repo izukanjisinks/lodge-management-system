@@ -57,8 +57,40 @@ func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 		orgID = &parsed
 	}
 
-	pag := utils.ParsePagination(r)
 	roomType := r.URL.Query().Get("type")
+	checkInStr := r.URL.Query().Get("check_in")
+	checkOutStr := r.URL.Query().Get("check_out")
+
+	if checkInStr != "" && checkOutStr != "" {
+		if orgID == nil {
+			utils.RespondError(w, http.StatusBadRequest, "org_id is required when filtering by date range")
+			return
+		}
+		checkIn, err := time.Parse("2006-01-02", checkInStr)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "invalid check_in date, expected YYYY-MM-DD")
+			return
+		}
+		checkOut, err := time.Parse("2006-01-02", checkOutStr)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "invalid check_out date, expected YYYY-MM-DD")
+			return
+		}
+		rooms, err := h.service.ListAvailable(*orgID, checkIn, checkOut, roomType)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
+			Data:     rooms,
+			Page:     1,
+			PageSize: len(rooms),
+			Total:    len(rooms),
+		})
+		return
+	}
+
+	pag := utils.ParsePagination(r)
 	orgName := r.URL.Query().Get("org_name")
 
 	var isAvailable *bool
@@ -96,6 +128,48 @@ func (h *RoomHandler) GuestGetByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.RespondJSON(w, http.StatusOK, room)
+}
+
+// GuestListAvailable handles GET /api/v1/guest/rooms/available — public, org_id from query param.
+func (h *RoomHandler) GuestListAvailable(w http.ResponseWriter, r *http.Request) {
+	orgIDStr := r.URL.Query().Get("org_id")
+	if orgIDStr == "" {
+		utils.RespondError(w, http.StatusBadRequest, "org_id is required")
+		return
+	}
+	orgID, err := uuid.Parse(orgIDStr)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid org_id")
+		return
+	}
+
+	checkInStr := r.URL.Query().Get("check_in")
+	checkOutStr := r.URL.Query().Get("check_out")
+	roomType := r.URL.Query().Get("type")
+
+	if checkInStr == "" || checkOutStr == "" {
+		utils.RespondError(w, http.StatusBadRequest, "check_in and check_out are required (YYYY-MM-DD)")
+		return
+	}
+
+	checkIn, err := time.Parse("2006-01-02", checkInStr)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid check_in date, expected YYYY-MM-DD")
+		return
+	}
+	checkOut, err := time.Parse("2006-01-02", checkOutStr)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid check_out date, expected YYYY-MM-DD")
+		return
+	}
+
+	rooms, err := h.service.ListAvailable(orgID, checkIn, checkOut, roomType)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, rooms)
 }
 
 func (h *RoomHandler) ListAvailable(w http.ResponseWriter, r *http.Request) {

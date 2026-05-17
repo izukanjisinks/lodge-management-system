@@ -19,6 +19,7 @@ func RegisterGuestRoutes(
 	http.HandleFunc("POST /api/v1/guest/auth/reset-password", withPublic(guestAuthHandler.ResetPassword))
 	http.HandleFunc("GET /api/v1/guest/lodges", withPublic(guestAuthHandler.ListLodges))
 	http.HandleFunc("GET /api/v1/guest/rooms", withPublic(roomHandler.GuestList))
+	http.HandleFunc("GET /api/v1/guest/rooms/available", withPublic(roomHandler.GuestListAvailable))
 	http.HandleFunc("GET /api/v1/guest/rooms/{id}", withPublic(roomHandler.GuestGetByID))
 	http.HandleFunc("GET /api/v1/guest/menu", withPublic(menuHandler.GuestGetMenu))
 	http.HandleFunc("GET /api/v1/guest/meal-plans", withPublic(mealPlanHandler.GuestList))

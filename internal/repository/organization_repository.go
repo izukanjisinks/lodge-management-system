@@ -124,6 +124,40 @@ func (r *OrganizationRepository) Delete(id uuid.UUID) error {
 	return nil
 }
 
+// ListPublic returns active organizations for guest-facing lodge discovery, paginated.
+func (r *OrganizationRepository) ListPublic(page, pageSize int) ([]models.Organization, int, error) {
+	offset := (page - 1) * pageSize
+
+	var total int
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM organizations WHERE is_active = TRUE`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := r.db.Query(`
+		SELECT id, name, logo_url, address, phone, email, is_active, created_at, updated_at
+		FROM organizations
+		WHERE is_active = TRUE
+		ORDER BY name ASC
+		LIMIT $1 OFFSET $2`, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var orgs []models.Organization
+	for rows.Next() {
+		org, err := r.scanOrganization(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		orgs = append(orgs, *org)
+	}
+	if orgs == nil {
+		orgs = []models.Organization{}
+	}
+	return orgs, total, rows.Err()
+}
+
 func (r *OrganizationRepository) scanOrganization(row rowScanner) (*models.Organization, error) {
 	var org models.Organization
 	var logoURL, address, phone, email sql.NullString

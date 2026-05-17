@@ -5,16 +5,18 @@ import (
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
+	"lodge-system/internal/repository"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 )
 
 type GuestAuthHandler struct {
 	guestAuthService *services.GuestAuthService
+	orgRepo          *repository.OrganizationRepository
 }
 
-func NewGuestAuthHandler(guestAuthService *services.GuestAuthService) *GuestAuthHandler {
-	return &GuestAuthHandler{guestAuthService: guestAuthService}
+func NewGuestAuthHandler(guestAuthService *services.GuestAuthService, orgRepo *repository.OrganizationRepository) *GuestAuthHandler {
+	return &GuestAuthHandler{guestAuthService: guestAuthService, orgRepo: orgRepo}
 }
 
 // Register handles POST /api/v1/guest/auth/register
@@ -104,4 +106,40 @@ func (h *GuestAuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request)
 	}
 
 	utils.RespondJSON(w, http.StatusOK, guest)
+}
+
+// ListLodges handles GET /api/v1/guest/lodges — public, no auth required.
+func (h *GuestAuthHandler) ListLodges(w http.ResponseWriter, r *http.Request) {
+	pg := utils.ParsePagination(r)
+	lodges, total, err := h.orgRepo.ListPublic(pg.Page, pg.PageSize)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve lodges")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
+		Data:     lodges,
+		Page:     pg.Page,
+		PageSize: pg.PageSize,
+		Total:    total,
+	})
+}
+
+// ResetPassword handles POST /api/v1/guest/auth/reset-password — public, no auth required.
+func (h *GuestAuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := utils.DecodeJson(r, &req); err != nil || req.Email == "" {
+		utils.RespondError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	if err := h.guestAuthService.ResetPassword(req.Email); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, "Failed to process reset request")
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{
+		"message": "If an account exists for that email, a new password has been sent",
+	})
 }

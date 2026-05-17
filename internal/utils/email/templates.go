@@ -82,7 +82,7 @@ func emailWrapper(title, headerStyle, bodyContent string) string {
 
           <tr>
             <td style="background-color:%s; padding:18px 32px; text-align:center; font-size:12px; color:%s; font-family:%s; border-top:1px solid %s;">
-              This is an automated message from The Sanctuary system. Please do not reply to this email.
+              This is an automated message from Mwakwanda system. Please do not reply to this email.
             </td>
           </tr>
 
@@ -281,13 +281,13 @@ func BookingApprovedTemplate(guestName, bookingID, details string) string {
 	header := headerGradient(colorAccent, colorAccentLight)
 	body := fmt.Sprintf(`
               <p style="margin-top:0;">Dear %s,</p>
-              <p>Great news — your booking at <strong>The Sanctuary</strong> has been <strong>approved</strong> and is now confirmed.</p>
+              <p>Great news — your booking at <strong>Mwakwanda</strong> has been <strong>approved</strong> and is now confirmed.</p>
               %s
               %s
               <p>We look forward to welcoming you. If you have any questions, please don't hesitate to get in touch.</p>
               <p style="margin-bottom:0; margin-top:28px;">
                 Warm regards,<br/>
-                <strong style="color:%s;">The Sanctuary Lodge</strong>
+                <strong style="color:%s;">Mwakwanda Lodge</strong>
               </p>`,
 		guestName,
 		infoTable(colorSuccessBox, colorSuccessBorder,
@@ -299,7 +299,7 @@ func BookingApprovedTemplate(guestName, bookingID, details string) string {
 			"Your reservation is confirmed. Please check in at the front desk on your arrival date."),
 		colorPrimary,
 	)
-	return emailWrapper("Booking Confirmed — The Sanctuary", header, body)
+	return emailWrapper("Booking Confirmed — Mwakwanda", header, body)
 }
 
 // BookingRejectedTemplate notifies a guest that their booking has not been approved.
@@ -307,12 +307,12 @@ func BookingRejectedTemplate(guestName, bookingID, details string) string {
 	header := headerGradient(colorDangerLight, colorDanger)
 	body := fmt.Sprintf(`
               <p style="margin-top:0;">Dear %s,</p>
-              <p>We regret to inform you that your booking request at <strong>The Sanctuary</strong> could not be approved at this time.</p>
+              <p>We regret to inform you that your booking request at <strong>Mwakwanda</strong> could not be approved at this time.</p>
               %s
               <p>Please feel free to contact us directly or make a new reservation for alternative dates — we would love to host you.</p>
               <p style="margin-bottom:0; margin-top:28px;">
                 Warm regards,<br/>
-                <strong style="color:%s;">The Sanctuary Lodge</strong>
+                <strong style="color:%s;">Mwakwanda Lodge</strong>
               </p>`,
 		guestName,
 		infoTable(colorWarningBox, colorWarningBorder,
@@ -322,26 +322,51 @@ func BookingRejectedTemplate(guestName, bookingID, details string) string {
 		),
 		colorPrimary,
 	)
-	return emailWrapper("Booking Update — The Sanctuary", header, body)
+	return emailWrapper("Booking Update — Mwakwanda", header, body)
 }
 
-// GuestWelcomeTemplate generates the welcome email sent to guests who self-register on The Sanctuary website.
+// GuestPasswordResetTemplate sends a newly generated password to a guest who requested a reset.
+func GuestPasswordResetTemplate(fullName, newPassword string) string {
+	header := headerGradient(colorDangerLight, colorDanger)
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Dear %s,</p>
+              <p>We received a request to reset your password for your account at <strong>Mwakwanda</strong>.</p>
+              <p>Your new temporary password is shown below. Please log in and update it to something memorable.</p>
+              %s
+              %s
+              <p>If you did not request this reset, please contact us immediately.</p>
+              <p style="margin-bottom:0; margin-top:28px;">
+                Warm regards,<br/>
+                <strong style="color:%s;">Mwakwanda Lodge</strong>
+              </p>`,
+		fullName,
+		infoTable(colorWarningBox, colorWarningBorder,
+			infoRow("New Password:", newPassword),
+		),
+		alertBox(colorWarningBox, colorWarningBorder, "#92400e",
+			"<strong>Important:</strong> Log in and change this password as soon as possible."),
+		colorPrimary,
+	)
+	return emailWrapper("Password Reset — Mwakwanda", header, body)
+}
+
+// GuestWelcomeTemplate generates the welcome email sent to guests who self-register on Mwakwanda website.
 func GuestWelcomeTemplate(fullName string) string {
 	header := headerGradient(colorPrimary, colorPrimaryLight)
 	body := fmt.Sprintf(`
               <p style="margin-top:0;">Dear %s,</p>
-              <p>Welcome to <strong>The Sanctuary</strong> — we're delighted to have you.</p>
+              <p>Welcome to <strong>Mwakwanda</strong> — we're delighted to have you.</p>
               <p>Your account is ready. You can now browse our rooms, choose a meal plan, and make reservations at any time from our website.</p>
               %s
               <p style="margin-top:28px;">We look forward to hosting you.</p>
               <p style="margin-bottom:0; margin-top:28px;">
                 Warm regards,<br/>
-                <strong style="color:%s;">The Sanctuary Lodge</strong>
+                <strong style="color:%s;">Mwakwanda Lodge</strong>
               </p>`,
 		fullName,
 		alertBox(colorSuccessBox, colorSuccessBorder, colorAccent,
 			"Your profile is complete and your first reservation is just a few clicks away."),
 		colorPrimary,
 	)
-	return emailWrapper("Welcome to The Sanctuary", header, body)
+	return emailWrapper("Welcome to Mwakwanda", header, body)
 }

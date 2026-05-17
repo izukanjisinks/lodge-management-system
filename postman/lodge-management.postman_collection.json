@@ -1996,6 +1996,29 @@
       ]
     },
     {
+      "name": "Guest — Lodges",
+      "item": [
+        {
+          "name": "List Lodges",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/lodges?page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "lodges"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            },
+            "description": "Public endpoint. Returns a paginated list of active lodges (organizations) on the platform. Use the returned `id` as the lodge/org scope when browsing rooms or making bookings."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Guest — Auth",
       "item": [
         {
@@ -2063,6 +2086,25 @@
               "path": ["api", "v1", "guest", "auth", "login"]
             },
             "description": "Guest login. Hits the `guests` table — separate from staff login. Saves token to `guest_token`."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.mwale@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/guest/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "guest", "auth", "reset-password"]
+            },
+            "description": "Public endpoint. Generates a new random password and emails it to the guest. Always returns 200 regardless of whether the email exists to avoid leaking account information."
           },
           "response": []
         },

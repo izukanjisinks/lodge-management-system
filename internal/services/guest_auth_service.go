@@ -7,6 +7,7 @@ import (
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
 	"lodge-system/internal/utils/email"
+	"lodge-system/internal/utils/password"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
@@ -62,7 +63,7 @@ func (s *GuestAuthService) Register(req *models.GuestRegisterRequest) (*models.G
 	if s.emailService != nil {
 		go func() {
 			body := email.GuestWelcomeTemplate(req.FullName)
-			if sendErr := s.emailService.SendEmail([]string{req.Email}, "Welcome to The Sanctuary", body); sendErr != nil {
+			if sendErr := s.emailService.SendEmail([]string{req.Email}, "Welcome to Mwakwanda", body); sendErr != nil {
 				fmt.Printf("warning: failed to send guest welcome email to %s: %v\n", req.Email, sendErr)
 			}
 		}()
@@ -107,6 +108,40 @@ func (s *GuestAuthService) UpdateProfileIDPassport(profileID uuid.UUID, idPasspo
 
 func (s *GuestAuthService) UpdateProfileOrg(guestID uuid.UUID, orgID uuid.UUID) error {
 	return s.guestRepo.UpdateIndividualProfileOrg(guestID, orgID)
+}
+
+// ResetPassword generates a new password for the guest and emails it to them.
+// Always returns nil to avoid leaking whether the email exists.
+func (s *GuestAuthService) ResetPassword(emailAddr string) error {
+	guest, err := s.guestRepo.GetByEmail(emailAddr)
+	if err != nil {
+		return nil
+	}
+
+	newPassword, err := password.GenerateTemporaryPassword()
+	if err != nil {
+		return fmt.Errorf("failed to generate password: %w", err)
+	}
+
+	hashed, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	if err := s.guestRepo.UpdatePassword(guest.ID, hashed); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	if s.emailService != nil {
+		go func() {
+			body := email.GuestPasswordResetTemplate(guest.FullName, newPassword)
+			if sendErr := s.emailService.SendEmail([]string{guest.Email}, "Password Reset — Mwakwanda", body); sendErr != nil {
+				fmt.Printf("warning: failed to send password reset email to %s: %v\n", guest.Email, sendErr)
+			}
+		}()
+	}
+
+	return nil
 }
 
 func (s *GuestAuthService) UpdateProfile(id uuid.UUID, req *models.GuestUpdateRequest) (*models.Guest, error) {

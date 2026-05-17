@@ -93,15 +93,16 @@ func main() {
 	workflowAdminHandler := handlers.NewWorkflowAdminHandler(workflowRepo)
 	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyService, userService)
 
+	orgRepo := repository.NewOrganizationRepository()
+
 	guestAuthSvc := services.NewGuestAuthService(guestRepo)
 	guestAuthSvc.SetEmailService(emailService)
 	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, guestAuthSvc)
 	guestBookingSvc.SetWorkflowService(workflowService)
-	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc)
+	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, orgRepo)
 	guestBookingHandler := handlers.NewGuestBookingHandler(guestBookingSvc)
 
 	backofficeUserRepo := repository.NewBackofficeUserRepository()
-	orgRepo := repository.NewOrganizationRepository()
 
 	backofficeAuthSvc := services.NewBackofficeAuthService(backofficeUserRepo)
 	backofficeAuthSvc.SetEmailService(emailService)

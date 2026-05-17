@@ -62,6 +62,12 @@ func (r *GuestRepository) Update(g *models.Guest) error {
 	return err
 }
 
+func (r *GuestRepository) UpdatePassword(id uuid.UUID, hashedPassword string) error {
+	_, err := r.db.Exec(`UPDATE guests SET password = $1, updated_at = $2 WHERE id = $3`,
+		hashedPassword, time.Now(), id)
+	return err
+}
+
 func (r *GuestRepository) EmailExists(email string) (bool, error) {
 	var count int
 	err := r.db.QueryRow(`SELECT COUNT(1) FROM guests WHERE email = $1`, email).Scan(&count)

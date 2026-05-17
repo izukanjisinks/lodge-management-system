@@ -45,7 +45,7 @@ func (r *GuestRepository) GetByEmail(email string) (*models.Guest, error) {
 	query := `
 		SELECT id, full_name, email, password, phone, is_active, change_password,
 		       failed_login_attempts, is_locked, locked_until, last_login_at, created_at, updated_at
-		FROM guests WHERE email = $1`
+		FROM guests WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))`
 	return r.scanGuest(r.db.QueryRow(query, email))
 }
 

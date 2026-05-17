@@ -14,7 +14,7 @@ import (
 )
 
 type GuestAuthService struct {
-	guestRepo  *repository.GuestRepository
+	guestRepo    *repository.GuestRepository
 	emailService *email.EmailService
 }
 
@@ -45,11 +45,11 @@ func (s *GuestAuthService) Register(req *models.GuestRegisterRequest) (*models.G
 	}
 
 	guest := &models.Guest{
-		FullName:  req.FullName,
-		Email:     req.Email,
-		Password:  hashed,
-		Phone:     req.Phone,
-		IsActive:  true,
+		FullName: req.FullName,
+		Email:    req.Email,
+		Password: hashed,
+		Phone:    req.Phone,
+		IsActive: true,
 	}
 
 	if err := s.guestRepo.Create(guest); err != nil {
@@ -113,15 +113,20 @@ func (s *GuestAuthService) UpdateProfileOrg(guestID uuid.UUID, orgID uuid.UUID) 
 // ResetPassword generates a new password for the guest and emails it to them.
 // Always returns nil to avoid leaking whether the email exists.
 func (s *GuestAuthService) ResetPassword(emailAddr string) error {
+	fmt.Printf("[ResetPassword] request for email: %s\n", emailAddr)
+
 	guest, err := s.guestRepo.GetByEmail(emailAddr)
 	if err != nil {
+		fmt.Printf("[ResetPassword] guest not found for email %s: %v\n", emailAddr, err)
 		return nil
 	}
+	fmt.Printf("[ResetPassword] guest found: %s (id: %s)\n", guest.Email, guest.ID)
 
 	newPassword, err := password.GenerateTemporaryPassword()
 	if err != nil {
 		return fmt.Errorf("failed to generate password: %w", err)
 	}
+	fmt.Printf("[ResetPassword] generated new password for %s\n", guest.Email)
 
 	hashed, err := utils.HashPassword(newPassword)
 	if err != nil {
@@ -131,15 +136,22 @@ func (s *GuestAuthService) ResetPassword(emailAddr string) error {
 	if err := s.guestRepo.UpdatePassword(guest.ID, hashed); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
+	fmt.Printf("[ResetPassword] password updated in DB for %s\n", guest.Email)
 
-	if s.emailService != nil {
-		go func() {
-			body := email.GuestPasswordResetTemplate(guest.FullName, newPassword)
-			if sendErr := s.emailService.SendEmail([]string{guest.Email}, "Password Reset — Mwakwanda", body); sendErr != nil {
-				fmt.Printf("warning: failed to send password reset email to %s: %v\n", guest.Email, sendErr)
-			}
-		}()
+	if s.emailService == nil {
+		fmt.Printf("[ResetPassword] email service is nil — skipping email send\n")
+		return nil
 	}
+
+	go func() {
+		fmt.Printf("[ResetPassword] sending email to %s\n", guest.Email)
+		body := email.GuestPasswordResetTemplate(guest.FullName, newPassword)
+		if sendErr := s.emailService.SendEmail([]string{guest.Email}, "Password Reset — Mwakwanda", body); sendErr != nil {
+			fmt.Printf("[ResetPassword] failed to send email to %s: %v\n", guest.Email, sendErr)
+		} else {
+			fmt.Printf("[ResetPassword] email sent successfully to %s\n", guest.Email)
+		}
+	}()
 
 	return nil
 }

@@ -204,9 +204,10 @@ func (r *RoomRepository) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.T
 		WHERE is_available = TRUE AND org_id = $3%s
 		  AND id NOT IN (
 		    SELECT room_id FROM bookings
-		    WHERE status IN ('confirmed', 'checked_in')
-		      AND check_in  < $1
-		      AND check_out > $2
+		    WHERE room_id IS NOT NULL
+		      AND status IN ('pending', 'confirmed', 'checked_in')
+		      AND check_in::date  < $1::date
+		      AND check_out::date > $2::date
 		  )
 		ORDER BY name ASC`, extra), args...)
 	if err != nil {
@@ -220,7 +221,7 @@ func (r *RoomRepository) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.T
 		if err != nil {
 			return nil, err
 		}
-		rooms = append(rooms, *room)
+			rooms = append(rooms, *room)
 	}
 	return rooms, rows.Err()
 }
@@ -268,7 +269,7 @@ func (r *RoomRepository) GetBookedDates(roomID uuid.UUID) ([]models.BookedDate, 
 		SELECT TO_CHAR(check_in, 'YYYY-MM-DD'), TO_CHAR(check_out, 'YYYY-MM-DD'), status
 		FROM bookings
 		WHERE room_id = $1
-		  AND status IN ('confirmed', 'checked_in')
+		  AND status IN ('pending', 'confirmed', 'checked_in')
 		ORDER BY check_in ASC`, roomID)
 	if err != nil {
 		return nil, err

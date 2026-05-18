@@ -37,28 +37,16 @@ func (s *RoomService) Create(room *models.Room, orgID uuid.UUID) error {
 	if room.Images == nil {
 		room.Images = []string{}
 	}
-	if err := s.repo.Create(room, orgID); err != nil {
-		return formatConstraintError(err)
-	}
-	return nil
+	room.IsAvailable = true
+	return s.repo.Create(room, orgID)
 }
 
 func (s *RoomService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, error) {
-	room, err := s.repo.GetByID(id, orgID)
-	if err != nil {
-		return nil, err
-	}
-	room.BookedDates, _ = s.repo.GetBookedDates(id)
-	return room, nil
+	return s.repo.GetByID(id, orgID)
 }
 
 func (s *RoomService) GetByIDUnscoped(id uuid.UUID) (*models.Room, error) {
-	room, err := s.repo.GetByIDUnscoped(id)
-	if err != nil {
-		return nil, err
-	}
-	room.BookedDates, _ = s.repo.GetBookedDates(id)
-	return room, nil
+	return s.repo.GetByIDUnscoped(id)
 }
 
 func (s *RoomService) GuestList(orgID *uuid.UUID, roomType, orgName string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
@@ -116,7 +104,7 @@ func (s *RoomService) Update(id uuid.UUID, orgID uuid.UUID, updates *models.Room
 	}
 	room.IsAvailable = updates.IsAvailable
 	if err := s.repo.Update(room, orgID); err != nil {
-		return nil, formatConstraintError(err)
+		return nil, err
 	}
 	return s.repo.GetByID(id, orgID)
 }

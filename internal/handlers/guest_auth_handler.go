@@ -8,6 +8,8 @@ import (
 	"lodge-system/internal/repository"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
+
+	"github.com/google/uuid"
 )
 
 type GuestAuthHandler struct {
@@ -106,6 +108,21 @@ func (h *GuestAuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request)
 	}
 
 	utils.RespondJSON(w, http.StatusOK, guest)
+}
+
+// GetLodge handles GET /api/v1/guest/lodges/{org_id} — public, no auth required.
+func (h *GuestAuthHandler) GetLodge(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("org_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
+		return
+	}
+	lodge, err := h.orgRepo.GetByID(id)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "Lodge not found")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, lodge)
 }
 
 // ListLodges handles GET /api/v1/guest/lodges — public, no auth required.

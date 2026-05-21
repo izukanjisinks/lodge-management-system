@@ -64,6 +64,7 @@ func (r *BookingRepository) CreateInTx(tx *sql.Tx, b *models.Booking, orgID uuid
 func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
 		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
+		       b.org_id, o.name AS org_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -78,6 +79,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r    ON r.id = b.room_id
+		LEFT JOIN organizations       o    ON o.id = b.org_id
 		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
 		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
@@ -88,6 +90,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
 		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
+		       b.org_id, o.name AS org_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -102,6 +105,7 @@ func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Book
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r    ON r.id = b.room_id
+		LEFT JOIN organizations       o    ON o.id = b.org_id
 		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
 		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
@@ -148,6 +152,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
 		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
+		       b.org_id, o.name AS org_name,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -162,6 +167,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r    ON r.id = b.room_id
+		LEFT JOIN organizations       o    ON o.id = b.org_id
 		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
 		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
@@ -362,10 +368,11 @@ type bookingScanner interface {
 
 func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
-	var roomName, clientName, corporateClientName, specialRequests sql.NullString
+	var roomName, orgName, clientName, corporateClientName, specialRequests sql.NullString
 	var corporateClientID uuid.NullUUID
 	err := row.Scan(
 		&b.ID, &b.BookingNumber, &b.RoomID, &roomName,
+		&b.OrgID, &orgName,
 		&b.ClientID, &b.ClientType, &clientName,
 		&corporateClientID, &corporateClientName,
 		&b.CheckIn, &b.CheckOut, &b.Guests,
@@ -378,6 +385,9 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	}
 	if roomName.Valid {
 		b.RoomName = roomName.String
+	}
+	if orgName.Valid {
+		b.OrgName = orgName.String
 	}
 	if clientName.Valid {
 		b.ClientName = clientName.String

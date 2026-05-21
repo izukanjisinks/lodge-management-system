@@ -57,6 +57,8 @@ type Booking struct {
 	BookingNumber     string     `json:"booking_number"`
 	RoomID            uuid.UUID  `json:"room_id"`
 	RoomName          string     `json:"room_name"`
+	OrgID             uuid.UUID  `json:"org_id"`
+	OrgName           string     `json:"org_name,omitempty"`
 	ClientID          uuid.UUID  `json:"client_id"`
 	ClientType        string     `json:"client_type"`
 	ClientName        string     `json:"client_name"`

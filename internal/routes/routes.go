@@ -25,6 +25,7 @@ func RegisterRoutes(
 	backofficeOrgHandler *handlers.BackofficeOrganizationHandler,
 	auditLogHandler *handlers.AuditLogHandler,
 	orgSettingsHandler *handlers.OrganizationSettingsHandler,
+	branchHandler *handlers.BranchHandler,
 ) {
 	RegisterPublicRoutes(authHandler)
 	RegisterAuthRoutes(authHandler)
@@ -44,4 +45,5 @@ func RegisterRoutes(
 	RegisterBackofficeRoutes(backofficeAuthHandler, backofficeUserHandler, backofficeOrgHandler)
 	RegisterAuditLogRoutes(auditLogHandler)
 	RegisterOrganizationSettingsRoutes(orgSettingsHandler)
+	RegisterBranchRoutes(branchHandler)
 }

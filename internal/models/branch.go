@@ -35,6 +35,7 @@ type CreateBranchRequest struct {
 
 type UpdateBranchRequest struct {
 	Name          *string `json:"name,omitempty"`
+	BranchCode    *string `json:"branch_code,omitempty"`
 	StreetAddress *string `json:"street_address,omitempty"`
 	City          *string `json:"city,omitempty"`
 	Country       *string `json:"country,omitempty"`

@@ -66,9 +66,9 @@ func (r *BranchRepository) List(orgID uuid.UUID) ([]models.Branch, error) {
 func (r *BranchRepository) Update(b *models.Branch) error {
 	b.UpdatedAt = time.Now()
 	_, err := r.db.Exec(`
-		UPDATE branches SET name=$1, street_address=$2, city=$3, country=$4, location=$5, phone=$6, email=$7, is_active=$8, updated_at=$9
-		WHERE id=$10 AND org_id=$11`,
-		b.Name, b.StreetAddress, b.City, b.Country, b.Location, b.Phone, b.Email, b.IsActive, b.UpdatedAt, b.ID, b.OrgID,
+		UPDATE branches SET name=$1, branch_code=$2, street_address=$3, city=$4, country=$5, location=$6, phone=$7, email=$8, is_active=$9, updated_at=$10
+		WHERE id=$11 AND org_id=$12`,
+		b.Name, b.BranchCode, b.StreetAddress, b.City, b.Country, b.Location, b.Phone, b.Email, b.IsActive, b.UpdatedAt, b.ID, b.OrgID,
 	)
 	return err
 }

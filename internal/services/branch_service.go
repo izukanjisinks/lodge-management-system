@@ -81,6 +81,12 @@ func (s *BranchService) Update(id, orgID uuid.UUID, req *models.UpdateBranchRequ
 		}
 		b.Name = strings.TrimSpace(*req.Name)
 	}
+	if req.BranchCode != nil {
+		if strings.TrimSpace(*req.BranchCode) == "" {
+			return nil, errors.New("branch_code cannot be empty")
+		}
+		b.BranchCode = strings.ToUpper(strings.TrimSpace(*req.BranchCode))
+	}
 	if req.StreetAddress != nil {
 		v := strings.TrimSpace(*req.StreetAddress)
 		b.StreetAddress = &v

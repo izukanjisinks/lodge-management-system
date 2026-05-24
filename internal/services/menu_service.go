@@ -19,16 +19,16 @@ func NewMenuService(repo *repository.MenuRepository) *MenuService {
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
-func (s *MenuService) GetMenu(orgID uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
-	menu, err := s.repo.GetMenu(orgID)
+func (s *MenuService) GetMenu(orgID uuid.UUID, branchID *uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.GetMenu(orgID, branchID)
 	if err != nil {
 		return nil, errors.New("menu not found")
 	}
 	return s.buildResponse(menu, orgID, category, page, pageSize)
 }
 
-func (s *MenuService) UpsertMenu(orgID uuid.UUID, req *models.UpdateMenuRequest, category string, page, pageSize int) (*models.MenuResponse, error) {
-	menu, err := s.repo.UpsertMenu(orgID, req)
+func (s *MenuService) UpsertMenu(orgID uuid.UUID, branchID *uuid.UUID, req *models.UpdateMenuRequest, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.UpsertMenu(orgID, branchID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -53,14 +53,14 @@ func (s *MenuService) buildResponse(menu *models.Menu, orgID uuid.UUID, category
 
 // ── Menu Items ────────────────────────────────────────────────────────────────
 
-func (s *MenuService) CreateMenuItem(orgID uuid.UUID, req *models.CreateMenuItemRequest) (*models.MenuItem, error) {
+func (s *MenuService) CreateMenuItem(orgID uuid.UUID, branchID *uuid.UUID, req *models.CreateMenuItemRequest) (*models.MenuItem, error) {
 	if req.Name == "" {
 		return nil, errors.New("name is required")
 	}
 	if req.Price < 0 {
 		return nil, errors.New("price must be >= 0")
 	}
-	menu, err := s.repo.GetMenu(orgID)
+	menu, err := s.repo.GetMenu(orgID, branchID)
 	if err != nil {
 		return nil, errors.New("menu not found")
 	}
@@ -71,7 +71,7 @@ func (s *MenuService) CreateMenuItem(orgID uuid.UUID, req *models.CreateMenuItem
 		Price:       req.Price,
 		IsAvailable: true,
 	}
-	if err := s.repo.CreateMenuItem(item, menu.ID, orgID); err != nil {
+	if err := s.repo.CreateMenuItem(item, menu.ID, orgID, branchID); err != nil {
 		return nil, err
 	}
 	return s.repo.GetMenuItemByID(item.ID, orgID)

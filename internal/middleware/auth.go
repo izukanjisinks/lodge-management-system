@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -14,11 +15,12 @@ import (
 type ContextKey string
 
 const (
-	UserIDKey          ContextKey = "userID"
-	UserEmail          ContextKey = "userEmail"
-	UserKey            ContextKey = "user"
-	OrgIDKey           ContextKey = "orgID"
-	RoleKey            ContextKey = "role"
+	UserIDKey           ContextKey = "userID"
+	UserEmail           ContextKey = "userEmail"
+	UserKey             ContextKey = "user"
+	OrgIDKey            ContextKey = "orgID"
+	BranchIDKey         ContextKey = "branchID"
+	RoleKey             ContextKey = "role"
 	BackofficeUserIDKey ContextKey = "backofficeUserID"
 )
 
@@ -51,6 +53,7 @@ func JWTAuth(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, UserEmail, claims.Email)
 		ctx = context.WithValue(ctx, UserKey, user)
 		ctx = context.WithValue(ctx, OrgIDKey, claims.OrgID)
+		ctx = context.WithValue(ctx, BranchIDKey, claims.BranchID)
 		ctx = context.WithValue(ctx, RoleKey, claims.Role)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -154,6 +157,35 @@ func GetUserEmailFromContext(ctx context.Context) (string, bool) {
 func GetOrgIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	orgID, ok := ctx.Value(OrgIDKey).(uuid.UUID)
 	return orgID, ok
+}
+
+func GetBranchIDFromContext(ctx context.Context) *uuid.UUID {
+	v := ctx.Value(BranchIDKey)
+	if v == nil {
+		return nil
+	}
+	id, ok := v.(*uuid.UUID)
+	if !ok {
+		return nil
+	}
+	return id
+}
+
+// ResolveBranchID returns the branch_id to use for a scoped query.
+// Branch-scoped staff have it fixed in their JWT; org-level admins may
+// optionally supply it as a query param.
+func ResolveBranchID(r *http.Request) (*uuid.UUID, error) {
+	if id := GetBranchIDFromContext(r.Context()); id != nil {
+		return id, nil
+	}
+	if v := r.URL.Query().Get("branch_id"); v != "" {
+		parsed, err := uuid.Parse(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid branch_id")
+		}
+		return &parsed, nil
+	}
+	return nil, nil
 }
 
 func GetRoleFromContext(ctx context.Context) (string, bool) {

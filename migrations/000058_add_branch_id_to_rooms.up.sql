@@ -1,0 +1,2 @@
+ALTER TABLE rooms
+    ADD COLUMN branch_id UUID REFERENCES branches(id) ON DELETE SET NULL;

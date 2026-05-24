@@ -9,10 +9,10 @@ import (
 
 func RegisterPasswordPolicyRoutes(h *handlers.PasswordPolicyHandler) {
 	http.HandleFunc("GET /api/v1/password-policy",
-		withAuthAndRole(h.GetPasswordPolicy, models.RoleAdmin))
+		withAuthAndRole(h.GetPasswordPolicy, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("PUT /api/v1/password-policy",
-		withAuthAndRole(h.UpdatePasswordPolicy, models.RoleAdmin))
+		withAuthAndRole(h.UpdatePasswordPolicy, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("POST /api/v1/auth/change-password",
 		withAuth(h.ChangePassword))
@@ -21,5 +21,5 @@ func RegisterPasswordPolicyRoutes(h *handlers.PasswordPolicyHandler) {
 		withAuth(h.GeneratePassword))
 
 	http.HandleFunc("POST /api/v1/admin/users/{id}/reset-password",
-		withAuthAndRole(h.ResetUserPassword, models.RoleAdmin))
+		withAuthAndRole(h.ResetUserPassword, models.RoleAdmin, models.RoleBranchAdmin))
 }

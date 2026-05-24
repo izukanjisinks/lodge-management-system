@@ -12,21 +12,23 @@ import (
 )
 
 type UserHandler struct {
-	service *services.UserService
+	service     *services.UserService
+	roleService *services.RoleService
 }
 
-func NewUserHandler(service *services.UserService) *UserHandler {
-	return &UserHandler{service: service}
+func NewUserHandler(service *services.UserService, roleService *services.RoleService) *UserHandler {
+	return &UserHandler{service: service, roleService: roleService}
 }
 
 
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		FullName string `json:"full_name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-		Status   string `json:"status"`
+		FullName string     `json:"full_name"`
+		Email    string     `json:"email"`
+		Password string     `json:"password"`
+		Role     string     `json:"role"`
+		Status   string     `json:"status"`
+		BranchID *uuid.UUID `json:"branch_id,omitempty"`
 	}
 	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -38,6 +40,14 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	// Branch-scoped admins automatically assign users to their branch.
+	// Org-level admins can optionally specify a branch_id in the body.
+	branchID := middleware.GetBranchIDFromContext(r.Context())
+	if branchID == nil {
+		branchID = req.BranchID
+	}
+
 	user := &models.User{
 		FullName: req.FullName,
 		Email:    req.Email,
@@ -45,6 +55,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		RoleName: req.Role,
 		IsActive: req.Status != "inactive",
 		OrgID:    &orgID,
+		BranchID: branchID,
 	}
 
 	if err := h.service.Register(user); err != nil {
@@ -73,7 +84,12 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	users, total, err := h.service.ListUsers(orgID, search, roleID, isActive, pag.Page, pag.PageSize)
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	users, total, err := h.service.ListUsers(orgID, branchID, search, roleID, isActive, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve users")
 		return
@@ -116,19 +132,28 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		FullName string `json:"full_name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-		Status   string `json:"status"`
+		FullName string     `json:"full_name"`
+		Email    string     `json:"email"`
+		Password string     `json:"password"`
+		Role     string     `json:"role"`
+		Status   string     `json:"status"`
+		BranchID *uuid.UUID `json:"branch_id"`
 	}
 	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
+	// Branch-scoped admins cannot reassign users to a different branch.
+	if req.BranchID != nil {
+		if callerBranch := middleware.GetBranchIDFromContext(r.Context()); callerBranch != nil {
+			utils.RespondError(w, http.StatusForbidden, "Branch admins cannot reassign users to a different branch")
+			return
+		}
+	}
+
 	callerID, _ := middleware.GetUserIDFromContext(r.Context())
-	user, err := h.service.UpdateUserFull(id, callerID, req.FullName, req.Email, req.Password, req.Role, req.Status)
+	user, err := h.service.UpdateUserFull(id, callerID, req.FullName, req.Email, req.Password, req.Role, req.Status, req.BranchID)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -205,6 +230,27 @@ func (h *UserHandler) Lock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "User account locked successfully"})
+}
+
+func (h *UserHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
+	roles, err := h.roleService.GetAllRoles()
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve roles")
+		return
+	}
+
+	callerRole, _ := middleware.GetRoleFromContext(r.Context())
+	if callerRole != models.RoleAdmin {
+		filtered := roles[:0]
+		for _, role := range roles {
+			if role.Name != models.RoleAdmin {
+				filtered = append(filtered, role)
+			}
+		}
+		roles = filtered
+	}
+
+	utils.RespondJSON(w, http.StatusOK, roles)
 }
 
 func (h *UserHandler) Unlock(w http.ResponseWriter, r *http.Request) {

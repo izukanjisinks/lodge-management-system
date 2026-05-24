@@ -120,7 +120,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	return &o, nil
 }
 
-func (r *OrderRepository) List(orgID uuid.UUID, orderType, status string, bookingID *uuid.UUID, from, to *time.Time, page, pageSize int) ([]models.Order, int, error) {
+func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, status string, bookingID *uuid.UUID, from, to *time.Time, page, pageSize int) ([]models.Order, int, error) {
 	// Default to open orders when no status filter is provided
 	if status == "" {
 		status = models.OrderStatusOpen
@@ -131,6 +131,11 @@ func (r *OrderRepository) List(orgID uuid.UUID, orderType, status string, bookin
 	args = append(args, status)
 	i := 3
 
+	if branchID != nil {
+		extraFilters = append(extraFilters, fmt.Sprintf("o.branch_id = $%d", i))
+		args = append(args, *branchID)
+		i++
+	}
 	if orderType != "" {
 		extraFilters = append(extraFilters, fmt.Sprintf("o.type = $%d", i))
 		args = append(args, orderType)

@@ -10,44 +10,47 @@ import (
 func RegisterUserRoutes(h *handlers.UserHandler) {
 	// User management — frontend calls /api/v1/users (no /admin prefix)
 	http.HandleFunc("POST /api/v1/users",
-		withAuthAndRole(h.Create, models.RoleAdmin))
+		withAuthAndRole(h.Create, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("GET /api/v1/users",
-		withAuthAndRole(h.GetAll, models.RoleAdmin))
+		withAuthAndRole(h.GetAll, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("GET /api/v1/users/{id}",
-		withAuthAndRole(h.GetByID, models.RoleAdmin))
+		withAuthAndRole(h.GetByID, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("PUT /api/v1/users/{id}",
-		withAuthAndRole(h.Update, models.RoleAdmin))
+		withAuthAndRole(h.Update, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("DELETE /api/v1/users/{id}",
-		withAuthAndRole(h.Delete, models.RoleAdmin))
+		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("POST /api/v1/users/{id}/lock",
-		withAuthAndRole(h.Lock, models.RoleAdmin))
+		withAuthAndRole(h.Lock, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("POST /api/v1/users/{id}/unlock",
-		withAuthAndRole(h.Unlock, models.RoleAdmin))
+		withAuthAndRole(h.Unlock, models.RoleAdmin, models.RoleBranchAdmin))
 
 	// Keep /admin aliases for backward compatibility with Postman/other clients
 	http.HandleFunc("GET /api/v1/admin/users",
-		withAuthAndRole(h.GetAll, models.RoleAdmin))
+		withAuthAndRole(h.GetAll, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("GET /api/v1/admin/users/{id}",
-		withAuthAndRole(h.GetByID, models.RoleAdmin))
+		withAuthAndRole(h.GetByID, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("POST /api/v1/admin/users/{id}/role",
-		withAuthAndRole(h.ChangeRole, models.RoleAdmin))
+		withAuthAndRole(h.ChangeRole, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("DELETE /api/v1/admin/users/{id}",
-		withAuthAndRole(h.Delete, models.RoleAdmin))
+		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("POST /api/v1/admin/users/{id}/lock",
-		withAuthAndRole(h.Lock, models.RoleAdmin))
+		withAuthAndRole(h.Lock, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("POST /api/v1/admin/users/{id}/unlock",
-		withAuthAndRole(h.Unlock, models.RoleAdmin))
+		withAuthAndRole(h.Unlock, models.RoleAdmin, models.RoleBranchAdmin))
+
+	http.HandleFunc("GET /api/v1/roles",
+		withAuthAndRole(h.ListRoles, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("GET /api/v1/profile",
 		withAuth(h.GetProfile))

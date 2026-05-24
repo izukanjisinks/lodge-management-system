@@ -21,25 +21,54 @@ func NewMenuRepository() *MenuRepository {
 
 // ── Menus ─────────────────────────────────────────────────────────────────────
 
-// GetMenu returns the org-scoped menu if one exists, otherwise falls back to
-// the system default (org_id IS NULL).
-func (r *MenuRepository) GetMenu(orgID uuid.UUID) (*models.Menu, error) {
+// GetMenu returns the branch-scoped menu if branchID is set, otherwise the
+// org-scoped menu, falling back to the system default (org_id IS NULL).
+func (r *MenuRepository) GetMenu(orgID uuid.UUID, branchID *uuid.UUID) (*models.Menu, error) {
 	var m models.Menu
 	var oid uuid.NullUUID
+	var bid uuid.NullUUID
 	var description sql.NullString
 
+	if branchID != nil {
+		err := r.db.QueryRow(`
+			SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
+			FROM menus
+			WHERE org_id = $1 AND branch_id = $2
+			LIMIT 1`, orgID, branchID).
+			Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, err
+		}
+		if err == nil {
+			if oid.Valid {
+				m.OrgID = oid.UUID
+			}
+			if bid.Valid {
+				m.BranchID = &bid.UUID
+			}
+			if description.Valid {
+				m.Description = description.String
+			}
+			return &m, nil
+		}
+		// Fall through to org-level menu if no branch menu exists
+	}
+
 	err := r.db.QueryRow(`
-		SELECT id, org_id, name, description, is_active, created_at, updated_at
+		SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
 		FROM menus
-		WHERE org_id = $1 OR org_id IS NULL
+		WHERE (org_id = $1 AND branch_id IS NULL) OR org_id IS NULL
 		ORDER BY org_id NULLS LAST
 		LIMIT 1`, orgID).
-		Scan(&m.ID, &oid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
+		Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	if oid.Valid {
 		m.OrgID = oid.UUID
+	}
+	if bid.Valid {
+		m.BranchID = &bid.UUID
 	}
 	if description.Valid {
 		m.Description = description.String
@@ -47,11 +76,10 @@ func (r *MenuRepository) GetMenu(orgID uuid.UUID) (*models.Menu, error) {
 	return &m, nil
 }
 
-// UpsertMenu creates or updates the org-scoped menu row.
+// UpsertMenu creates or updates the branch- or org-scoped menu row.
 // The system default row (org_id IS NULL) is never touched by this method.
-func (r *MenuRepository) UpsertMenu(orgID uuid.UUID, req *models.UpdateMenuRequest) (*models.Menu, error) {
-	// Resolve current effective values as defaults for the first insert
-	current, err := r.GetMenu(orgID)
+func (r *MenuRepository) UpsertMenu(orgID uuid.UUID, branchID *uuid.UUID, req *models.UpdateMenuRequest) (*models.Menu, error) {
+	current, err := r.GetMenu(orgID, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -72,25 +100,28 @@ func (r *MenuRepository) UpsertMenu(orgID uuid.UUID, req *models.UpdateMenuReque
 
 	now := time.Now()
 	var m models.Menu
-	var oid uuid.NullUUID
+	var oid, bid uuid.NullUUID
 	var desc sql.NullString
 
 	err = r.db.QueryRow(`
-		INSERT INTO menus (org_id, name, description, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $5)
-		ON CONFLICT (org_id) DO UPDATE
+		INSERT INTO menus (org_id, branch_id, name, description, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $6)
+		ON CONFLICT (org_id, branch_id) DO UPDATE
 		    SET name        = EXCLUDED.name,
 		        description = EXCLUDED.description,
 		        is_active   = EXCLUDED.is_active,
 		        updated_at  = EXCLUDED.updated_at
-		RETURNING id, org_id, name, description, is_active, created_at, updated_at`,
-		orgID, name, description, isActive, now,
-	).Scan(&m.ID, &oid, &m.Name, &desc, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
+		RETURNING id, org_id, branch_id, name, description, is_active, created_at, updated_at`,
+		orgID, branchID, name, description, isActive, now,
+	).Scan(&m.ID, &oid, &bid, &m.Name, &desc, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	if oid.Valid {
 		m.OrgID = oid.UUID
+	}
+	if bid.Valid {
+		m.BranchID = &bid.UUID
 	}
 	if desc.Valid {
 		m.Description = desc.String
@@ -100,18 +131,19 @@ func (r *MenuRepository) UpsertMenu(orgID uuid.UUID, req *models.UpdateMenuReque
 
 // ── Menu Items ────────────────────────────────────────────────────────────────
 
-func (r *MenuRepository) CreateMenuItem(item *models.MenuItem, menuID uuid.UUID, orgID uuid.UUID) error {
+func (r *MenuRepository) CreateMenuItem(item *models.MenuItem, menuID uuid.UUID, orgID uuid.UUID, branchID *uuid.UUID) error {
 	item.ID = uuid.New()
 	now := time.Now()
 	item.CreatedAt = now
 	item.UpdatedAt = now
 	item.MenuID = menuID
 	item.OrgID = orgID
+	item.BranchID = branchID
 
 	_, err := r.db.Exec(`
-		INSERT INTO menu_items (id, menu_id, org_id, name, description, category, price, is_available, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		item.ID, menuID, orgID, item.Name, item.Description, item.Category, item.Price, item.IsAvailable,
+		INSERT INTO menu_items (id, menu_id, org_id, branch_id, name, description, category, price, is_available, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		item.ID, menuID, orgID, branchID, item.Name, item.Description, item.Category, item.Price, item.IsAvailable,
 		item.CreatedAt, item.UpdatedAt,
 	)
 	return err
@@ -120,12 +152,16 @@ func (r *MenuRepository) CreateMenuItem(item *models.MenuItem, menuID uuid.UUID,
 func (r *MenuRepository) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models.MenuItem, error) {
 	var item models.MenuItem
 	var description, category sql.NullString
+	var branchID uuid.NullUUID
 	err := r.db.QueryRow(`
-		SELECT id, menu_id, org_id, name, description, category, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, price, is_available, created_at, updated_at
 		FROM menu_items WHERE id=$1 AND org_id=$2`, id, orgID).
-		Scan(&item.ID, &item.MenuID, &item.OrgID, &item.Name, &description, &category, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt)
+		Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		return nil, err
+	}
+	if branchID.Valid {
+		item.BranchID = &branchID.UUID
 	}
 	if description.Valid {
 		item.Description = description.String
@@ -152,7 +188,7 @@ func (r *MenuRepository) ListAvailableMenuItems(menuID uuid.UUID, category strin
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, menu_id, org_id, name, description, category, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, price, is_available, created_at, updated_at
 		FROM menu_items WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
@@ -180,7 +216,7 @@ func (r *MenuRepository) ListMenuItems(menuID uuid.UUID, orgID uuid.UUID, catego
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, menu_id, org_id, name, description, category, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, price, is_available, created_at, updated_at
 		FROM menu_items WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
@@ -231,8 +267,12 @@ func scanMenuItems(rows *sql.Rows) ([]models.MenuItem, error) {
 	for rows.Next() {
 		var item models.MenuItem
 		var description, category sql.NullString
-		if err := rows.Scan(&item.ID, &item.MenuID, &item.OrgID, &item.Name, &description, &category, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		var branchID uuid.NullUUID
+		if err := rows.Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if branchID.Valid {
+			item.BranchID = &branchID.UUID
 		}
 		if description.Valid {
 			item.Description = description.String

@@ -1,0 +1,4 @@
+ALTER TABLE branches
+    ADD COLUMN phone     VARCHAR(50),
+    ADD COLUMN email     VARCHAR(255),
+    ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE;

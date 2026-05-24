@@ -19,11 +19,12 @@ const (
 )
 
 type CustomClaims struct {
-	Email     string    `json:"email"`
-	UserID    uuid.UUID `json:"userId"`
-	OrgID     uuid.UUID `json:"orgId"`
-	Role      string    `json:"role"`
-	TokenType TokenType `json:"tokenType"`
+	Email     string     `json:"email"`
+	UserID    uuid.UUID  `json:"userId"`
+	OrgID     uuid.UUID  `json:"orgId"`
+	BranchID  *uuid.UUID `json:"branchId,omitempty"`
+	Role      string     `json:"role"`
+	TokenType TokenType  `json:"tokenType"`
 	jwt.RegisteredClaims
 }
 
@@ -35,11 +36,12 @@ func getSecretKey() []byte {
 	return []byte(secret)
 }
 
-func GenerateStaffToken(email string, userID, orgID uuid.UUID, role string) (string, error) {
+func GenerateStaffToken(email string, userID, orgID uuid.UUID, branchID *uuid.UUID, role string) (string, error) {
 	claims := CustomClaims{
 		Email:     email,
 		UserID:    userID,
 		OrgID:     orgID,
+		BranchID:  branchID,
 		Role:      role,
 		TokenType: TokenTypeStaff,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -119,5 +121,5 @@ func ExtractEmailFromToken(tokenString string) (string, error) {
 // GenerateToken is kept for backward compatibility during migration.
 // Prefer GenerateStaffToken, GenerateGuestToken, or GenerateBackofficeToken.
 func GenerateToken(email string, userId uuid.UUID) (string, error) {
-	return GenerateStaffToken(email, userId, uuid.Nil, "")
+	return GenerateStaffToken(email, userId, uuid.Nil, nil, "")
 }

@@ -44,6 +44,7 @@ type Invoice struct {
 	ClientName        string            `json:"client_name"`
 	ClientType        string            `json:"client_type"`
 	ClientEmail       string            `json:"client_email,omitempty"`
+	BranchID          *uuid.UUID        `json:"branch_id,omitempty"`
 	LineItems         []InvoiceLineItem `json:"line_items"`
 	Subtotal          float64           `json:"subtotal"`
 	TaxRate           float64           `json:"tax_rate"`

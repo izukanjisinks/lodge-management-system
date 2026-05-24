@@ -92,6 +92,7 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, req *models.CreateInd
 
 	b := &models.Booking{
 		RoomID:          req.RoomID,
+		BranchID:        room.BranchID,
 		ClientID:        clientID,
 		ClientType:      models.BookingClientTypeIndividual,
 		CheckIn:         req.CheckIn.Time,
@@ -209,8 +210,14 @@ func (s *BookingService) CreateCorporate(orgID uuid.UUID, req *models.CreateCorp
 			guestClientID = individual.ID
 		}
 
+		guestRoom, _ := s.room.GetByID(g.RoomID, orgID)
+		var guestBranchID *uuid.UUID
+		if guestRoom != nil {
+			guestBranchID = guestRoom.BranchID
+		}
 		b := &models.Booking{
 			RoomID:            g.RoomID,
+			BranchID:          guestBranchID,
 			ClientID:          guestClientID,
 			ClientType:        models.BookingClientTypeIndividual,
 			CorporateClientID: &corp.ID,
@@ -264,8 +271,8 @@ func (s *BookingService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Booking
 	return s.repo.GetByID(id, orgID)
 }
 
-func (s *BookingService) List(orgID uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
-	return s.repo.List(orgID, status, clientType, clientID, page, pageSize)
+func (s *BookingService) List(orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+	return s.repo.List(orgID, branchID, status, clientType, clientID, page, pageSize)
 }
 
 func (s *BookingService) Update(id uuid.UUID, orgID uuid.UUID, req *models.UpdateBookingRequest) (*models.Booking, error) {

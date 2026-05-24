@@ -11,6 +11,8 @@ type User struct {
 	OrgID                *uuid.UUID `json:"org_id,omitempty"`
 	OrgName              string     `json:"org_name,omitempty"`
 	OrgLogoURL           string     `json:"org_logo_url,omitempty"`
+	BranchID             *uuid.UUID `json:"branch_id,omitempty"`
+	BranchName           string     `json:"branch_name,omitempty"`
 	FullName             string     `json:"full_name"`
 	Email                string     `json:"email"`
 	Password             string     `json:"-"`
@@ -38,7 +40,7 @@ func (u *User) HasPermission(permission string) bool {
 		return false
 	}
 	switch u.Role.Name {
-	case RoleAdmin:
+	case RoleAdmin, RoleBranchAdmin:
 		return true
 	case RoleManager:
 		allowed := map[string]bool{

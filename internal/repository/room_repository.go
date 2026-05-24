@@ -27,11 +27,11 @@ func (r *RoomRepository) Create(room *models.Room, orgID uuid.UUID) error {
 	room.CreatedAt = now
 	room.UpdatedAt = now
 	_, err := r.db.Exec(`
-		INSERT INTO rooms (id, name, type, capacity, price_per_night, amenities, images, is_available, description, org_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		INSERT INTO rooms (id, name, type, capacity, price_per_night, amenities, images, is_available, description, org_id, branch_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		room.ID, room.Name, room.Type, room.Capacity, room.PricePerNight,
 		pq.Array(room.Amenities), pq.Array(room.Images), room.IsAvailable, room.Description,
-		orgID, room.CreatedAt, room.UpdatedAt,
+		orgID, room.BranchID, room.CreatedAt, room.UpdatedAt,
 	)
 	return err
 }
@@ -40,20 +40,20 @@ func (r *RoomRepository) Create(room *models.Room, orgID uuid.UUID) error {
 // where org is derived from the room itself after lookup.
 func (r *RoomRepository) GetByIDUnscoped(id uuid.UUID) (*models.Room, error) {
 	row := r.db.QueryRow(`
-		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		SELECT id, org_id, branch_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms WHERE id = $1`, id)
 	return scanRoom(row)
 }
 
 func (r *RoomRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, error) {
 	row := r.db.QueryRow(`
-		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		SELECT id, org_id, branch_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms WHERE id = $1 AND org_id = $2`, id, orgID)
 	return scanRoom(row)
 }
 
 // GuestList lists rooms with optional filters — used by public guest endpoints.
-func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType, orgName string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+func (r *RoomRepository) GuestList(orgID *uuid.UUID, branchID *uuid.UUID, roomType, orgName string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	args := []interface{}{}
 	where := []string{"1=1"}
 	i := 1
@@ -61,6 +61,11 @@ func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType, orgName string, i
 	if orgID != nil {
 		where = append(where, fmt.Sprintf("r.org_id = $%d", i))
 		args = append(args, *orgID)
+		i++
+	}
+	if branchID != nil {
+		where = append(where, fmt.Sprintf("r.branch_id = $%d", i))
+		args = append(args, *branchID)
 		i++
 	}
 	if roomType != "" {
@@ -88,7 +93,7 @@ func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType, orgName string, i
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT r.id, r.org_id, r.name, r.type, r.capacity, r.price_per_night, r.amenities, r.images, r.is_available, r.description, r.created_at, r.updated_at,
+		SELECT r.id, r.org_id, r.branch_id, r.name, r.type, r.capacity, r.price_per_night, r.amenities, r.images, r.is_available, r.description, r.created_at, r.updated_at,
 		       o.name, o.email, o.address, o.phone, o.logo_url
 		FROM rooms r
 		LEFT JOIN organizations o ON o.id = r.org_id
@@ -103,20 +108,24 @@ func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType, orgName string, i
 	var rooms []models.Room
 	for rows.Next() {
 		var room models.Room
-		var orgID sql.NullString
+		var scannedOrgID, scannedBranchID sql.NullString
 		var description sql.NullString
 		var orgName, orgEmail, orgAddress, orgPhone, orgLogoURL sql.NullString
 		if err := rows.Scan(
-			&room.ID, &orgID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
+			&room.ID, &scannedOrgID, &scannedBranchID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
 			pq.Array(&room.Amenities), pq.Array(&room.Images), &room.IsAvailable, &description,
 			&room.CreatedAt, &room.UpdatedAt,
 			&orgName, &orgEmail, &orgAddress, &orgPhone, &orgLogoURL,
 		); err != nil {
 			return nil, 0, err
 		}
-		if orgID.Valid {
-			parsed, _ := uuid.Parse(orgID.String)
+		if scannedOrgID.Valid {
+			parsed, _ := uuid.Parse(scannedOrgID.String)
 			room.OrgID = &parsed
+		}
+		if scannedBranchID.Valid {
+			parsed, _ := uuid.Parse(scannedBranchID.String)
+			room.BranchID = &parsed
 		}
 		if description.Valid {
 			room.Description = description.String
@@ -143,11 +152,16 @@ func (r *RoomRepository) GuestList(orgID *uuid.UUID, roomType, orgName string, i
 	return rooms, total, rows.Err()
 }
 
-func (r *RoomRepository) List(orgID uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+func (r *RoomRepository) List(orgID uuid.UUID, branchID *uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"org_id = $1"}
 	i := 2
 
+	if branchID != nil {
+		where = append(where, fmt.Sprintf("branch_id = $%d", i))
+		args = append(args, *branchID)
+		i++
+	}
 	if roomType != "" {
 		where = append(where, fmt.Sprintf("type = $%d", i))
 		args = append(args, roomType)
@@ -168,7 +182,7 @@ func (r *RoomRepository) List(orgID uuid.UUID, roomType string, isAvailable *boo
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		SELECT id, org_id, branch_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
@@ -199,7 +213,7 @@ func (r *RoomRepository) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.T
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, org_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		SELECT id, org_id, branch_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
 		FROM rooms
 		WHERE is_available = TRUE AND org_id = $3%s
 		  AND id NOT IN (
@@ -296,10 +310,10 @@ type roomScanner interface {
 
 func scanRoom(row roomScanner) (*models.Room, error) {
 	var room models.Room
-	var orgID sql.NullString
+	var orgID, branchID sql.NullString
 	var description sql.NullString
 	err := row.Scan(
-		&room.ID, &orgID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
+		&room.ID, &orgID, &branchID, &room.Name, &room.Type, &room.Capacity, &room.PricePerNight,
 		pq.Array(&room.Amenities), pq.Array(&room.Images), &room.IsAvailable, &description,
 		&room.CreatedAt, &room.UpdatedAt,
 	)
@@ -309,6 +323,10 @@ func scanRoom(row roomScanner) (*models.Room, error) {
 	if orgID.Valid {
 		parsed, _ := uuid.Parse(orgID.String)
 		room.OrgID = &parsed
+	}
+	if branchID.Valid {
+		parsed, _ := uuid.Parse(branchID.String)
+		room.BranchID = &parsed
 	}
 	if description.Valid {
 		room.Description = description.String

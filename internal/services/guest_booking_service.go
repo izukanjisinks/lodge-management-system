@@ -77,6 +77,7 @@ func (s *GuestBookingService) Create(userID uuid.UUID, req *models.CreateBooking
 
 	b := &models.Booking{
 		RoomID:          req.RoomID,
+		BranchID:        room.BranchID,
 		ClientID:        profile.ID,
 		ClientType:      models.BookingClientTypeIndividual,
 		CheckIn:         req.CheckIn.Time,
@@ -136,7 +137,7 @@ func (s *GuestBookingService) ListForGuest(userID uuid.UUID, page, pageSize int)
 		return nil, 0, errors.New("guest profile not found")
 	}
 
-	return s.bookingRepo.List(uuid.Nil, "", models.BookingClientTypeIndividual, &profile.ID, page, pageSize)
+	return s.bookingRepo.List(uuid.Nil, nil, "", models.BookingClientTypeIndividual, &profile.ID, page, pageSize)
 }
 
 // GetByID returns a single booking, scoped to the guest — 403 if it doesn't belong to them.

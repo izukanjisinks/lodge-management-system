@@ -25,13 +25,19 @@ func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
 	pag := utils.ParsePagination(r)
 	roomType := r.URL.Query().Get("type")
 
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	var isAvailable *bool
 	if v := r.URL.Query().Get("is_available"); v != "" {
 		b := v == "true"
 		isAvailable = &b
 	}
 
-	rooms, total, err := h.service.List(orgID, roomType, isAvailable, pag.Page, pag.PageSize)
+	rooms, total, err := h.service.List(orgID, branchID, roomType, isAvailable, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -45,7 +51,7 @@ func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GuestList handles GET /api/v1/guest/rooms — public, org_id is an optional filter
+// GuestList handles GET /api/v1/guest/rooms — public, org_id and branch_id are optional filters
 func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 	var orgID *uuid.UUID
 	if orgIDStr := r.URL.Query().Get("org_id"); orgIDStr != "" {
@@ -55,6 +61,16 @@ func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		orgID = &parsed
+	}
+
+	var branchID *uuid.UUID
+	if v := r.URL.Query().Get("branch_id"); v != "" {
+		parsed, err := uuid.Parse(v)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "Invalid branch_id")
+			return
+		}
+		branchID = &parsed
 	}
 
 	roomType := r.URL.Query().Get("type")
@@ -99,7 +115,7 @@ func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 		isAvailable = &b
 	}
 
-	rooms, total, err := h.service.GuestList(orgID, roomType, orgName, isAvailable, pag.Page, pag.PageSize)
+	rooms, total, err := h.service.GuestList(orgID, branchID, roomType, orgName, isAvailable, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -226,6 +242,12 @@ func (h *RoomHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err := utils.DecodeJson(r, &room); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
+	}
+
+	// Branch-scoped staff have their branch fixed by the JWT; org-level admins
+	// may optionally supply branch_id in the body.
+	if branchID := middleware.GetBranchIDFromContext(r.Context()); branchID != nil {
+		room.BranchID = branchID
 	}
 
 	if err := h.service.Create(&room, orgID); err != nil {

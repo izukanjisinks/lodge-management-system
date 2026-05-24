@@ -147,8 +147,8 @@ func (s *OrderService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, er
 	return o, nil
 }
 
-func (s *OrderService) List(orgID uuid.UUID, orderType, status string, bookingID *uuid.UUID, from, to *time.Time, page, pageSize int) ([]models.Order, int, error) {
-	return s.repo.List(orgID, orderType, status, bookingID, from, to, page, pageSize)
+func (s *OrderService) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, status string, bookingID *uuid.UUID, from, to *time.Time, page, pageSize int) ([]models.Order, int, error) {
+	return s.repo.List(orgID, branchID, orderType, status, bookingID, from, to, page, pageSize)
 }
 
 // appendToInvoice writes one invoice line item per order item onto the booking's invoice.

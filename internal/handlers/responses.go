@@ -15,12 +15,14 @@ func userResponse(u *models.User) map[string]interface{} {
 		status = "inactive"
 	}
 	res := map[string]interface{}{
-		"id":         u.UserID,
-		"full_name":  u.FullName,
-		"email":      u.Email,
-		"role":       roleName,
-		"status":     status,
-		"created_at": u.CreatedAt,
+		"id":          u.UserID,
+		"full_name":   u.FullName,
+		"email":       u.Email,
+		"role":        roleName,
+		"status":      status,
+		"branch_id":   u.BranchID,
+		"branch_name": u.BranchName,
+		"created_at":  u.CreatedAt,
 	}
 	if u.LastLoginAt != nil {
 		res["last_login"] = u.LastLoginAt

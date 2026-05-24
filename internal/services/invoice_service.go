@@ -80,6 +80,7 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 		ClientID:      b.ClientID,
 		ClientType:    b.ClientType,
 		ClientName:    b.ClientName,
+		BranchID:      b.BranchID,
 		LineItems:     lineItems,
 		Subtotal:      subtotal,
 		TaxRate:       defaultTaxRate,
@@ -105,11 +106,15 @@ func (s *InvoiceService) GenerateCorporateInvoice(corporateClientID uuid.UUID, o
 
 	var lineItems []models.InvoiceLineItem
 	var subtotal float64
+	var branchID *uuid.UUID
 
 	for _, bookingID := range bookingIDs {
 		b, err := s.booking.GetByID(bookingID, orgID)
 		if err != nil {
 			continue
+		}
+		if branchID == nil {
+			branchID = b.BranchID
 		}
 		room, err := s.room.GetByID(b.RoomID, orgID)
 		if err != nil {
@@ -150,6 +155,7 @@ func (s *InvoiceService) GenerateCorporateInvoice(corporateClientID uuid.UUID, o
 		CorporateClientID: &corporateClientID,
 		ClientID:          corporateClientID,
 		ClientType:        models.BookingClientTypeCorporate,
+		BranchID:          branchID,
 		LineItems:         lineItems,
 		Subtotal:          subtotal,
 		TaxRate:           defaultTaxRate,
@@ -178,8 +184,8 @@ func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*
 	return inv, nil
 }
 
-func (s *InvoiceService) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
-	return s.repo.List(orgID, status, page, pageSize)
+func (s *InvoiceService) List(orgID uuid.UUID, branchID *uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
+	return s.repo.List(orgID, branchID, status, page, pageSize)
 }
 
 func (s *InvoiceService) UpdateDueDate(bookingID uuid.UUID, orgID uuid.UUID, dueDate time.Time) error {

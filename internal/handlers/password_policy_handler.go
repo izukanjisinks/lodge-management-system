@@ -45,7 +45,7 @@ func (h *PasswordPolicyHandler) UpdatePasswordPolicy(w http.ResponseWriter, r *h
 	}
 
 	// Check if user has permission
-	if user.Role == nil || (user.Role.Name != models.RoleAdmin) {
+	if user.Role == nil || (user.Role.Name != models.RoleAdmin && user.Role.Name != models.RoleBranchAdmin) {
 		utils.RespondError(w, http.StatusForbidden, "Insufficient permissions to update password policy")
 		return
 	}
@@ -134,7 +134,7 @@ func (h *PasswordPolicyHandler) ResetUserPassword(w http.ResponseWriter, r *http
 		return
 	}
 
-	if user.Role == nil || (user.Role.Name != models.RoleAdmin) {
+	if user.Role == nil || (user.Role.Name != models.RoleAdmin && user.Role.Name != models.RoleBranchAdmin) {
 		utils.RespondError(w, http.StatusForbidden, "Insufficient permissions to reset passwords")
 		return
 	}

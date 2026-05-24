@@ -78,7 +78,7 @@ func main() {
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(userService)
-	userHandler := handlers.NewUserHandler(userService)
+	userHandler := handlers.NewUserHandler(userService, roleService)
 	roomHandler := handlers.NewRoomHandler(services.NewRoomService(roomRepo))
 	clientHandler := handlers.NewClientHandler(services.NewClientService(clientRepo))
 	bookingSvc := services.NewBookingService(bookingRepo, roomRepo, clientRepo)
@@ -160,7 +160,7 @@ func main() {
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally
-	handler := middleware.CORS(http.DefaultServeMux)
+	handler := middleware.Logger(middleware.CORS(http.DefaultServeMux))
 
 	addr := ":" + cfg.ServerPort
 	log.Printf("Lodge Management System running on http://localhost%s", addr)

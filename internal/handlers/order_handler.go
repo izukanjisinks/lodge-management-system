@@ -24,6 +24,12 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	pag := utils.ParsePagination(r)
 
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	orderType := r.URL.Query().Get("type")
 	status := r.URL.Query().Get("status") // defaults to "open" when blank
 
@@ -57,7 +63,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		to = &end
 	}
 
-	orders, total, err := h.service.List(orgID, orderType, status, bookingID, from, to, pag.Page, pag.PageSize)
+	orders, total, err := h.service.List(orgID, branchID, orderType, status, bookingID, from, to, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return

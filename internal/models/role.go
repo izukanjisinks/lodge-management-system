@@ -8,6 +8,7 @@ import (
 
 const (
 	RoleAdmin        = "admin"
+	RoleBranchAdmin  = "branch_admin"
 	RoleManager      = "manager"
 	RoleReceptionist = "receptionist"
 	RoleCleaner      = "cleaner"
@@ -24,7 +25,8 @@ type Role struct {
 
 func GetPredefinedRoles() []Role {
 	return []Role{
-		{Name: RoleAdmin, Description: "Full system access — manages users, rooms, bookings, and configuration"},
+		{Name: RoleAdmin, Description: "Admin — full access including branch management"},
+		{Name: RoleBranchAdmin, Description: "Branch admin — full access scoped to their assigned branch"},
 		{Name: RoleManager, Description: "Oversees operations — approves bookings, views reports, manages rooms"},
 		{Name: RoleReceptionist, Description: "Front-desk staff — handles bookings, clients, and invoices"},
 		{Name: RoleCleaner, Description: "Housekeeping staff — views assigned rooms and cleaning schedule"},

@@ -32,11 +32,11 @@ func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 
 	_, err := r.db.Exec(`
 		INSERT INTO bookings
-		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, branch_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		b.ID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
-		orgID, b.CreatedAt, b.UpdatedAt,
+		orgID, b.BranchID, b.CreatedAt, b.UpdatedAt,
 	)
 	return err
 }
@@ -50,12 +50,12 @@ func (r *BookingRepository) CreateInTx(tx *sql.Tx, b *models.Booking, orgID uuid
 
 	return tx.QueryRow(`
 		INSERT INTO bookings
-		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, branch_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		RETURNING booking_number`,
 		b.ID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
-		orgID, now, now,
+		orgID, b.BranchID, now, now,
 	).Scan(&b.BookingNumber)
 }
 
@@ -64,7 +64,7 @@ func (r *BookingRepository) CreateInTx(tx *sql.Tx, b *models.Booking, orgID uuid
 func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
 		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
-		       b.org_id, o.name AS org_name,
+		       b.org_id, o.name AS org_name, b.branch_id,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -90,7 +90,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
 		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
-		       b.org_id, o.name AS org_name,
+		       b.org_id, o.name AS org_name, b.branch_id,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -113,7 +113,7 @@ func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Book
 	return scanBooking(row)
 }
 
-func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+func (r *BookingRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
 	args := []interface{}{}
 	where := []string{}
 	i := 1
@@ -121,6 +121,11 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 	if orgID != uuid.Nil {
 		where = append(where, fmt.Sprintf("b.org_id = $%d", i))
 		args = append(args, orgID)
+		i++
+	}
+	if branchID != nil {
+		where = append(where, fmt.Sprintf("b.branch_id = $%d", i))
+		args = append(args, *branchID)
 		i++
 	}
 	if status != "" {
@@ -152,7 +157,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, status, clientType string, cli
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
 		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
-		       b.org_id, o.name AS org_name,
+		       b.org_id, o.name AS org_name, b.branch_id,
 		       b.client_id, b.client_type,
 		       CASE b.client_type
 		           WHEN 'individual' THEN ip.full_name
@@ -369,10 +374,11 @@ type bookingScanner interface {
 func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
 	var roomName, orgName, clientName, corporateClientName, specialRequests sql.NullString
+	var branchID uuid.NullUUID
 	var corporateClientID uuid.NullUUID
 	err := row.Scan(
 		&b.ID, &b.BookingNumber, &b.RoomID, &roomName,
-		&b.OrgID, &orgName,
+		&b.OrgID, &orgName, &branchID,
 		&b.ClientID, &b.ClientType, &clientName,
 		&corporateClientID, &corporateClientName,
 		&b.CheckIn, &b.CheckOut, &b.Guests,
@@ -388,6 +394,9 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	}
 	if orgName.Valid {
 		b.OrgName = orgName.String
+	}
+	if branchID.Valid {
+		b.BranchID = &branchID.UUID
 	}
 	if clientName.Valid {
 		b.ClientName = clientName.String

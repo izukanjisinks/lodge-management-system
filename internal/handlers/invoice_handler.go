@@ -24,7 +24,13 @@ func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
 	pag := utils.ParsePagination(r)
 	status := r.URL.Query().Get("status")
 
-	invoices, total, err := h.service.List(orgID, status, pag.Page, pag.PageSize)
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	invoices, total, err := h.service.List(orgID, branchID, status, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

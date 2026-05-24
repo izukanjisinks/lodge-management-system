@@ -25,6 +25,12 @@ func (h *BookingHandler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	clientType := r.URL.Query().Get("client_type")
 
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	var clientID *uuid.UUID
 	if v := r.URL.Query().Get("client_id"); v != "" {
 		id, err := uuid.Parse(v)
@@ -35,7 +41,7 @@ func (h *BookingHandler) List(w http.ResponseWriter, r *http.Request) {
 		clientID = &id
 	}
 
-	bookings, total, err := h.service.List(orgID, status, clientType, clientID, pag.Page, pag.PageSize)
+	bookings, total, err := h.service.List(orgID, branchID, status, clientType, clientID, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

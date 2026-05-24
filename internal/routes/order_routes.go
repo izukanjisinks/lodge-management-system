@@ -16,17 +16,17 @@ func RegisterOrderRoutes(h *handlers.OrderHandler) {
 
 	// Place orders — admin, manager, receptionist
 	http.HandleFunc("POST /api/v1/orders",
-		withAuthAndRole(h.PlaceOrder, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.PlaceOrder, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 	http.HandleFunc("POST /api/v1/orders/walk-in",
-		withAuthAndRole(h.PlaceWalkInOrder, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.PlaceWalkInOrder, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
 	// Add / remove items on an existing order
 	http.HandleFunc("POST /api/v1/orders/{id}/items",
-		withAuthAndRole(h.AddItems, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.AddItems, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 	http.HandleFunc("DELETE /api/v1/orders/{id}/items/{item_id}",
-		withAuthAndRole(h.RemoveItem, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.RemoveItem, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
 	// Manually close all open orders for the org — admin and manager only
 	http.HandleFunc("PATCH /api/v1/orders/close-all",
-		withAuthAndRole(h.CloseAllOrders, models.RoleAdmin, models.RoleManager))
+		withAuthAndRole(h.CloseAllOrders, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
 }

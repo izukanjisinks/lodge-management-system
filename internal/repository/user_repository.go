@@ -22,14 +22,14 @@ func NewUserRepository() *UserRepository {
 
 func (r *UserRepository) Create(user *models.User) error {
 	query := `
-		INSERT INTO users (user_id, full_name, email, password, role_id, org_id, is_active, change_password, password_changed_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		INSERT INTO users (user_id, full_name, email, password, role_id, org_id, branch_id, is_active, change_password, password_changed_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	user.UserID = uuid.New()
 	now := time.Now()
 	user.CreatedAt = now
 	user.UpdatedAt = now
 	_, err := r.db.Exec(query,
-		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.OrgID,
+		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.OrgID, user.BranchID,
 		user.IsActive, user.ChangePassword, user.PasswordChangedAt, user.CreatedAt, user.UpdatedAt)
 	return err
 }
@@ -37,14 +37,14 @@ func (r *UserRepository) Create(user *models.User) error {
 // CreateTx inserts a user within an existing transaction.
 func (r *UserRepository) CreateTx(tx *sql.Tx, user *models.User) error {
 	query := `
-		INSERT INTO users (user_id, full_name, email, password, role_id, org_id, is_active, change_password, password_changed_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		INSERT INTO users (user_id, full_name, email, password, role_id, org_id, branch_id, is_active, change_password, password_changed_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	user.UserID = uuid.New()
 	now := time.Now()
 	user.CreatedAt = now
 	user.UpdatedAt = now
 	_, err := tx.Exec(query,
-		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.OrgID,
+		user.UserID, user.FullName, user.Email, user.Password, user.RoleID, user.OrgID, user.BranchID,
 		user.IsActive, user.ChangePassword, now, user.CreatedAt, user.UpdatedAt)
 	return err
 }
@@ -54,10 +54,11 @@ func (r *UserRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url, u.branch_id, b.name AS branch_name
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
+		LEFT JOIN branches b ON u.branch_id = b.id
 		WHERE u.user_id = $1`
 
 	return r.scanUser(r.db.QueryRow(query, id))
@@ -68,10 +69,11 @@ func (r *UserRepository) GetUserByEmail(email string) (*models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url, u.branch_id, b.name AS branch_name
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
+		LEFT JOIN branches b ON u.branch_id = b.id
 		WHERE u.email = $1`
 
 	return r.scanUser(r.db.QueryRow(query, email))
@@ -121,10 +123,11 @@ func (r *UserRepository) GetByEmailAndOrg(email string, orgID uuid.UUID) (*model
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url, u.branch_id, b.name AS branch_name
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
+		LEFT JOIN branches b ON u.branch_id = b.id
 		WHERE u.email = $1 AND u.org_id = $2`
 
 	return r.scanUser(r.db.QueryRow(query, email, orgID))
@@ -135,10 +138,11 @@ func (r *UserRepository) GetAllUsers() ([]models.User, error) {
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url, u.branch_id, b.name AS branch_name
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
+		LEFT JOIN branches b ON u.branch_id = b.id
 		ORDER BY u.created_at DESC`
 
 	rows, err := r.db.Query(query)
@@ -159,23 +163,26 @@ func (r *UserRepository) GetAllUsers() ([]models.User, error) {
 }
 
 // List returns paginated users with optional filtering, scoped to the given org.
-func (r *UserRepository) List(orgID uuid.UUID, search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
+func (r *UserRepository) List(orgID uuid.UUID, branchID *uuid.UUID, search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"u.org_id = $1"}
 	i := 2
 
+	if branchID != nil {
+		where = append(where, fmt.Sprintf("u.branch_id = $%d", i))
+		args = append(args, *branchID)
+		i++
+	}
 	if search != "" {
 		where = append(where, fmt.Sprintf("(u.email ILIKE $%d OR u.full_name ILIKE $%d)", i, i))
 		args = append(args, "%"+search+"%")
 		i++
 	}
-
 	if roleID != nil {
 		where = append(where, fmt.Sprintf("u.role_id=$%d", i))
 		args = append(args, *roleID)
 		i++
 	}
-
 	if isActive != nil {
 		where = append(where, fmt.Sprintf("u.is_active=$%d", i))
 		args = append(args, *isActive)
@@ -198,10 +205,11 @@ func (r *UserRepository) List(orgID uuid.UUID, search string, roleID *uuid.UUID,
 		SELECT u.user_id, u.full_name, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       u.change_password, u.password_changed_at, u.password_expires_at,
 		       u.failed_login_attempts, u.is_locked, u.locked_until, u.last_login_at,
-		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url
+		       r.role_id, r.name, r.description, o.id, o.name, o.logo_url, u.branch_id, b.name AS branch_name
 		FROM users u
 		LEFT JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN organizations o ON u.org_id = o.id
+		LEFT JOIN branches b ON u.branch_id = b.id
 		WHERE %s
 		ORDER BY u.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1)
@@ -229,13 +237,13 @@ func (r *UserRepository) Update(user *models.User) error {
 		UPDATE users SET full_name = $1, email = $2, role_id = $3, is_active = $4, updated_at = $5,
 		       password = $6, change_password = $7, password_changed_at = $8,
 		       password_expires_at = $9, failed_login_attempts = $10,
-		       is_locked = $11, locked_until = $12, last_login_at = $13
-		WHERE user_id = $14 AND org_id = $15`
+		       is_locked = $11, locked_until = $12, last_login_at = $13, branch_id = $14
+		WHERE user_id = $15 AND org_id = $16`
 	_, err := r.db.Exec(query,
 		user.FullName, user.Email, user.RoleID, user.IsActive, time.Now(),
 		user.Password, user.ChangePassword, user.PasswordChangedAt,
 		user.PasswordExpiresAt, user.FailedLoginAttempts,
-		user.IsLocked, user.LockedUntil, user.LastLoginAt, user.UserID, user.OrgID,
+		user.IsLocked, user.LockedUntil, user.LastLoginAt, user.BranchID, user.UserID, user.OrgID,
 	)
 	return err
 }
@@ -272,16 +280,23 @@ func (r *UserRepository) scanUser(row rowScanner) (*models.User, error) {
 	var roleID sql.NullString
 	var rRoleID, rName, rDesc sql.NullString
 	var passwordChangedAt, passwordExpiresAt, lockedUntil, lastLoginAt sql.NullTime
-	var orgName, orgLogoURL sql.NullString
+	var orgName, orgLogoURL, branchName sql.NullString
+	var branchID uuid.NullUUID
 
 	err := row.Scan(
 		&u.UserID, &u.FullName, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
 		&u.ChangePassword, &passwordChangedAt, &passwordExpiresAt,
 		&u.FailedLoginAttempts, &u.IsLocked, &lockedUntil, &lastLoginAt,
-		&rRoleID, &rName, &rDesc, &u.OrgID, &orgName, &orgLogoURL,
+		&rRoleID, &rName, &rDesc, &u.OrgID, &orgName, &orgLogoURL, &branchID, &branchName,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if branchID.Valid {
+		u.BranchID = &branchID.UUID
+	}
+	if branchName.Valid {
+		u.BranchName = branchName.String
 	}
 
 	if orgName.Valid {
@@ -327,7 +342,7 @@ func (r *UserRepository) scanUser(row rowScanner) (*models.User, error) {
 func (r *UserRepository) CreateRole(role *models.Role) error {
 	role.RoleID = uuid.New()
 	_, err := r.db.Exec(
-		`INSERT INTO roles (role_id, name, description) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING`,
+		`INSERT INTO roles (role_id, name, description) VALUES ($1, $2, $3)`,
 		role.RoleID, role.Name, role.Description,
 	)
 	return err

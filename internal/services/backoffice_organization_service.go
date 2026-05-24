@@ -58,8 +58,14 @@ func (s *BackofficeOrganizationService) Update(id uuid.UUID, req models.OrgDetai
 	if req.Phone != "" {
 		org.Phone = req.Phone
 	}
-	if req.Address != "" {
-		org.Address = req.Address
+	if req.StreetAddress != "" {
+		org.StreetAddress = req.StreetAddress
+	}
+	if req.City != "" {
+		org.City = req.City
+	}
+	if req.Country != "" {
+		org.Country = req.Country
 	}
 	if req.LogoURL != "" {
 		org.LogoURL = req.LogoURL
@@ -110,11 +116,13 @@ func (s *BackofficeOrganizationService) Provision(req models.ProvisionOrgRequest
 	}()
 
 	org := &models.Organization{
-		Name:    req.Organization.Name,
-		Email:   req.Organization.Email,
-		Phone:   req.Organization.Phone,
-		Address: req.Organization.Address,
-		LogoURL: req.Organization.LogoURL,
+		Name:          req.Organization.Name,
+		Email:         req.Organization.Email,
+		Phone:         req.Organization.Phone,
+		StreetAddress: req.Organization.StreetAddress,
+		City:          req.Organization.City,
+		Country:       req.Organization.Country,
+		LogoURL:       req.Organization.LogoURL,
 	}
 	if err = s.orgRepo.CreateTx(tx, org); err != nil {
 		return nil, nil, fmt.Errorf("failed to create organization: %w", err)

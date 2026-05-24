@@ -39,12 +39,12 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 
 	_, err = tx.Exec(`
 		INSERT INTO invoices
-		    (id, invoice_number, booking_id, corporate_client_id, subtotal, tax_rate, tax, total, status, issued_at, due_date, notes, org_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		    (id, invoice_number, booking_id, corporate_client_id, subtotal, tax_rate, tax, total, status, issued_at, due_date, notes, org_id, branch_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 		inv.ID, inv.InvoiceNumber, inv.BookingID, inv.CorporateClientID,
 		inv.Subtotal, inv.TaxRate, inv.TaxAmount, inv.Total,
 		inv.Status, inv.IssuedDate, inv.DueDate, inv.Notes,
-		orgID, inv.CreatedAt, inv.UpdatedAt,
+		orgID, inv.BranchID, inv.CreatedAt, inv.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -83,11 +83,16 @@ func (r *InvoiceRepository) GetByCorporateClientID(corporateClientID uuid.UUID, 
 	return r.fetchOne(`WHERE i.corporate_client_id = $1 AND i.org_id = $2`, corporateClientID, orgID)
 }
 
-func (r *InvoiceRepository) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
+func (r *InvoiceRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"i.org_id = $1"}
 	i := 2
 
+	if branchID != nil {
+		where = append(where, fmt.Sprintf("i.branch_id = $%d", i))
+		args = append(args, *branchID)
+		i++
+	}
 	if status != "" {
 		where = append(where, fmt.Sprintf("i.status = $%d", i))
 		args = append(args, status)

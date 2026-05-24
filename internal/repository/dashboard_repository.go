@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
 	"lodge-system/internal/database"
@@ -18,25 +19,29 @@ func NewDashboardRepository() *DashboardRepository {
 	return &DashboardRepository{db: database.DB}
 }
 
-func (r *DashboardRepository) StatCards(orgID uuid.UUID) (models.DashboardStatCards, error) {
+func (r *DashboardRepository) StatCards(orgID uuid.UUID, branchID *uuid.UUID) (models.DashboardStatCards, error) {
 	var s models.DashboardStatCards
 	today := time.Now().Format("2006-01-02")
 
-	err := r.db.QueryRow(`
+	query := `
 		SELECT
 		    COUNT(*) FILTER (WHERE status = 'pending') AS new_bookings_this_month,
 		    COUNT(*) FILTER (WHERE check_in::date = $1::date AND status IN ('confirmed','checked_in')) AS checkins_today,
 		    COUNT(*) FILTER (WHERE check_out::date = $1::date AND status = 'checked_in') AS checkouts_today
 		FROM bookings
-		WHERE org_id = $2`,
-		today, orgID,
-	).Scan(&s.NewBookingsThisMonth, &s.CheckInsToday, &s.CheckOutsToday)
+		WHERE org_id = $2`
+	args := []interface{}{today, orgID}
+	if branchID != nil {
+		args = append(args, *branchID)
+		query += fmt.Sprintf(" AND branch_id = $%d", len(args))
+	}
+	err := r.db.QueryRow(query, args...).Scan(&s.NewBookingsThisMonth, &s.CheckInsToday, &s.CheckOutsToday)
 	return s, err
 }
 
-func (r *DashboardRepository) RoomSummary(orgID uuid.UUID) (models.DashboardRoomSummary, error) {
+func (r *DashboardRepository) RoomSummary(orgID uuid.UUID, branchID *uuid.UUID) (models.DashboardRoomSummary, error) {
 	var s models.DashboardRoomSummary
-	err := r.db.QueryRow(`
+	query := `
 		SELECT
 		    COUNT(*) FILTER (WHERE EXISTS (
 		        SELECT 1 FROM bookings b
@@ -55,25 +60,32 @@ func (r *DashboardRepository) RoomSummary(orgID uuid.UUID) (models.DashboardRoom
 		        WHERE b.room_id = r.id AND b.status IN ('confirmed','checked_in')
 		    )) AS not_ready
 		FROM rooms r
-		WHERE r.org_id = $1`,
-		orgID,
-	).Scan(&s.Occupied, &s.Reserved, &s.Available, &s.NotReady)
+		WHERE r.org_id = $1`
+	args := []interface{}{orgID}
+	if branchID != nil {
+		args = append(args, *branchID)
+		query += fmt.Sprintf(" AND r.branch_id = $%d", len(args))
+	}
+	err := r.db.QueryRow(query, args...).Scan(&s.Occupied, &s.Reserved, &s.Available, &s.NotReady)
 	return s, err
 }
 
-func (r *DashboardRepository) RevenueByMonth(orgID uuid.UUID, months int) ([]models.DashboardRevenuePoint, error) {
-	rows, err := r.db.Query(`
+func (r *DashboardRepository) RevenueByMonth(orgID uuid.UUID, branchID *uuid.UUID, months int) ([]models.DashboardRevenuePoint, error) {
+	args := []interface{}{orgID, months}
+	query := `
 		SELECT
 		    TO_CHAR(DATE_TRUNC('month', i.created_at), 'YYYY-MM') AS month,
 		    COALESCE(SUM(i.total), 0) AS revenue
 		FROM invoices i
 		WHERE i.org_id = $1
 		  AND i.status IN ('issued', 'paid')
-		  AND i.created_at >= DATE_TRUNC('month', NOW()) - ($2 - 1) * INTERVAL '1 month'
-		GROUP BY DATE_TRUNC('month', i.created_at)
-		ORDER BY DATE_TRUNC('month', i.created_at) ASC`,
-		orgID, months,
-	)
+		  AND i.created_at >= DATE_TRUNC('month', NOW()) - ($2 - 1) * INTERVAL '1 month'`
+	if branchID != nil {
+		args = append(args, *branchID)
+		query += fmt.Sprintf(" AND i.branch_id = $%d", len(args))
+	}
+	query += ` GROUP BY DATE_TRUNC('month', i.created_at) ORDER BY DATE_TRUNC('month', i.created_at) ASC`
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +105,14 @@ func (r *DashboardRepository) RevenueByMonth(orgID uuid.UUID, months int) ([]mod
 	return points, rows.Err()
 }
 
-func (r *DashboardRepository) ReservationsByDay(orgID uuid.UUID, days int) ([]models.DashboardReservationPoint, error) {
-	rows, err := r.db.Query(`
+func (r *DashboardRepository) ReservationsByDay(orgID uuid.UUID, branchID *uuid.UUID, days int) ([]models.DashboardReservationPoint, error) {
+	args := []interface{}{days, orgID}
+	branchFilter := ""
+	if branchID != nil {
+		args = append(args, *branchID)
+		branchFilter = fmt.Sprintf(" AND b.branch_id = $%d", len(args))
+	}
+	query := fmt.Sprintf(`
 		SELECT
 		    TO_CHAR(day::date, 'YYYY-MM-DD') AS day,
 		    COUNT(*) FILTER (WHERE b.status != 'cancelled') AS booked,
@@ -104,11 +122,10 @@ func (r *DashboardRepository) ReservationsByDay(orgID uuid.UUID, days int) ([]mo
 		    CURRENT_DATE,
 		    '1 day'::interval
 		) AS day
-		LEFT JOIN bookings b ON b.created_at::date = day::date AND b.org_id = $2
+		LEFT JOIN bookings b ON b.created_at::date = day::date AND b.org_id = $2%s
 		GROUP BY day
-		ORDER BY day ASC`,
-		days, orgID,
-	)
+		ORDER BY day ASC`, branchFilter)
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +145,14 @@ func (r *DashboardRepository) ReservationsByDay(orgID uuid.UUID, days int) ([]mo
 	return points, rows.Err()
 }
 
-func (r *DashboardRepository) RecentBookings(orgID uuid.UUID, limit int) ([]models.DashboardRecentBooking, error) {
-	rows, err := r.db.Query(`
+func (r *DashboardRepository) RecentBookings(orgID uuid.UUID, branchID *uuid.UUID, limit int) ([]models.DashboardRecentBooking, error) {
+	args := []interface{}{orgID, limit}
+	branchFilter := ""
+	if branchID != nil {
+		args = append(args, *branchID)
+		branchFilter = fmt.Sprintf(" AND b.branch_id = $%d", len(args))
+	}
+	query := fmt.Sprintf(`
 		SELECT
 		    b.id,
 		    b.booking_number,
@@ -146,11 +169,10 @@ func (r *DashboardRepository) RecentBookings(orgID uuid.UUID, limit int) ([]mode
 		JOIN rooms r                  ON r.id = b.room_id
 		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
 		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		WHERE b.org_id = $1
+		WHERE b.org_id = $1%s
 		ORDER BY b.created_at DESC
-		LIMIT $2`,
-		orgID, limit,
-	)
+		LIMIT $2`, branchFilter)
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

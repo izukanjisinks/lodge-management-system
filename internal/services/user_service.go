@@ -71,6 +71,10 @@ func (s *UserService) Register(user *models.User) error {
 		user.Role = role
 	}
 
+	if user.Role != nil && user.Role.Name == models.RoleAdmin {
+		user.BranchID = nil
+	}
+
 	if s.passwordPolicyService != nil {
 		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
 	}
@@ -195,7 +199,7 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 		orgIDVal = *user.OrgID
 	}
 
-	token, err := utils.GenerateStaffToken(user.Email, user.UserID, orgIDVal, roleName)
+	token, err := utils.GenerateStaffToken(user.Email, user.UserID, orgIDVal, user.BranchID, roleName)
 	if err != nil {
 		return nil, err
 	}
@@ -230,8 +234,8 @@ func (s *UserService) GetAllUsers() ([]models.User, error) {
 	return s.repo.GetAllUsers()
 }
 
-func (s *UserService) ListUsers(orgID uuid.UUID, search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
-	return s.repo.List(orgID, search, roleID, isActive, page, pageSize)
+func (s *UserService) ListUsers(orgID uuid.UUID, branchID *uuid.UUID, search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
+	return s.repo.List(orgID, branchID, search, roleID, isActive, page, pageSize)
 }
 
 func (s *UserService) GetUserByID(id uuid.UUID) (*models.User, error) {
@@ -273,7 +277,7 @@ func (s *UserService) UpdateUser(updates *models.User) (*models.User, error) {
 // UpdateUserFull handles the frontend PUT /users/{id} payload: full_name, email, role name, status, optional password.
 // callerID is the ID of the user making the request — used to decide whether to send a password-change notification email.
 // If callerID == id (self-edit) no email is sent; if an admin changes someone else's password the user is notified.
-func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName, newEmail, pwd, roleName, status string) (*models.User, error) {
+func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName, newEmail, pwd, roleName, status string, branchID *uuid.UUID) (*models.User, error) {
 	user, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return nil, errors.New("user not found")
@@ -304,10 +308,17 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName,
 			return nil, fmt.Errorf("role %q not found: %w", roleName, err)
 		}
 		user.RoleID = &role.RoleID
+		if role.Name == models.RoleAdmin {
+			user.BranchID = nil
+		}
 	}
 
 	if status != "" {
 		user.IsActive = status != "inactive"
+	}
+
+	if branchID != nil {
+		user.BranchID = branchID
 	}
 
 	if pwd != "" {

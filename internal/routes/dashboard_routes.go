@@ -10,5 +10,5 @@ import (
 func RegisterDashboardRoutes(h *handlers.DashboardHandler) {
 	// Staff dashboard — admin, manager, receptionist
 	http.HandleFunc("GET /api/v1/dashboard/stats",
-		withAuthAndRole(h.StaffStats, models.RoleAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.StaffStats, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 }

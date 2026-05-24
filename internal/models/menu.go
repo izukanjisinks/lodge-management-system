@@ -7,13 +7,14 @@ import (
 )
 
 type Menu struct {
-	ID          uuid.UUID `json:"id"`
-	OrgID       uuid.UUID `json:"org_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	IsActive    bool      `json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          uuid.UUID  `json:"id"`
+	OrgID       uuid.UUID  `json:"org_id"`
+	BranchID    *uuid.UUID `json:"branch_id,omitempty"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	IsActive    bool       `json:"is_active"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // MenuItemsPage is the paginated wrapper for menu items embedded in MenuResponse.
@@ -31,16 +32,17 @@ type MenuResponse struct {
 }
 
 type MenuItem struct {
-	ID          uuid.UUID `json:"id"`
-	MenuID      uuid.UUID `json:"menu_id"`
-	OrgID       uuid.UUID `json:"org_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Category    string    `json:"category,omitempty"`
-	Price       float64   `json:"price"`
-	IsAvailable bool      `json:"is_available"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          uuid.UUID  `json:"id"`
+	MenuID      uuid.UUID  `json:"menu_id"`
+	OrgID       uuid.UUID  `json:"org_id"`
+	BranchID    *uuid.UUID `json:"branch_id,omitempty"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	Category    string     `json:"category,omitempty"`
+	Price       float64    `json:"price"`
+	IsAvailable bool       `json:"is_available"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 type UpdateMenuRequest struct {

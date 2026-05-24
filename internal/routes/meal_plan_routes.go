@@ -17,11 +17,11 @@ func RegisterMealPlanRoutes(h *handlers.MealPlanHandler) {
 
 	// Write — admin and manager only
 	http.HandleFunc("POST /api/v1/meal-plans",
-		withAuthAndRole(h.Create, models.RoleAdmin, models.RoleManager))
+		withAuthAndRole(h.Create, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
 
 	http.HandleFunc("PUT /api/v1/meal-plans/{id}",
-		withAuthAndRole(h.Update, models.RoleAdmin, models.RoleManager))
+		withAuthAndRole(h.Update, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
 
 	http.HandleFunc("DELETE /api/v1/meal-plans/{id}",
-		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleManager))
+		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
 }

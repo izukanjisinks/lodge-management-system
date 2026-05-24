@@ -29,8 +29,25 @@ func (s *BranchService) Create(orgID uuid.UUID, req *models.CreateBranchRequest)
 		OrgID:      orgID,
 		Name:       strings.TrimSpace(req.Name),
 		BranchCode: strings.ToUpper(strings.TrimSpace(req.BranchCode)),
-		Address:    strings.TrimSpace(req.Address),
-		Location:   strings.TrimSpace(req.Location),
+		IsActive:   true,
+	}
+	if v := strings.TrimSpace(req.StreetAddress); v != "" {
+		b.StreetAddress = &v
+	}
+	if v := strings.TrimSpace(req.City); v != "" {
+		b.City = &v
+	}
+	if v := strings.TrimSpace(req.Country); v != "" {
+		b.Country = &v
+	}
+	if v := strings.TrimSpace(req.Location); v != "" {
+		b.Location = &v
+	}
+	if v := strings.TrimSpace(req.Phone); v != "" {
+		b.Phone = &v
+	}
+	if v := strings.TrimSpace(req.Email); v != "" {
+		b.Email = &v
 	}
 	if err := s.repo.Create(b); err != nil {
 		if strings.Contains(err.Error(), "unique") {
@@ -64,11 +81,32 @@ func (s *BranchService) Update(id, orgID uuid.UUID, req *models.UpdateBranchRequ
 		}
 		b.Name = strings.TrimSpace(*req.Name)
 	}
-	if req.Address != nil {
-		b.Address = strings.TrimSpace(*req.Address)
+	if req.StreetAddress != nil {
+		v := strings.TrimSpace(*req.StreetAddress)
+		b.StreetAddress = &v
+	}
+	if req.City != nil {
+		v := strings.TrimSpace(*req.City)
+		b.City = &v
+	}
+	if req.Country != nil {
+		v := strings.TrimSpace(*req.Country)
+		b.Country = &v
 	}
 	if req.Location != nil {
-		b.Location = strings.TrimSpace(*req.Location)
+		v := strings.TrimSpace(*req.Location)
+		b.Location = &v
+	}
+	if req.Phone != nil {
+		v := strings.TrimSpace(*req.Phone)
+		b.Phone = &v
+	}
+	if req.Email != nil {
+		v := strings.TrimSpace(*req.Email)
+		b.Email = &v
+	}
+	if req.IsActive != nil {
+		b.IsActive = *req.IsActive
 	}
 	if err := s.repo.Update(b); err != nil {
 		return nil, err

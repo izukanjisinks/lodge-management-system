@@ -18,7 +18,12 @@ func NewDashboardHandler(service *services.DashboardService) *DashboardHandler {
 
 func (h *DashboardHandler) StaffStats(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	stats, err := h.service.GetStaffStats(orgID)
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	stats, err := h.service.GetStaffStats(orgID, branchID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to load dashboard stats")
 		return

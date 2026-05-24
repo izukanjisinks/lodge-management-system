@@ -37,18 +37,19 @@ type RoomOrganization struct {
 }
 
 type Room struct {
-	ID            uuid.UUID        `json:"id"`
-	OrgID         *uuid.UUID       `json:"org_id,omitempty"`
-	Name          string           `json:"name"`
-	Type          string           `json:"type"`
-	Capacity      int              `json:"capacity"`
-	PricePerNight float64          `json:"price_per_night"`
-	Amenities     []string         `json:"amenities"`
-	Images        []string         `json:"images"`
-	IsAvailable   bool             `json:"is_available"`
-	Description   string           `json:"description,omitempty"`
+	ID            uuid.UUID         `json:"id"`
+	OrgID         *uuid.UUID        `json:"org_id,omitempty"`
+	BranchID      *uuid.UUID        `json:"branch_id,omitempty"`
+	Name          string            `json:"name"`
+	Type          string            `json:"type"`
+	Capacity      int               `json:"capacity"`
+	PricePerNight float64           `json:"price_per_night"`
+	Amenities     []string          `json:"amenities"`
+	Images        []string          `json:"images"`
+	IsAvailable   bool              `json:"is_available"`
+	Description   string            `json:"description,omitempty"`
 	Organization  *RoomOrganization `json:"organization,omitempty"`
 	BookedDates   []BookedDate      `json:"booked_dates,omitempty"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
 }

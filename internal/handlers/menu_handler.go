@@ -23,10 +23,15 @@ func NewMenuHandler(service *services.MenuService) *MenuHandler {
 
 func (h *MenuHandler) GetMenu(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	p := utils.ParsePagination(r)
 	category := r.URL.Query().Get("category")
 
-	menu, err := h.service.GetMenu(orgID, category, p.Page, p.PageSize)
+	menu, err := h.service.GetMenu(orgID, branchID, category, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -36,6 +41,11 @@ func (h *MenuHandler) GetMenu(w http.ResponseWriter, r *http.Request) {
 
 func (h *MenuHandler) UpsertMenu(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	p := utils.ParsePagination(r)
 	category := r.URL.Query().Get("category")
 
@@ -45,7 +55,7 @@ func (h *MenuHandler) UpsertMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	menu, err := h.service.UpsertMenu(orgID, &req, category, p.Page, p.PageSize)
+	menu, err := h.service.UpsertMenu(orgID, branchID, &req, category, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -57,6 +67,11 @@ func (h *MenuHandler) UpsertMenu(w http.ResponseWriter, r *http.Request) {
 
 func (h *MenuHandler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	var req models.CreateMenuItemRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
@@ -64,7 +79,7 @@ func (h *MenuHandler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.service.CreateMenuItem(orgID, &req)
+	item, err := h.service.CreateMenuItem(orgID, branchID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

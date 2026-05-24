@@ -1,0 +1,4 @@
+ALTER TABLE branches
+    DROP COLUMN IF EXISTS phone,
+    DROP COLUMN IF EXISTS email,
+    DROP COLUMN IF EXISTS is_active;

@@ -101,15 +101,23 @@ func (s *PasswordPolicyService) UpsertPolicy(orgID uuid.UUID, req *models.Create
 	}
 	if req.RequireSpecialChars != nil {
 		policy.RequireSpecialChars = *req.RequireSpecialChars
+	} else if req.RequireSpecial != nil {
+		policy.RequireSpecialChars = *req.RequireSpecial
 	}
 	if req.MaxFailedAttempts != nil {
 		policy.MaxFailedAttempts = *req.MaxFailedAttempts
+	} else if req.MaxAttempts != nil {
+		policy.MaxFailedAttempts = *req.MaxAttempts
 	}
 	if req.LockoutDurationMins != nil {
 		policy.LockoutDurationMins = *req.LockoutDurationMins
+	} else if req.LockoutMinutes != nil {
+		policy.LockoutDurationMins = *req.LockoutMinutes
 	}
 	if req.PasswordExpiryDays != nil {
 		policy.PasswordExpiryDays = req.PasswordExpiryDays
+	} else if req.ExpiryDays != nil {
+		policy.PasswordExpiryDays = req.ExpiryDays
 	}
 	if req.OTPLength != nil {
 		policy.OTPLength = *req.OTPLength

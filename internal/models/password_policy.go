@@ -46,16 +46,21 @@ func DefaultPasswordPolicy() *PasswordPolicy {
 	}
 }
 
-// CreatePasswordPolicyRequest is used for creating or updating a password policy
+// CreatePasswordPolicyRequest is used for creating or updating a password policy.
+// Accepts both the short frontend keys and the full snake_case equivalents.
 type CreatePasswordPolicyRequest struct {
 	MinLength           *int  `json:"min_length,omitempty"`
 	RequireUppercase    *bool `json:"require_uppercase,omitempty"`
 	RequireLowercase    *bool `json:"require_lowercase,omitempty"`
 	RequireNumbers      *bool `json:"require_numbers,omitempty"`
 	RequireSpecialChars *bool `json:"require_special_chars,omitempty"`
+	RequireSpecial      *bool `json:"require_special,omitempty"`       // frontend alias
 	MaxFailedAttempts   *int  `json:"max_failed_attempts,omitempty"`
+	MaxAttempts         *int  `json:"max_attempts,omitempty"`          // frontend alias
 	LockoutDurationMins *int  `json:"lockout_duration_mins,omitempty"`
+	LockoutMinutes      *int  `json:"lockout_minutes,omitempty"`       // frontend alias
 	PasswordExpiryDays  *int  `json:"password_expiry_days,omitempty"`
+	ExpiryDays          *int  `json:"expiry_days,omitempty"`           // frontend alias
 	OTPLength           *int  `json:"otp_length,omitempty"`
 	OTPExpiryMins       *int  `json:"otp_expiry_mins,omitempty"`
 	SessionTimeoutMins  *int  `json:"session_timeout_mins,omitempty"`

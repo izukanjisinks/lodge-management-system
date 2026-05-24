@@ -169,15 +169,15 @@ func (s *PasswordPolicyService) validatePolicyRanges(policy *models.PasswordPoli
 	return nil
 }
 
-// ValidateNewPassword validates a new password against the policy and history
-func (s *PasswordPolicyService) ValidateNewPassword(userID uuid.UUID, newPassword, currentPasswordHash string) error {
-	// Check minimum length
-	if len(newPassword) < s.policy.MinLength {
-		return fmt.Errorf("%w: minimum %d characters required", ErrPasswordTooShort, s.policy.MinLength)
+// ValidateNewPassword validates a new password against the org's policy and history.
+func (s *PasswordPolicyService) ValidateNewPassword(userID uuid.UUID, newPassword, currentPasswordHash string, orgID ...uuid.UUID) error {
+	policy := s.GetPolicy(orgID...)
+
+	if len(newPassword) < policy.MinLength {
+		return fmt.Errorf("%w: minimum %d characters required", ErrPasswordTooShort, policy.MinLength)
 	}
 
-	// Check complexity requirements
-	if err := s.validateComplexity(newPassword); err != nil {
+	if err := s.validateComplexity(newPassword, policy); err != nil {
 		return err
 	}
 
@@ -201,8 +201,8 @@ func (s *PasswordPolicyService) ValidateNewPassword(userID uuid.UUID, newPasswor
 	return nil
 }
 
-// validateComplexity checks if password meets complexity requirements
-func (s *PasswordPolicyService) validateComplexity(password string) error {
+// validateComplexity checks if password meets the given policy's complexity requirements.
+func (s *PasswordPolicyService) validateComplexity(password string, policy *models.PasswordPolicy) error {
 	var (
 		hasUpper   bool
 		hasLower   bool
@@ -224,16 +224,16 @@ func (s *PasswordPolicyService) validateComplexity(password string) error {
 	}
 
 	var missing []string
-	if s.policy.RequireUppercase && !hasUpper {
+	if policy.RequireUppercase && !hasUpper {
 		missing = append(missing, "uppercase letter")
 	}
-	if s.policy.RequireLowercase && !hasLower {
+	if policy.RequireLowercase && !hasLower {
 		missing = append(missing, "lowercase letter")
 	}
-	if s.policy.RequireNumbers && !hasNumber {
+	if policy.RequireNumbers && !hasNumber {
 		missing = append(missing, "number")
 	}
-	if s.policy.RequireSpecialChars && !hasSpecial {
+	if policy.RequireSpecialChars && !hasSpecial {
 		missing = append(missing, "special character")
 	}
 
@@ -262,13 +262,13 @@ func (s *PasswordPolicyService) RecordPasswordChange(userID uuid.UUID, passwordH
 	return s.historyRepo.DeleteOldHistory(userID, 10)
 }
 
-// CalculatePasswordExpiry calculates when a password will expire
-func (s *PasswordPolicyService) CalculatePasswordExpiry() *time.Time {
-	if s.policy.PasswordExpiryDays == nil {
-		return nil // Never expires
+// CalculatePasswordExpiry calculates when a password will expire based on the org's policy.
+func (s *PasswordPolicyService) CalculatePasswordExpiry(orgID ...uuid.UUID) *time.Time {
+	policy := s.GetPolicy(orgID...)
+	if policy.PasswordExpiryDays == nil {
+		return nil
 	}
-
-	expiryTime := time.Now().AddDate(0, 0, *s.policy.PasswordExpiryDays)
+	expiryTime := time.Now().AddDate(0, 0, *policy.PasswordExpiryDays)
 	return &expiryTime
 }
 
@@ -310,17 +310,17 @@ func (s *PasswordPolicyService) CheckAccountLockout(user *models.User) (locked b
 	return false, ""
 }
 
-// ShouldLockAccount determines if account should be locked based on failed attempts
-func (s *PasswordPolicyService) ShouldLockAccount(failedAttempts int) bool {
-	return failedAttempts >= s.policy.MaxFailedAttempts
+// ShouldLockAccount determines if account should be locked based on failed attempts.
+func (s *PasswordPolicyService) ShouldLockAccount(failedAttempts int, orgID ...uuid.UUID) bool {
+	return failedAttempts >= s.GetPolicy(orgID...).MaxFailedAttempts
 }
 
-// CalculateLockoutTime calculates when the lockout period expires
-func (s *PasswordPolicyService) CalculateLockoutTime() time.Time {
-	return time.Now().Add(time.Duration(s.policy.LockoutDurationMins) * time.Minute)
+// CalculateLockoutTime calculates when the lockout period expires.
+func (s *PasswordPolicyService) CalculateLockoutTime(orgID ...uuid.UUID) time.Time {
+	return time.Now().Add(time.Duration(s.GetPolicy(orgID...).LockoutDurationMins) * time.Minute)
 }
 
-// GetSessionTimeout returns the session timeout duration in seconds
-func (s *PasswordPolicyService) GetSessionTimeout() int {
-	return s.policy.SessionTimeoutMins * 60
+// GetSessionTimeout returns the session timeout duration in seconds.
+func (s *PasswordPolicyService) GetSessionTimeout(orgID ...uuid.UUID) int {
+	return s.GetPolicy(orgID...).SessionTimeoutMins * 60
 }

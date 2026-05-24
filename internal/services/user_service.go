@@ -47,7 +47,7 @@ func (s *UserService) Register(user *models.User) error {
 	}
 
 	if s.passwordPolicyService != nil {
-		if err := s.passwordPolicyService.ValidateNewPassword(uuid.Nil, user.Password, ""); err != nil {
+		if err := s.passwordPolicyService.ValidateNewPassword(uuid.Nil, user.Password, "", orgID); err != nil {
 			return err
 		}
 	}
@@ -76,7 +76,7 @@ func (s *UserService) Register(user *models.User) error {
 	}
 
 	if s.passwordPolicyService != nil {
-		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
+		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(orgID)
 	}
 
 	if err := s.repo.Create(user); err != nil {
@@ -148,6 +148,11 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 		return nil, errors.New("account is inactive")
 	}
 
+	userOrgID := uuid.Nil
+	if user.OrgID != nil {
+		userOrgID = *user.OrgID
+	}
+
 	if s.passwordPolicyService != nil {
 		locked, reason := s.passwordPolicyService.CheckAccountLockout(user)
 		if locked {
@@ -158,8 +163,8 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 	if err := utils.ComparePasswords(user.Password, pwd); err != nil {
 		if s.passwordPolicyService != nil {
 			user.FailedLoginAttempts++
-			if s.passwordPolicyService.ShouldLockAccount(user.FailedLoginAttempts) {
-				lockoutTime := s.passwordPolicyService.CalculateLockoutTime()
+			if s.passwordPolicyService.ShouldLockAccount(user.FailedLoginAttempts, userOrgID) {
+				lockoutTime := s.passwordPolicyService.CalculateLockoutTime(userOrgID)
 				user.LockedUntil = &lockoutTime
 			}
 			_ = s.repo.Update(user)
@@ -185,7 +190,7 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 
 	var tokenExpiry time.Duration
 	if s.passwordPolicyService != nil {
-		tokenExpiry = time.Duration(s.passwordPolicyService.GetSessionTimeout()) * time.Second
+		tokenExpiry = time.Duration(s.passwordPolicyService.GetSessionTimeout(userOrgID)) * time.Second
 	} else {
 		tokenExpiry = 24 * time.Hour
 	}
@@ -324,9 +329,14 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName,
 		user.BranchID = branchID
 	}
 
+	updateOrgID := uuid.Nil
+	if user.OrgID != nil {
+		updateOrgID = *user.OrgID
+	}
+
 	if pwd != "" {
 		if s.passwordPolicyService != nil {
-			if err := s.passwordPolicyService.ValidateNewPassword(id, pwd, user.Password); err != nil {
+			if err := s.passwordPolicyService.ValidateNewPassword(id, pwd, user.Password, updateOrgID); err != nil {
 				return nil, err
 			}
 		}
@@ -338,7 +348,7 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName,
 		now := time.Now()
 		user.PasswordChangedAt = &now
 		if s.passwordPolicyService != nil {
-			user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
+			user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(updateOrgID)
 			_ = s.passwordPolicyService.RecordPasswordChange(id, hashed)
 		}
 
@@ -419,12 +429,17 @@ func (s *UserService) ChangePassword(userID uuid.UUID, oldPassword, newPassword 
 		return errors.New("user not found")
 	}
 
+	changeOrgID := uuid.Nil
+	if user.OrgID != nil {
+		changeOrgID = *user.OrgID
+	}
+
 	if err := utils.ComparePasswords(user.Password, oldPassword); err != nil {
 		return errors.New("current password is incorrect")
 	}
 
 	if s.passwordPolicyService != nil {
-		if err := s.passwordPolicyService.ValidateNewPassword(userID, newPassword, user.Password); err != nil {
+		if err := s.passwordPolicyService.ValidateNewPassword(userID, newPassword, user.Password, changeOrgID); err != nil {
 			return err
 		}
 	}
@@ -440,7 +455,7 @@ func (s *UserService) ChangePassword(userID uuid.UUID, oldPassword, newPassword 
 	user.ChangePassword = false
 
 	if s.passwordPolicyService != nil {
-		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
+		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(changeOrgID)
 	}
 
 	if err := s.repo.Update(user); err != nil {
@@ -458,6 +473,11 @@ func (s *UserService) ResetPassword(userID uuid.UUID) error {
 	user, err := s.repo.GetUserByID(userID)
 	if err != nil {
 		return errors.New("user not found")
+	}
+
+	resetOrgID := uuid.Nil
+	if user.OrgID != nil {
+		resetOrgID = *user.OrgID
 	}
 
 	newPassword, err := password.GenerateTemporaryPassword()
@@ -479,7 +499,7 @@ func (s *UserService) ResetPassword(userID uuid.UUID) error {
 	user.LockedUntil = nil
 
 	if s.passwordPolicyService != nil {
-		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry()
+		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(resetOrgID)
 	}
 
 	if err := s.repo.Update(user); err != nil {

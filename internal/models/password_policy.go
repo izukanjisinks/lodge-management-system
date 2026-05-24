@@ -8,8 +8,9 @@ import (
 
 // PasswordPolicy defines the password requirements and security settings
 type PasswordPolicy struct {
-	ID                  uuid.UUID `db:"id" json:"id"`
-	MinLength           int       `db:"min_length" json:"min_length"`
+	ID                  uuid.UUID  `db:"id" json:"id"`
+	OrgID               *uuid.UUID `db:"organization_id" json:"organization_id,omitempty"`
+	MinLength           int        `db:"min_length" json:"min_length"`
 	RequireUppercase    bool      `db:"require_uppercase" json:"require_uppercase"`
 	RequireLowercase    bool      `db:"require_lowercase" json:"require_lowercase"`
 	RequireNumbers      bool      `db:"require_numbers" json:"require_numbers"`

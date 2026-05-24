@@ -24,9 +24,10 @@ func NewPasswordPolicyHandler(policyService *services.PasswordPolicyService, use
 	}
 }
 
-// GetPasswordPolicy retrieves the password policy (global default for now)
+// GetPasswordPolicy retrieves the org-specific policy, falling back to the global default.
 func (h *PasswordPolicyHandler) GetPasswordPolicy(w http.ResponseWriter, r *http.Request) {
-	policy := h.policyService.GetPolicy()
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	policy := h.policyService.GetPolicy(orgID)
 	if policy == nil {
 		utils.RespondError(w, http.StatusNotFound, "No password policy configured")
 		return
@@ -56,8 +57,8 @@ func (h *PasswordPolicyHandler) UpdatePasswordPolicy(w http.ResponseWriter, r *h
 		return
 	}
 
-	// Update password policy
-	policy, err := h.policyService.UpsertPolicy(&req)
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	policy, err := h.policyService.UpsertPolicy(orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -100,8 +101,8 @@ func (h *PasswordPolicyHandler) ChangePassword(w http.ResponseWriter, r *http.Re
 
 // GeneratePassword generates a password based on the current password policy
 func (h *PasswordPolicyHandler) GeneratePassword(w http.ResponseWriter, r *http.Request) {
-	// Get current password policy
-	policy := h.policyService.GetPolicy()
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	policy := h.policyService.GetPolicy(orgID)
 	if policy == nil {
 		utils.RespondError(w, http.StatusNotFound, "No password policy configured")
 		return

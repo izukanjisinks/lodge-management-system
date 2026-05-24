@@ -23,9 +23,10 @@ var (
 )
 
 type PasswordPolicyService struct {
-	policyRepo  *repositories.PasswordPolicyRepository
-	historyRepo *repositories.PasswordHistoryRepository
-	policy      *models.PasswordPolicy // Cached policy
+	policyRepo   *repositories.PasswordPolicyRepository
+	historyRepo  *repositories.PasswordHistoryRepository
+	policy       *models.PasswordPolicy            // global default cache
+	orgPolicies  map[uuid.UUID]*models.PasswordPolicy // per-org cache
 }
 
 func NewPasswordPolicyService(
@@ -35,18 +36,18 @@ func NewPasswordPolicyService(
 	service := &PasswordPolicyService{
 		policyRepo:  policyRepo,
 		historyRepo: historyRepo,
+		orgPolicies: make(map[uuid.UUID]*models.PasswordPolicy),
 	}
 
 	// Load global default policy at startup
 	if err := service.LoadGlobalPolicy(); err != nil {
-		// If no policy exists, use default
 		service.policy = models.DefaultPasswordPolicy()
 	}
 
 	return service
 }
 
-// LoadGlobalPolicy loads the password policy from database
+// LoadGlobalPolicy loads the global default password policy from the database.
 func (s *PasswordPolicyService) LoadGlobalPolicy() error {
 	policy, err := s.policyRepo.Get()
 	if err != nil {
@@ -56,22 +57,36 @@ func (s *PasswordPolicyService) LoadGlobalPolicy() error {
 	return nil
 }
 
-// GetPolicy returns the current loaded policy
-func (s *PasswordPolicyService) GetPolicy() *models.PasswordPolicy {
+// GetPolicy returns the effective policy for the given org: org-specific if one exists, otherwise global default.
+func (s *PasswordPolicyService) GetPolicy(orgID ...uuid.UUID) *models.PasswordPolicy {
+	if len(orgID) > 0 && orgID[0] != uuid.Nil {
+		id := orgID[0]
+		if p, ok := s.orgPolicies[id]; ok {
+			return p
+		}
+		p, err := s.policyRepo.GetByOrg(id)
+		if err == nil {
+			s.orgPolicies[id] = p
+			return p
+		}
+	}
 	return s.policy
 }
 
-// UpsertPolicy creates or updates the password policy
-func (s *PasswordPolicyService) UpsertPolicy(req *models.CreatePasswordPolicyRequest) (*models.PasswordPolicy, error) {
-	// Get existing policy or create new one
-	policy, err := s.policyRepo.Get()
-
-	if err != nil {
-		// Create new policy with defaults
-		policy = models.DefaultPasswordPolicy()
+// UpsertPolicy creates or updates the org-specific policy, seeding from the global default on first creation.
+func (s *PasswordPolicyService) UpsertPolicy(orgID uuid.UUID, req *models.CreatePasswordPolicyRequest) (*models.PasswordPolicy, error) {
+	// Start from the org's existing policy (or global default if none yet)
+	policy, err := s.policyRepo.GetByOrg(orgID)
+	if err != nil || policy.OrgID == nil {
+		// No org-specific row yet — clone the global default as the starting point
+		base := s.policy
+		clone := *base
+		policy = &clone
+		policy.ID = uuid.New()
+		policy.OrgID = &orgID
+		policy.CreatedAt = time.Now()
 	}
 
-	// Update fields from request
 	if req.MinLength != nil {
 		policy.MinLength = *req.MinLength
 	}
@@ -108,19 +123,15 @@ func (s *PasswordPolicyService) UpsertPolicy(req *models.CreatePasswordPolicyReq
 
 	policy.UpdatedAt = time.Now()
 
-	// Validate ranges
 	if err := s.validatePolicyRanges(policy); err != nil {
 		return nil, err
 	}
 
-	// Upsert to database
-	if err := s.policyRepo.Upsert(policy); err != nil {
+	if err := s.policyRepo.UpsertForOrg(orgID, policy); err != nil {
 		return nil, err
 	}
 
-	// Reload the policy
-	s.policy = policy
-
+	s.orgPolicies[orgID] = policy
 	return policy, nil
 }
 

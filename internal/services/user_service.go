@@ -318,6 +318,9 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName,
 	}
 
 	if branchID != nil {
+		if user.Role != nil && user.Role.Name == models.RoleAdmin {
+			return nil, errors.New("admin users cannot be assigned to a branch")
+		}
 		user.BranchID = branchID
 	}
 

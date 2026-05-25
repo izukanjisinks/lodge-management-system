@@ -49,6 +49,14 @@ func (s *BranchService) Create(orgID uuid.UUID, req *models.CreateBranchRequest)
 	if v := strings.TrimSpace(req.Email); v != "" {
 		b.Email = &v
 	}
+	b.Parking = req.Parking
+	b.Restaurant = req.Restaurant
+	if req.CheckInTime != nil {
+		b.CheckInTime = req.CheckInTime
+	}
+	if req.CheckOutTime != nil {
+		b.CheckOutTime = req.CheckOutTime
+	}
 	if err := s.repo.Create(b); err != nil {
 		if strings.Contains(err.Error(), "unique") {
 			return nil, errors.New("branch_code already exists for this organization")
@@ -113,6 +121,18 @@ func (s *BranchService) Update(id, orgID uuid.UUID, req *models.UpdateBranchRequ
 	}
 	if req.IsActive != nil {
 		b.IsActive = *req.IsActive
+	}
+	if req.Parking != nil {
+		b.Parking = *req.Parking
+	}
+	if req.Restaurant != nil {
+		b.Restaurant = *req.Restaurant
+	}
+	if req.CheckInTime != nil {
+		b.CheckInTime = req.CheckInTime
+	}
+	if req.CheckOutTime != nil {
+		b.CheckOutTime = req.CheckOutTime
 	}
 	if err := s.repo.Update(b); err != nil {
 		return nil, err

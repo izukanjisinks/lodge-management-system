@@ -1,0 +1,4 @@
+ALTER TABLE organizations
+    ADD COLUMN location   TEXT,
+    ADD COLUMN parking    BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN restaurant BOOLEAN NOT NULL DEFAULT FALSE;

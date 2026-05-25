@@ -67,8 +67,23 @@ func (s *BackofficeOrganizationService) Update(id uuid.UUID, req models.OrgDetai
 	if req.Country != "" {
 		org.Country = req.Country
 	}
+	if req.Location != "" {
+		org.Location = req.Location
+	}
 	if req.LogoURL != "" {
 		org.LogoURL = req.LogoURL
+	}
+	if req.Parking != nil {
+		org.Parking = *req.Parking
+	}
+	if req.Restaurant != nil {
+		org.Restaurant = *req.Restaurant
+	}
+	if req.CheckInTime != nil {
+		org.CheckInTime = req.CheckInTime
+	}
+	if req.CheckOutTime != nil {
+		org.CheckOutTime = req.CheckOutTime
 	}
 	if err := s.orgRepo.Update(org); err != nil {
 		return nil, err
@@ -122,7 +137,20 @@ func (s *BackofficeOrganizationService) Provision(req models.ProvisionOrgRequest
 		StreetAddress: req.Organization.StreetAddress,
 		City:          req.Organization.City,
 		Country:       req.Organization.Country,
+		Location:      req.Organization.Location,
 		LogoURL:       req.Organization.LogoURL,
+	}
+	if req.Organization.Parking != nil {
+		org.Parking = *req.Organization.Parking
+	}
+	if req.Organization.Restaurant != nil {
+		org.Restaurant = *req.Organization.Restaurant
+	}
+	if req.Organization.CheckInTime != nil {
+		org.CheckInTime = req.Organization.CheckInTime
+	}
+	if req.Organization.CheckOutTime != nil {
+		org.CheckOutTime = req.Organization.CheckOutTime
 	}
 	if err = s.orgRepo.CreateTx(tx, org); err != nil {
 		return nil, nil, fmt.Errorf("failed to create organization: %w", err)

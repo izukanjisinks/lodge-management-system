@@ -25,23 +25,23 @@ func (r *BranchRepository) Create(b *models.Branch) error {
 	b.CreatedAt = now
 	b.UpdatedAt = now
 	_, err := r.db.Exec(`
-		INSERT INTO branches (id, org_id, name, branch_code, street_address, city, country, location, phone, email, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		b.ID, b.OrgID, b.Name, b.BranchCode, b.StreetAddress, b.City, b.Country, b.Location, b.Phone, b.Email, b.IsActive, b.CreatedAt, b.UpdatedAt,
+		INSERT INTO branches (id, org_id, name, branch_code, street_address, city, country, location, phone, email, is_active, parking, restaurant, check_in_time, check_out_time, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+		b.ID, b.OrgID, b.Name, b.BranchCode, b.StreetAddress, b.City, b.Country, b.Location, b.Phone, b.Email, b.IsActive, b.Parking, b.Restaurant, b.CheckInTime, b.CheckOutTime, b.CreatedAt, b.UpdatedAt,
 	)
 	return err
 }
 
 func (r *BranchRepository) GetByID(id, orgID uuid.UUID) (*models.Branch, error) {
 	row := r.db.QueryRow(`
-		SELECT id, org_id, name, branch_code, street_address, city, country, location, phone, email, is_active, created_at, updated_at
+		SELECT id, org_id, name, branch_code, street_address, city, country, location, phone, email, is_active, parking, restaurant, check_in_time, check_out_time, created_at, updated_at
 		FROM branches WHERE id = $1 AND org_id = $2`, id, orgID)
 	return scanBranch(row)
 }
 
 func (r *BranchRepository) List(orgID uuid.UUID) ([]models.Branch, error) {
 	rows, err := r.db.Query(`
-		SELECT id, org_id, name, branch_code, street_address, city, country, location, phone, email, is_active, created_at, updated_at
+		SELECT id, org_id, name, branch_code, street_address, city, country, location, phone, email, is_active, parking, restaurant, check_in_time, check_out_time, created_at, updated_at
 		FROM branches WHERE org_id = $1
 		ORDER BY name ASC`, orgID)
 	if err != nil {
@@ -66,9 +66,9 @@ func (r *BranchRepository) List(orgID uuid.UUID) ([]models.Branch, error) {
 func (r *BranchRepository) Update(b *models.Branch) error {
 	b.UpdatedAt = time.Now()
 	_, err := r.db.Exec(`
-		UPDATE branches SET name=$1, branch_code=$2, street_address=$3, city=$4, country=$5, location=$6, phone=$7, email=$8, is_active=$9, updated_at=$10
-		WHERE id=$11 AND org_id=$12`,
-		b.Name, b.BranchCode, b.StreetAddress, b.City, b.Country, b.Location, b.Phone, b.Email, b.IsActive, b.UpdatedAt, b.ID, b.OrgID,
+		UPDATE branches SET name=$1, branch_code=$2, street_address=$3, city=$4, country=$5, location=$6, phone=$7, email=$8, is_active=$9, parking=$10, restaurant=$11, check_in_time=$12, check_out_time=$13, updated_at=$14
+		WHERE id=$15 AND org_id=$16`,
+		b.Name, b.BranchCode, b.StreetAddress, b.City, b.Country, b.Location, b.Phone, b.Email, b.IsActive, b.Parking, b.Restaurant, b.CheckInTime, b.CheckOutTime, b.UpdatedAt, b.ID, b.OrgID,
 	)
 	return err
 }
@@ -92,7 +92,8 @@ type branchScanner interface {
 func scanBranch(row branchScanner) (*models.Branch, error) {
 	var b models.Branch
 	var streetAddress, city, country, location, phone, email sql.NullString
-	err := row.Scan(&b.ID, &b.OrgID, &b.Name, &b.BranchCode, &streetAddress, &city, &country, &location, &phone, &email, &b.IsActive, &b.CreatedAt, &b.UpdatedAt)
+	var checkInTime, checkOutTime sql.NullString
+	err := row.Scan(&b.ID, &b.OrgID, &b.Name, &b.BranchCode, &streetAddress, &city, &country, &location, &phone, &email, &b.IsActive, &b.Parking, &b.Restaurant, &checkInTime, &checkOutTime, &b.CreatedAt, &b.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +114,12 @@ func scanBranch(row branchScanner) (*models.Branch, error) {
 	}
 	if email.Valid {
 		b.Email = &email.String
+	}
+	if checkInTime.Valid {
+		b.CheckInTime = &checkInTime.String
+	}
+	if checkOutTime.Valid {
+		b.CheckOutTime = &checkOutTime.String
 	}
 	return &b, nil
 }

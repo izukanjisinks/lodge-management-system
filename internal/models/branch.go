@@ -18,19 +18,27 @@ type Branch struct {
 	Phone         *string    `json:"phone"`
 	Email         *string    `json:"email"`
 	IsActive      bool       `json:"is_active"`
+	Parking       bool       `json:"parking"`
+	Restaurant    bool       `json:"restaurant"`
+	CheckInTime   *string    `json:"check_in_time"`
+	CheckOutTime  *string    `json:"check_out_time"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 type CreateBranchRequest struct {
-	Name          string `json:"name"`
-	BranchCode    string `json:"branch_code"`
-	StreetAddress string `json:"street_address,omitempty"`
-	City          string `json:"city,omitempty"`
-	Country       string `json:"country,omitempty"`
-	Location      string `json:"location,omitempty"`
-	Phone         string `json:"phone,omitempty"`
-	Email         string `json:"email,omitempty"`
+	Name          string  `json:"name"`
+	BranchCode    string  `json:"branch_code"`
+	StreetAddress string  `json:"street_address,omitempty"`
+	City          string  `json:"city,omitempty"`
+	Country       string  `json:"country,omitempty"`
+	Location      string  `json:"location,omitempty"`
+	Phone         string  `json:"phone,omitempty"`
+	Email         string  `json:"email,omitempty"`
+	Parking       bool    `json:"parking,omitempty"`
+	Restaurant    bool    `json:"restaurant,omitempty"`
+	CheckInTime   *string `json:"check_in_time,omitempty"`
+	CheckOutTime  *string `json:"check_out_time,omitempty"`
 }
 
 type UpdateBranchRequest struct {
@@ -43,4 +51,8 @@ type UpdateBranchRequest struct {
 	Phone         *string `json:"phone,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	IsActive      *bool   `json:"is_active,omitempty"`
+	Parking       *bool   `json:"parking,omitempty"`
+	Restaurant    *bool   `json:"restaurant,omitempty"`
+	CheckInTime   *string `json:"check_in_time,omitempty"`
+	CheckOutTime  *string `json:"check_out_time,omitempty"`
 }

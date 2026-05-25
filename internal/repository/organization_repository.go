@@ -21,42 +21,42 @@ func NewOrganizationRepository() *OrganizationRepository {
 
 func (r *OrganizationRepository) Create(org *models.Organization) error {
 	query := `
-		INSERT INTO organizations (id, name, logo_url, street_address, city, country, phone, email, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		INSERT INTO organizations (id, name, logo_url, street_address, city, country, location, phone, email, parking, restaurant, check_in_time, check_out_time, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`
 	org.ID = uuid.New()
 	now := time.Now()
 	org.CreatedAt = now
 	org.UpdatedAt = now
 	_, err := r.db.Exec(query,
-		org.ID, org.Name, org.LogoURL, org.StreetAddress, org.City, org.Country, org.Phone, org.Email, org.IsActive, org.CreatedAt, org.UpdatedAt,
+		org.ID, org.Name, org.LogoURL, org.StreetAddress, org.City, org.Country, org.Location, org.Phone, org.Email, org.Parking, org.Restaurant, org.CheckInTime, org.CheckOutTime, org.IsActive, org.CreatedAt, org.UpdatedAt,
 	)
 	return err
 }
 
 func (r *OrganizationRepository) CreateTx(tx *sql.Tx, org *models.Organization) error {
 	query := `
-		INSERT INTO organizations (id, name, logo_url, street_address, city, country, phone, email, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		INSERT INTO organizations (id, name, logo_url, street_address, city, country, location, phone, email, parking, restaurant, check_in_time, check_out_time, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`
 	org.ID = uuid.New()
 	now := time.Now()
 	org.CreatedAt = now
 	org.UpdatedAt = now
 	_, err := tx.Exec(query,
-		org.ID, org.Name, org.LogoURL, org.StreetAddress, org.City, org.Country, org.Phone, org.Email, true, org.CreatedAt, org.UpdatedAt,
+		org.ID, org.Name, org.LogoURL, org.StreetAddress, org.City, org.Country, org.Location, org.Phone, org.Email, org.Parking, org.Restaurant, org.CheckInTime, org.CheckOutTime, true, org.CreatedAt, org.UpdatedAt,
 	)
 	return err
 }
 
 func (r *OrganizationRepository) GetByID(id uuid.UUID) (*models.Organization, error) {
 	query := `
-		SELECT id, name, logo_url, street_address, city, country, phone, email, is_active, created_at, updated_at
+		SELECT id, name, logo_url, street_address, city, country, location, phone, email, parking, restaurant, check_in_time, check_out_time, is_active, created_at, updated_at
 		FROM organizations WHERE id = $1`
 	return r.scanOrganization(r.db.QueryRow(query, id))
 }
 
 func (r *OrganizationRepository) List() ([]models.Organization, error) {
 	query := `
-		SELECT id, name, logo_url, street_address, city, country, phone, email, is_active, created_at, updated_at
+		SELECT id, name, logo_url, street_address, city, country, location, phone, email, parking, restaurant, check_in_time, check_out_time, is_active, created_at, updated_at
 		FROM organizations
 		ORDER BY created_at DESC`
 	rows, err := r.db.Query(query)
@@ -101,10 +101,10 @@ func (r *OrganizationRepository) ListIDs() ([]uuid.UUID, error) {
 func (r *OrganizationRepository) Update(org *models.Organization) error {
 	query := `
 		UPDATE organizations
-		SET name = $1, logo_url = $2, street_address = $3, city = $4, country = $5, phone = $6, email = $7, is_active = $8, updated_at = $9
-		WHERE id = $10`
+		SET name = $1, logo_url = $2, street_address = $3, city = $4, country = $5, location = $6, phone = $7, email = $8, parking = $9, restaurant = $10, check_in_time = $11, check_out_time = $12, is_active = $13, updated_at = $14
+		WHERE id = $15`
 	_, err := r.db.Exec(query,
-		org.Name, org.LogoURL, org.StreetAddress, org.City, org.Country, org.Phone, org.Email, org.IsActive, time.Now(), org.ID,
+		org.Name, org.LogoURL, org.StreetAddress, org.City, org.Country, org.Location, org.Phone, org.Email, org.Parking, org.Restaurant, org.CheckInTime, org.CheckOutTime, org.IsActive, time.Now(), org.ID,
 	)
 	return err
 }
@@ -134,7 +134,7 @@ func (r *OrganizationRepository) ListPublic(page, pageSize int) ([]models.Organi
 	}
 
 	rows, err := r.db.Query(`
-		SELECT id, name, logo_url, street_address, city, country, phone, email, is_active, created_at, updated_at
+		SELECT id, name, logo_url, street_address, city, country, location, phone, email, parking, restaurant, check_in_time, check_out_time, is_active, created_at, updated_at
 		FROM organizations
 		WHERE is_active = TRUE
 		ORDER BY name ASC
@@ -160,9 +160,9 @@ func (r *OrganizationRepository) ListPublic(page, pageSize int) ([]models.Organi
 
 func (r *OrganizationRepository) scanOrganization(row rowScanner) (*models.Organization, error) {
 	var org models.Organization
-	var logoURL, streetAddress, city, country, phone, email sql.NullString
+	var logoURL, streetAddress, city, country, location, phone, email, checkInTime, checkOutTime sql.NullString
 	err := row.Scan(
-		&org.ID, &org.Name, &logoURL, &streetAddress, &city, &country, &phone, &email, &org.IsActive, &org.CreatedAt, &org.UpdatedAt,
+		&org.ID, &org.Name, &logoURL, &streetAddress, &city, &country, &location, &phone, &email, &org.Parking, &org.Restaurant, &checkInTime, &checkOutTime, &org.IsActive, &org.CreatedAt, &org.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -171,7 +171,14 @@ func (r *OrganizationRepository) scanOrganization(row rowScanner) (*models.Organ
 	org.StreetAddress = streetAddress.String
 	org.City = city.String
 	org.Country = country.String
+	org.Location = location.String
 	org.Phone = phone.String
 	org.Email = email.String
+	if checkInTime.Valid {
+		org.CheckInTime = &checkInTime.String
+	}
+	if checkOutTime.Valid {
+		org.CheckOutTime = &checkOutTime.String
+	}
 	return &org, nil
 }

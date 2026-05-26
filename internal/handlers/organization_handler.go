@@ -7,6 +7,8 @@ import (
 	"lodge-system/internal/models"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
+
+	"github.com/google/uuid"
 )
 
 type OrganizationHandler struct {
@@ -15,6 +17,22 @@ type OrganizationHandler struct {
 
 func NewOrganizationHandler(service *services.BackofficeOrganizationService) *OrganizationHandler {
 	return &OrganizationHandler{service: service}
+}
+
+func (h *OrganizationHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid organization ID")
+		return
+	}
+
+	org, err := h.service.GetByID(id)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "Organization not found")
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, org)
 }
 
 func (h *OrganizationHandler) Get(w http.ResponseWriter, r *http.Request) {

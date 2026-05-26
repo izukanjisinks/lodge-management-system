@@ -125,6 +125,7 @@ func main() {
 
 	branchRepo := repository.NewBranchRepository()
 	branchHandler := handlers.NewBranchHandler(services.NewBranchService(branchRepo))
+	orgHandler := handlers.NewOrganizationHandler(backofficeOrgSvc)
 
 	reviewRepo := repository.NewReviewRepository()
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
@@ -156,7 +157,8 @@ func main() {
 		backofficeOrgHandler,
 		auditLogHandler,
 		orgSettingsHandler,
-		branchHandler)
+		branchHandler,
+		orgHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally

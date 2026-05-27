@@ -17,6 +17,7 @@ type BackofficeOrganizationService struct {
 	orgRepo      *repository.OrganizationRepository
 	userRepo     *repository.UserRepository
 	roleRepo     *repository.RoleRepository
+	branchRepo   *repository.BranchRepository
 	emailService *email.EmailService
 }
 
@@ -24,11 +25,13 @@ func NewBackofficeOrganizationService(
 	orgRepo *repository.OrganizationRepository,
 	userRepo *repository.UserRepository,
 	roleRepo *repository.RoleRepository,
+	branchRepo *repository.BranchRepository,
 ) *BackofficeOrganizationService {
 	return &BackofficeOrganizationService{
-		orgRepo:  orgRepo,
-		userRepo: userRepo,
-		roleRepo: roleRepo,
+		orgRepo:    orgRepo,
+		userRepo:   userRepo,
+		roleRepo:   roleRepo,
+		branchRepo: branchRepo,
 	}
 }
 
@@ -173,6 +176,37 @@ func (s *BackofficeOrganizationService) Provision(req models.ProvisionOrgRequest
 	if err = tx.Commit(); err != nil {
 		return nil, nil, err
 	}
+
+	// Seed the main branch from the org's details
+	mainBranch := &models.Branch{
+		OrgID:        org.ID,
+		Name:         org.Name,
+		BranchCode:   "MAIN",
+		IsActive:     true,
+		Parking:      false,
+		Restaurant:   false,
+		CheckInTime:  func() *string { s := "14:00"; return &s }(),
+		CheckOutTime: func() *string { s := "10:00"; return &s }(),
+	}
+	if org.StreetAddress != "" {
+		mainBranch.StreetAddress = &org.StreetAddress
+	}
+	if org.City != "" {
+		mainBranch.City = &org.City
+	}
+	if org.Country != "" {
+		mainBranch.Country = &org.Country
+	}
+	if org.Location != "" {
+		mainBranch.Location = &org.Location
+	}
+	if org.Phone != "" {
+		mainBranch.Phone = &org.Phone
+	}
+	if org.Email != "" {
+		mainBranch.Email = &org.Email
+	}
+	_ = s.branchRepo.Create(mainBranch)
 
 	if s.emailService != nil {
 		go func() {

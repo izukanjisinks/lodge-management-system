@@ -110,7 +110,9 @@ func main() {
 	backofficeUserSvc := services.NewBackofficeUserService(backofficeUserRepo)
 	backofficeUserSvc.SetEmailService(emailService)
 
-	backofficeOrgSvc := services.NewBackofficeOrganizationService(orgRepo, userRepo, roleRepo)
+	branchRepo := repository.NewBranchRepository()
+
+	backofficeOrgSvc := services.NewBackofficeOrganizationService(orgRepo, userRepo, roleRepo, branchRepo)
 	backofficeOrgSvc.SetEmailService(emailService)
 
 	backofficeAuthHandler := handlers.NewBackofficeAuthHandler(backofficeAuthSvc)
@@ -123,7 +125,6 @@ func main() {
 	orderSvc := services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo)
 	orderHandler := handlers.NewOrderHandler(orderSvc)
 
-	branchRepo := repository.NewBranchRepository()
 	branchHandler := handlers.NewBranchHandler(services.NewBranchService(branchRepo))
 	orgHandler := handlers.NewOrganizationHandler(backofficeOrgSvc)
 

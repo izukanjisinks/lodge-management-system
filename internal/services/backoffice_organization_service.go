@@ -183,6 +183,7 @@ func (s *BackofficeOrganizationService) Provision(req models.ProvisionOrgRequest
 		Name:         org.Name,
 		BranchCode:   "MAIN",
 		IsActive:     true,
+		IsMain:       true,
 		Parking:      false,
 		Restaurant:   false,
 		CheckInTime:  func() *string { s := "14:00"; return &s }(),

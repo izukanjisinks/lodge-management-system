@@ -18,6 +18,7 @@ type Branch struct {
 	Phone         *string    `json:"phone"`
 	Email         *string    `json:"email"`
 	IsActive      bool       `json:"is_active"`
+	IsMain        bool       `json:"is_main"`
 	Parking       bool       `json:"parking"`
 	Restaurant    bool       `json:"restaurant"`
 	CheckInTime   *string    `json:"check_in_time"`
@@ -51,6 +52,7 @@ type UpdateBranchRequest struct {
 	Phone         *string `json:"phone,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	IsActive      *bool   `json:"is_active,omitempty"`
+	IsMain        *bool   `json:"is_main,omitempty"`
 	Parking       *bool   `json:"parking,omitempty"`
 	Restaurant    *bool   `json:"restaurant,omitempty"`
 	CheckInTime   *string `json:"check_in_time,omitempty"`

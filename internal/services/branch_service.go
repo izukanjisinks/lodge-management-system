@@ -30,6 +30,7 @@ func (s *BranchService) Create(orgID uuid.UUID, req *models.CreateBranchRequest)
 		Name:       strings.TrimSpace(req.Name),
 		BranchCode: strings.ToUpper(strings.TrimSpace(req.BranchCode)),
 		IsActive:   true,
+		IsMain:     false,
 	}
 	if v := strings.TrimSpace(req.StreetAddress); v != "" {
 		b.StreetAddress = &v
@@ -121,6 +122,9 @@ func (s *BranchService) Update(id, orgID uuid.UUID, req *models.UpdateBranchRequ
 	}
 	if req.IsActive != nil {
 		b.IsActive = *req.IsActive
+	}
+	if req.IsMain != nil {
+		b.IsMain = *req.IsMain
 	}
 	if req.Parking != nil {
 		b.Parking = *req.Parking

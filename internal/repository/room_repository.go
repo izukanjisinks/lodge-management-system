@@ -94,7 +94,7 @@ func (r *RoomRepository) GuestList(orgID *uuid.UUID, branchID *uuid.UUID, roomTy
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
 		SELECT r.id, r.org_id, r.branch_id, r.name, r.type, r.capacity, r.price_per_night, r.amenities, r.images, r.is_available, r.description, r.created_at, r.updated_at,
-		       o.name, o.email, o.address, o.phone, o.logo_url
+		       o.name, o.email, o.street_address, o.phone, o.logo_url
 		FROM rooms r
 		LEFT JOIN organizations o ON o.id = r.org_id
 		WHERE %s
@@ -138,11 +138,11 @@ func (r *RoomRepository) GuestList(orgID *uuid.UUID, branchID *uuid.UUID, roomTy
 		}
 		if orgName.Valid {
 			room.Organization = &models.RoomOrganization{
-				Name:    orgName.String,
-				Email:   orgEmail.String,
-				Address: orgAddress.String,
-				Phone:   orgPhone.String,
-				LogoURL: orgLogoURL.String,
+				Name:          orgName.String,
+				Email:         orgEmail.String,
+				StreetAddress: orgAddress.String,
+				Phone:         orgPhone.String,
+				LogoURL:       orgLogoURL.String,
 			}
 		}
 		bookedDates, _ := r.GetBookedDates(room.ID)
@@ -204,12 +204,16 @@ func (r *RoomRepository) List(orgID uuid.UUID, branchID *uuid.UUID, roomType str
 	return rooms, total, rows.Err()
 }
 
-func (r *RoomRepository) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
+func (r *RoomRepository) ListAvailable(orgID uuid.UUID, branchID *uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
 	args := []interface{}{checkOut, checkIn, orgID}
 	extra := ""
+	if branchID != nil {
+		args = append(args, *branchID)
+		extra += fmt.Sprintf(" AND branch_id = $%d", len(args))
+	}
 	if roomType != "" {
 		args = append(args, roomType)
-		extra = fmt.Sprintf(" AND type = $%d", len(args))
+		extra += fmt.Sprintf(" AND type = $%d", len(args))
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`

@@ -92,7 +92,7 @@ func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 			utils.RespondError(w, http.StatusBadRequest, "invalid check_out date, expected YYYY-MM-DD")
 			return
 		}
-		rooms, err := h.service.ListAvailable(*orgID, checkIn, checkOut, roomType)
+		rooms, err := h.service.ListAvailable(*orgID, branchID, checkIn, checkOut, roomType)
 		if err != nil {
 			utils.RespondError(w, http.StatusBadRequest, err.Error())
 			return
@@ -159,6 +159,16 @@ func (h *RoomHandler) GuestListAvailable(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	var branchID *uuid.UUID
+	if v := r.URL.Query().Get("branch_id"); v != "" {
+		parsed, err := uuid.Parse(v)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "invalid branch_id")
+			return
+		}
+		branchID = &parsed
+	}
+
 	checkInStr := r.URL.Query().Get("check_in")
 	checkOutStr := r.URL.Query().Get("check_out")
 	roomType := r.URL.Query().Get("type")
@@ -179,7 +189,7 @@ func (h *RoomHandler) GuestListAvailable(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	rooms, err := h.service.ListAvailable(orgID, checkIn, checkOut, roomType)
+	rooms, err := h.service.ListAvailable(orgID, branchID, checkIn, checkOut, roomType)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -190,6 +200,11 @@ func (h *RoomHandler) GuestListAvailable(w http.ResponseWriter, r *http.Request)
 
 func (h *RoomHandler) ListAvailable(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	checkInStr := r.URL.Query().Get("check_in")
 	checkOutStr := r.URL.Query().Get("check_out")
 	roomType := r.URL.Query().Get("type")
@@ -210,7 +225,7 @@ func (h *RoomHandler) ListAvailable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rooms, err := h.service.ListAvailable(orgID, checkIn, checkOut, roomType)
+	rooms, err := h.service.ListAvailable(orgID, branchID, checkIn, checkOut, roomType)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

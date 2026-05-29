@@ -15,10 +15,11 @@ import (
 type GuestAuthHandler struct {
 	guestAuthService *services.GuestAuthService
 	orgRepo          *repository.OrganizationRepository
+	branchRepo       *repository.BranchRepository
 }
 
-func NewGuestAuthHandler(guestAuthService *services.GuestAuthService, orgRepo *repository.OrganizationRepository) *GuestAuthHandler {
-	return &GuestAuthHandler{guestAuthService: guestAuthService, orgRepo: orgRepo}
+func NewGuestAuthHandler(guestAuthService *services.GuestAuthService, orgRepo *repository.OrganizationRepository, branchRepo *repository.BranchRepository) *GuestAuthHandler {
+	return &GuestAuthHandler{guestAuthService: guestAuthService, orgRepo: orgRepo, branchRepo: branchRepo}
 }
 
 // Register handles POST /api/v1/guest/auth/register
@@ -122,7 +123,11 @@ func (h *GuestAuthHandler) GetLodge(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusNotFound, "Lodge not found")
 		return
 	}
-	utils.RespondJSON(w, http.StatusOK, lodge)
+	branches, _ := h.branchRepo.List(id)
+	utils.RespondJSON(w, http.StatusOK, map[string]interface{}{
+		"lodge":    lodge,
+		"branches": branches,
+	})
 }
 
 // ListLodges handles GET /api/v1/guest/lodges — public, no auth required.
@@ -133,8 +138,19 @@ func (h *GuestAuthHandler) ListLodges(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve lodges")
 		return
 	}
+
+	type lodgeWithBranches struct {
+		models.Organization
+		Branches []models.Branch `json:"branches"`
+	}
+	data := make([]lodgeWithBranches, len(lodges))
+	for i, org := range lodges {
+		branches, _ := h.branchRepo.List(org.ID)
+		data[i] = lodgeWithBranches{Organization: org, Branches: branches}
+	}
+
 	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
-		Data:     lodges,
+		Data:     data,
 		Page:     pg.Page,
 		PageSize: pg.PageSize,
 		Total:    total,

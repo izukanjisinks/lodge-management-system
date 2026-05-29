@@ -29,11 +29,11 @@ type BookedDate struct {
 }
 
 type RoomOrganization struct {
-	Name    string `json:"name"`
-	Email   string `json:"email,omitempty"`
-	Address string `json:"address,omitempty"`
-	Phone   string `json:"phone,omitempty"`
-	LogoURL string `json:"logo_url,omitempty"`
+	Name          string `json:"name"`
+	Email         string `json:"email,omitempty"`
+	StreetAddress string `json:"street_address,omitempty"`
+	Phone         string `json:"phone,omitempty"`
+	LogoURL       string `json:"logo_url,omitempty"`
 }
 
 type Room struct {

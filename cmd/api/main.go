@@ -99,7 +99,8 @@ func main() {
 	guestAuthSvc.SetEmailService(emailService)
 	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, guestAuthSvc)
 	guestBookingSvc.SetWorkflowService(workflowService)
-	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, orgRepo)
+	branchRepo := repository.NewBranchRepository()
+	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, orgRepo, branchRepo)
 	guestBookingHandler := handlers.NewGuestBookingHandler(guestBookingSvc)
 
 	backofficeUserRepo := repository.NewBackofficeUserRepository()
@@ -109,8 +110,6 @@ func main() {
 
 	backofficeUserSvc := services.NewBackofficeUserService(backofficeUserRepo)
 	backofficeUserSvc.SetEmailService(emailService)
-
-	branchRepo := repository.NewBranchRepository()
 
 	backofficeOrgSvc := services.NewBackofficeOrganizationService(orgRepo, userRepo, roleRepo, branchRepo)
 	backofficeOrgSvc.SetEmailService(emailService)

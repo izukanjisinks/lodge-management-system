@@ -63,7 +63,7 @@ func (s *RoomService) List(orgID uuid.UUID, branchID *uuid.UUID, roomType string
 	return s.repo.List(orgID, branchID, roomType, isAvailable, page, pageSize)
 }
 
-func (s *RoomService) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
+func (s *RoomService) ListAvailable(orgID uuid.UUID, branchID *uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
 	if checkIn.IsZero() || checkOut.IsZero() {
 		return nil, errors.New("check_in and check_out are required")
 	}
@@ -73,7 +73,7 @@ func (s *RoomService) ListAvailable(orgID uuid.UUID, checkIn, checkOut time.Time
 	if roomType != "" && !models.ValidRoomTypes[roomType] {
 		return nil, errors.New("invalid room type filter")
 	}
-	return s.repo.ListAvailable(orgID, checkIn, checkOut, roomType)
+	return s.repo.ListAvailable(orgID, branchID, checkIn, checkOut, roomType)
 }
 
 func (s *RoomService) Update(id uuid.UUID, orgID uuid.UUID, updates *models.Room) (*models.Room, error) {

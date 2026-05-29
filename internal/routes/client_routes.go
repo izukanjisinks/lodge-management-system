@@ -35,6 +35,12 @@ func RegisterClientRoutes(h *handlers.ClientHandler) {
 	http.HandleFunc("GET /api/v1/clients/corporate/{id}",
 		withAuth(h.GetCorporateByID))
 
+	http.HandleFunc("GET /api/v1/clients/corporate/{id}/bookings",
+		withAuth(h.GetCorporateWithBookings))
+
+	http.HandleFunc("PUT /api/v1/clients/corporate/{id}/documents",
+		withAuthAndRole(h.UpsertDocuments, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+
 	http.HandleFunc("POST /api/v1/clients/corporate",
 		withAuthAndRole(h.CreateCorporate, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 

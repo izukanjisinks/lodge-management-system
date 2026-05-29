@@ -10,11 +10,21 @@ import (
 )
 
 type ClientService struct {
-	repo *repository.ClientRepository
+	repo            *repository.ClientRepository
+	bookingRepo     *repository.BookingRepository
+	bookingDocRepo  *repository.BookingDocumentRepository
 }
 
 func NewClientService(repo *repository.ClientRepository) *ClientService {
 	return &ClientService{repo: repo}
+}
+
+func (s *ClientService) SetBookingRepository(bookingRepo *repository.BookingRepository) {
+	s.bookingRepo = bookingRepo
+}
+
+func (s *ClientService) SetBookingDocumentRepository(r *repository.BookingDocumentRepository) {
+	s.bookingDocRepo = r
 }
 
 // ─── Individual ───────────────────────────────────────────────────────────────
@@ -173,4 +183,57 @@ func (s *ClientService) SearchCorporate(orgID uuid.UUID, search string) ([]model
 		return []models.CorporateClient{}, nil
 	}
 	return s.repo.SearchCorporate(orgID, search, 10)
+}
+
+func (s *ClientService) GetCorporateWithBookings(id, orgID uuid.UUID) (*models.CorporateClientWithBookings, error) {
+	client, err := s.repo.GetCorporateByID(id, orgID)
+	if err != nil {
+		return nil, errors.New("corporate client not found")
+	}
+
+	var guests []models.CorporateBookingGuest
+	var documents []string
+
+	if s.bookingRepo != nil {
+		bookings, err := s.bookingRepo.ListByCorporateClientID(id, orgID)
+		if err == nil {
+			for _, b := range bookings {
+				guests = append(guests, models.CorporateBookingGuest{
+					BookingID:     b.ID.String(),
+					BookingNumber: b.BookingNumber,
+					ClientName:    b.ClientName,
+					RoomName:      b.RoomName,
+					CheckIn:       b.CheckIn.Format("2006-01-02"),
+					CheckOut:      b.CheckOut.Format("2006-01-02"),
+					Guests:        b.Guests,
+					Status:        b.Status,
+				})
+			}
+		}
+	}
+	if s.bookingDocRepo != nil {
+		doc, err := s.bookingDocRepo.GetByCorporateClientID(id, orgID)
+		if err == nil && doc != nil {
+			documents = doc.URLs
+		}
+	}
+	if guests == nil {
+		guests = []models.CorporateBookingGuest{}
+	}
+	if documents == nil {
+		documents = []string{}
+	}
+
+	return &models.CorporateClientWithBookings{
+		CorporateClient: client,
+		Documents:       documents,
+		Guests:          guests,
+	}, nil
+}
+
+func (s *ClientService) UpsertDocuments(corporateClientID, orgID uuid.UUID, urls []string) (*models.BookingDocument, error) {
+	if s.bookingDocRepo == nil {
+		return nil, errors.New("document storage not available")
+	}
+	return s.bookingDocRepo.Upsert(corporateClientID, orgID, urls)
 }

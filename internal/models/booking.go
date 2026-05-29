@@ -74,7 +74,6 @@ type Booking struct {
 	Status            string     `json:"status"`
 	Overstayed        bool       `json:"overstayed"`
 	SpecialRequests   string     `json:"special_requests,omitempty"`
-	Documents         []string   `json:"documents"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 }
@@ -125,7 +124,7 @@ type CreateCorporateBookingRequest struct {
 	ClientID  *uuid.UUID                 `json:"client_id,omitempty"`
 	Client    *NewCorporateClientDetails `json:"client,omitempty"`
 	Guests    []CorporateGuestRequest    `json:"guests"`
-	Documents []string                   `json:"documents,omitempty"`
+	Documents []string                   `json:"documents,omitempty"` // URLs stored in booking_documents table
 }
 
 // ─── Guest self-service booking request ──────────────────────────────────────

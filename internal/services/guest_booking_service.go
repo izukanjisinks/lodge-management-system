@@ -162,8 +162,8 @@ func (s *GuestBookingService) GetByID(userID uuid.UUID, bookingID uuid.UUID) (*m
 	return b, nil
 }
 
-// CreateCorporate makes a corporate booking on behalf of a guest.
-// orgID is derived from the first guest's room so no org is needed in the JWT.
+// CreateCorporate makes a corporate booking on behalf of a guest and triggers a
+// booking approval workflow for each individual booking in the response.
 func (s *GuestBookingService) CreateCorporate(req *models.CreateCorporateBookingRequest) (*models.CorporateBookingResponse, error) {
 	if s.bookingService == nil {
 		return nil, errors.New("corporate bookings are not available")
@@ -182,7 +182,40 @@ func (s *GuestBookingService) CreateCorporate(req *models.CreateCorporateBooking
 		orgID = *room.OrgID
 	}
 
-	return s.bookingService.CreateCorporate(orgID, req)
+	resp, err := s.bookingService.CreateCorporate(orgID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.workflow != nil {
+		go func() {
+			guestCount := len(resp.Bookings)
+			taskDetails := models.TaskDetails{
+				TaskID:          resp.CorporateClientID.String(),
+				TaskRef:         resp.CorporateClientID.String(),
+				TaskType:        "corporate_booking",
+				TaskDescription: fmt.Sprintf("Review corporate booking request from %s — %d guest(s)", resp.CompanyName, guestCount),
+				SenderDetails: models.SenderDetails{
+					SenderID:   resp.CorporateClientID.String(),
+					SenderName: resp.CompanyName,
+					Position:   models.BookingClientTypeCorporate,
+					Department: "Guest",
+				},
+			}
+			if _, err := s.workflow.InitiateWorkflow(
+				models.WorkflowTypeBookingApproval,
+				taskDetails,
+				resp.CorporateClientID.String(),
+				"medium",
+				nil,
+				orgID.String(),
+			); err != nil {
+				fmt.Printf("warning: failed to initiate workflow for corporate client %s: %v\n", resp.CorporateClientID, err)
+			}
+		}()
+	}
+
+	return resp, nil
 }
 
 // Cancel transitions a guest's booking to cancelled — only allowed from pending or confirmed.

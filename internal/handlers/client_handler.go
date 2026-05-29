@@ -230,3 +230,45 @@ func (h *ClientHandler) DeleteCorporate(w http.ResponseWriter, r *http.Request) 
 
 	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Corporate client deleted successfully"})
 }
+
+func (h *ClientHandler) UpsertDocuments(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
+		return
+	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	var req struct {
+		URLs []string `json:"urls"`
+	}
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	doc, err := h.service.UpsertDocuments(id, orgID, req.URLs)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, doc)
+}
+
+func (h *ClientHandler) GetCorporateWithBookings(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid client ID")
+		return
+	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	result, err := h.service.GetCorporateWithBookings(id, orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, result)
+}

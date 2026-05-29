@@ -12,14 +12,19 @@ import (
 )
 
 type BookingService struct {
-	repo    *repository.BookingRepository
-	room    *repository.RoomRepository
-	client  *repository.ClientRepository
-	invoice *InvoiceService
+	repo        *repository.BookingRepository
+	room        *repository.RoomRepository
+	client      *repository.ClientRepository
+	invoice     *InvoiceService
+	bookingDocs *repository.BookingDocumentRepository
 }
 
 func NewBookingService(repo *repository.BookingRepository, room *repository.RoomRepository, client *repository.ClientRepository) *BookingService {
 	return &BookingService{repo: repo, room: room, client: client}
+}
+
+func (s *BookingService) SetBookingDocumentRepository(r *repository.BookingDocumentRepository) {
+	s.bookingDocs = r
 }
 
 // SetInvoiceService injects the invoice service after construction to avoid a circular dependency.
@@ -224,9 +229,8 @@ func (s *BookingService) CreateCorporate(orgID uuid.UUID, req *models.CreateCorp
 			CheckIn:           g.CheckIn.Time,
 			CheckOut:          g.CheckOut.Time,
 			Guests:            1,
-			Status:            models.BookingStatusPending,
-			SpecialRequests:   g.SpecialRequests,
-			Documents:         req.Documents,
+			Status:          models.BookingStatusPending,
+			SpecialRequests: g.SpecialRequests,
 		}
 		if err = s.repo.CreateInTx(tx, b, orgID); err != nil {
 			log.Printf("[booking] guest %d: failed to save booking (org %s, room %s, client %s): %v", i+1, orgID, b.RoomID, b.ClientID, err)
@@ -239,6 +243,13 @@ func (s *BookingService) CreateCorporate(orgID uuid.UUID, req *models.CreateCorp
 	if err = tx.Commit(); err != nil {
 		log.Printf("[booking] failed to commit corporate booking transaction (org %s, corporate client %s): %v", orgID, corp.ID, err)
 		return nil, err
+	}
+
+	// Save documents for the corporate client
+	if s.bookingDocs != nil && len(req.Documents) > 0 {
+		if _, err := s.bookingDocs.Upsert(corp.ID, orgID, req.Documents); err != nil {
+			log.Printf("[booking] warning: failed to save documents for corporate client %s: %v", corp.ID, err)
+		}
 	}
 
 	// Generate consolidated invoice for the corporate client

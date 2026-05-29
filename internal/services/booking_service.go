@@ -226,6 +226,7 @@ func (s *BookingService) CreateCorporate(orgID uuid.UUID, req *models.CreateCorp
 			Guests:            1,
 			Status:            models.BookingStatusPending,
 			SpecialRequests:   g.SpecialRequests,
+			Documents:         req.Documents,
 		}
 		if err = s.repo.CreateInTx(tx, b, orgID); err != nil {
 			log.Printf("[booking] guest %d: failed to save booking (org %s, room %s, client %s): %v", i+1, orgID, b.RoomID, b.ClientID, err)

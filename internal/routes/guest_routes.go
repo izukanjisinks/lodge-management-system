@@ -32,6 +32,7 @@ func RegisterGuestRoutes(
 
 	// Authenticated guest — bookings
 	http.HandleFunc("POST /api/v1/guest/bookings", withGuestAuth(guestBookingHandler.Create))
+	http.HandleFunc("POST /api/v1/guest/bookings/corporate", withGuestAuth(guestBookingHandler.CreateCorporate))
 	http.HandleFunc("GET /api/v1/guest/bookings", withGuestAuth(guestBookingHandler.List))
 	http.HandleFunc("GET /api/v1/guest/bookings/{id}", withGuestAuth(guestBookingHandler.GetByID))
 	http.HandleFunc("PATCH /api/v1/guest/bookings/{id}/cancel", withGuestAuth(guestBookingHandler.Cancel))

@@ -42,6 +42,29 @@ func (h *GuestBookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusCreated, booking)
 }
 
+// CreateCorporate handles POST /api/v1/guest/bookings/corporate
+func (h *GuestBookingHandler) CreateCorporate(w http.ResponseWriter, r *http.Request) {
+	_, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	var req models.CreateCorporateBookingRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	resp, err := h.service.CreateCorporate(&req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, resp)
+}
+
 // List handles GET /api/v1/guest/bookings
 func (h *GuestBookingHandler) List(w http.ResponseWriter, r *http.Request) {
 	guestID, ok := middleware.GetUserIDFromContext(r.Context())

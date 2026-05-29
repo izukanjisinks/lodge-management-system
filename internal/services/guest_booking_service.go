@@ -11,10 +11,11 @@ import (
 )
 
 type GuestBookingService struct {
-	bookingRepo *repository.BookingRepository
-	roomRepo    *repository.RoomRepository
-	guestAuth   *GuestAuthService
-	workflow    *WorkflowService
+	bookingRepo    *repository.BookingRepository
+	roomRepo       *repository.RoomRepository
+	guestAuth      *GuestAuthService
+	workflow       *WorkflowService
+	bookingService *BookingService
 }
 
 func NewGuestBookingService(
@@ -27,6 +28,10 @@ func NewGuestBookingService(
 		roomRepo:    roomRepo,
 		guestAuth:   guestAuth,
 	}
+}
+
+func (s *GuestBookingService) SetBookingService(svc *BookingService) {
+	s.bookingService = svc
 }
 
 // SetWorkflowService injects the workflow service after construction to avoid a circular dependency.
@@ -155,6 +160,29 @@ func (s *GuestBookingService) GetByID(userID uuid.UUID, bookingID uuid.UUID) (*m
 		return nil, errors.New("forbidden")
 	}
 	return b, nil
+}
+
+// CreateCorporate makes a corporate booking on behalf of a guest.
+// orgID is derived from the first guest's room so no org is needed in the JWT.
+func (s *GuestBookingService) CreateCorporate(req *models.CreateCorporateBookingRequest) (*models.CorporateBookingResponse, error) {
+	if s.bookingService == nil {
+		return nil, errors.New("corporate bookings are not available")
+	}
+	if len(req.Guests) == 0 {
+		return nil, errors.New("at least one guest is required")
+	}
+
+	// Derive orgID from the first room — all rooms should belong to the same org.
+	room, err := s.roomRepo.GetByIDUnscoped(req.Guests[0].RoomID)
+	if err != nil {
+		return nil, errors.New("room not found")
+	}
+	orgID := uuid.Nil
+	if room.OrgID != nil {
+		orgID = *room.OrgID
+	}
+
+	return s.bookingService.CreateCorporate(orgID, req)
 }
 
 // Cancel transitions a guest's booking to cancelled — only allowed from pending or confirmed.

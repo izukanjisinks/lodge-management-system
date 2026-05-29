@@ -10,6 +10,7 @@ import (
 	"lodge-system/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type BookingRepository struct {
@@ -29,14 +30,17 @@ func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
 	now := time.Now()
 	b.CreatedAt = now
 	b.UpdatedAt = now
+	if b.Documents == nil {
+		b.Documents = []string{}
+	}
 
 	_, err := r.db.Exec(`
 		INSERT INTO bookings
-		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, branch_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, documents, org_id, branch_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,'{}'),$12,$13,$14,$15)`,
 		b.ID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
-		orgID, b.BranchID, b.CreatedAt, b.UpdatedAt,
+		pq.Array(b.Documents), orgID, b.BranchID, b.CreatedAt, b.UpdatedAt,
 	)
 	return err
 }
@@ -47,15 +51,18 @@ func (r *BookingRepository) CreateInTx(tx *sql.Tx, b *models.Booking, orgID uuid
 	now := time.Now()
 	b.CreatedAt = now
 	b.UpdatedAt = now
+	if b.Documents == nil {
+		b.Documents = []string{}
+	}
 
 	return tx.QueryRow(`
 		INSERT INTO bookings
-		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, branch_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, documents, org_id, branch_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		RETURNING booking_number`,
 		b.ID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
 		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
-		orgID, b.BranchID, now, now,
+		pq.Array(b.Documents), orgID, b.BranchID, now, now,
 	).Scan(&b.BookingNumber)
 }
 
@@ -75,7 +82,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.overstayed, b.special_requests,
+		       b.status, b.overstayed, b.special_requests, b.documents,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r    ON r.id = b.room_id
@@ -101,7 +108,7 @@ func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Book
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.overstayed, b.special_requests,
+		       b.status, b.overstayed, b.special_requests, b.documents,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r    ON r.id = b.room_id
@@ -168,7 +175,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status, c
 		       GREATEST(b.check_out - b.check_in, 1) AS nights,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
 		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.overstayed, b.special_requests,
+		       b.status, b.overstayed, b.special_requests, b.documents,
 		       b.created_at, b.updated_at
 		FROM bookings b
 		JOIN rooms                    r    ON r.id = b.room_id
@@ -383,7 +390,7 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 		&corporateClientID, &corporateClientName,
 		&b.CheckIn, &b.CheckOut, &b.Guests,
 		&b.Nights, &b.RoomCost, &b.TotalAmount,
-		&b.Status, &b.Overstayed, &specialRequests,
+		&b.Status, &b.Overstayed, &specialRequests, pq.Array(&b.Documents),
 		&b.CreatedAt, &b.UpdatedAt,
 	)
 	if err != nil {
@@ -409,6 +416,9 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	}
 	if specialRequests.Valid {
 		b.SpecialRequests = specialRequests.String
+	}
+	if b.Documents == nil {
+		b.Documents = []string{}
 	}
 	return &b, nil
 }

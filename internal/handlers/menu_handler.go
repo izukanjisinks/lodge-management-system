@@ -137,10 +137,21 @@ func (h *MenuHandler) GuestGetMenu(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
 		return
 	}
+
+	var branchID *uuid.UUID
+	if v := r.URL.Query().Get("branch_id"); v != "" {
+		parsed, err := uuid.Parse(v)
+		if err != nil {
+			utils.RespondError(w, http.StatusBadRequest, "Invalid branch_id")
+			return
+		}
+		branchID = &parsed
+	}
+
 	p := utils.ParsePagination(r)
 	category := r.URL.Query().Get("category")
 
-	menu, err := h.service.GuestGetMenu(orgID, category, p.Page, p.PageSize)
+	menu, err := h.service.GuestGetMenu(orgID, branchID, category, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Menu not found")
 		return

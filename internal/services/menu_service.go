@@ -105,8 +105,8 @@ func (s *MenuService) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
 
 // ── Guest (public) ────────────────────────────────────────────────────────────
 
-func (s *MenuService) GuestGetMenu(orgID uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
-	menu, err := s.repo.GuestGetMenu(orgID)
+func (s *MenuService) GuestGetMenu(orgID uuid.UUID, branchID *uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+	menu, err := s.repo.GuestGetMenu(orgID, branchID)
 	if err != nil {
 		return nil, errors.New("menu not found")
 	}

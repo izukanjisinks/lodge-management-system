@@ -302,27 +302,55 @@ func (r *MenuRepository) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
 
 // GuestGetMenu returns the active menu for an org with only available items — for public display.
 // Falls back to the system default menu if the org has no custom menu.
-func (r *MenuRepository) GuestGetMenu(orgID uuid.UUID) (*models.Menu, error) {
+func (r *MenuRepository) GuestGetMenu(orgID uuid.UUID, branchID *uuid.UUID) (*models.Menu, error) {
 	var m models.Menu
 	var oid uuid.NullUUID
+	var bid uuid.NullUUID
 	var description sql.NullString
 
+	if branchID != nil {
+		err := r.db.QueryRow(`
+			SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
+			FROM menus
+			WHERE org_id = $1 AND branch_id = $2 AND is_active = TRUE
+			LIMIT 1`, orgID, branchID).
+			Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, err
+		}
+		if err == nil {
+			if oid.Valid {
+				m.OrgID = oid.UUID
+			}
+			if bid.Valid {
+				m.BranchID = &bid.UUID
+			}
+			if description.Valid {
+				m.Description = description.String
+			}
+			return &m, nil
+		}
+		// Fall through to org-level menu
+	}
+
 	err := r.db.QueryRow(`
-		SELECT id, org_id, name, description, is_active, created_at, updated_at
+		SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
 		FROM menus
-		WHERE (org_id = $1 OR org_id IS NULL) AND is_active = TRUE
+		WHERE (org_id = $1 OR org_id IS NULL) AND branch_id IS NULL AND is_active = TRUE
 		ORDER BY org_id NULLS LAST
 		LIMIT 1`, orgID).
-		Scan(&m.ID, &oid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
+		Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	if oid.Valid {
 		m.OrgID = oid.UUID
 	}
+	if bid.Valid {
+		m.BranchID = &bid.UUID
+	}
 	if description.Valid {
 		m.Description = description.String
 	}
-
 	return &m, nil
 }

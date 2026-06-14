@@ -25,7 +25,6 @@ func RatingLabel(score float64) string {
 type Review struct {
 	ID          uuid.UUID `json:"id"`
 	BookingID   uuid.UUID `json:"booking_id"`
-	GuestID     uuid.UUID `json:"guest_id"`
 	Facilities  float64   `json:"facilities"`
 	Cleanliness float64   `json:"cleanliness"`
 	Services    float64   `json:"services"`

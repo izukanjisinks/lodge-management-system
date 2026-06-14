@@ -13,15 +13,13 @@ import (
 type ReviewService struct {
 	repo        *repository.ReviewRepository
 	bookingRepo *repository.BookingRepository
-	guestAuth   *GuestAuthService
 }
 
 func NewReviewService(
 	repo *repository.ReviewRepository,
 	bookingRepo *repository.BookingRepository,
-	guestAuth *GuestAuthService,
 ) *ReviewService {
-	return &ReviewService{repo: repo, bookingRepo: bookingRepo, guestAuth: guestAuth}
+	return &ReviewService{repo: repo, bookingRepo: bookingRepo}
 }
 
 func (s *ReviewService) Submit(userID uuid.UUID, req *models.SubmitReviewRequest) (*models.Review, error) {
@@ -29,18 +27,12 @@ func (s *ReviewService) Submit(userID uuid.UUID, req *models.SubmitReviewRequest
 		return nil, err
 	}
 
-	// Resolve the guest's profile
-	profile, err := s.guestAuth.GetProfileByGuestID(userID)
-	if err != nil {
-		return nil, errors.New("guest profile not found")
-	}
-
-	// Verify the booking belongs to this guest and is checked_out
+	// Verify the booking belongs to this web/guest user and is checked_out
 	booking, err := s.bookingRepo.GetByIDUnscoped(req.BookingID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
-	if booking.ClientID != profile.ID {
+	if booking.WebUserID == nil || *booking.WebUserID != userID {
 		return nil, errors.New("forbidden")
 	}
 	if booking.Status != models.BookingStatusCheckedOut {
@@ -58,7 +50,6 @@ func (s *ReviewService) Submit(userID uuid.UUID, req *models.SubmitReviewRequest
 
 	review := &models.Review{
 		BookingID:   req.BookingID,
-		GuestID:     profile.ID,
 		Facilities:  req.Facilities,
 		Cleanliness: req.Cleanliness,
 		Services:    req.Services,

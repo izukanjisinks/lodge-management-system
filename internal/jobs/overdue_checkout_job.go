@@ -93,8 +93,8 @@ func (j *OverdueCheckoutJob) run() {
 func (j *OverdueCheckoutJob) writeAuditLog(b repository.OverdueBookingRef, extendedTo time.Time) {
 	payload := models.OverstayedPayload{
 		BookingNumber:    b.BookingNumber,
-		RoomName:         b.RoomName,
-		ClientName:       b.ClientName,
+		RoomName:         "",
+		ClientName:       b.BookerName,
 		OriginalCheckOut: b.OriginalCheckOut.Format("2006-01-02"),
 		ExtendedTo:       extendedTo.Format("2006-01-02"),
 	}

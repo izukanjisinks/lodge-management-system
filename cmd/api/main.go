@@ -85,10 +85,13 @@ func main() {
 	clientSvc.SetBookingRepository(bookingRepo)
 	clientSvc.SetBookingDocumentRepository(bookingDocRepo)
 	clientHandler := handlers.NewClientHandler(clientSvc)
-	bookingSvc := services.NewBookingService(bookingRepo, roomRepo, clientRepo)
-	bookingSvc.SetBookingDocumentRepository(bookingDocRepo)
-	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo)
-	bookingSvc.SetInvoiceService(invoiceSvc)
+	attendeeRepo := repository.NewBookingAttendeeRepository()
+	assignmentRepo := repository.NewBookingRoomAssignmentRepository()
+	corpBookingReqRepo := repository.NewCorporateBookingRequestRepository()
+	corpGuestRepo := repository.NewCorporateGuestRepository()
+	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo, assignmentRepo)
+	bookingSvc := services.NewBookingService(bookingRepo, attendeeRepo, assignmentRepo, corpBookingReqRepo, corpGuestRepo)
+	bookingSvc.SetInvoiceService(invoiceSvc) // auto-generate draft invoice on booking confirm/materialise
 
 	bookingHandler := handlers.NewBookingHandler(bookingSvc)
 	mealPlanHandler := handlers.NewMealPlanHandler(services.NewMealPlanService(mealPlanRepo))
@@ -102,12 +105,8 @@ func main() {
 
 	guestAuthSvc := services.NewGuestAuthService(guestRepo)
 	guestAuthSvc.SetEmailService(emailService)
-	guestBookingSvc := services.NewGuestBookingService(bookingRepo, roomRepo, guestAuthSvc)
-	guestBookingSvc.SetWorkflowService(workflowService)
-	guestBookingSvc.SetBookingService(bookingSvc)
 	branchRepo := repository.NewBranchRepository()
 	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, orgRepo, branchRepo)
-	guestBookingHandler := handlers.NewGuestBookingHandler(guestBookingSvc)
 
 	backofficeUserRepo := repository.NewBackofficeUserRepository()
 
@@ -134,7 +133,31 @@ func main() {
 	orgHandler := handlers.NewOrganizationHandler(backofficeOrgSvc)
 
 	reviewRepo := repository.NewReviewRepository()
-	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo, guestAuthSvc))
+	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo))
+
+	// Web user (website accounts)
+	webUserRepo := repository.NewWebUserRepository()
+	webUserAuthSvc := services.NewWebUserAuthService(webUserRepo, passwordPolicyService)
+	webUserAuthSvc.SetEmailService(emailService)
+	webUserAuthHandler := handlers.NewWebUserAuthHandler(webUserAuthSvc)
+
+	// Corporate profile layer
+	corCompanyRepo := repository.NewCorCompanyRepository()
+	corBranchRepo := repository.NewCorBranchRepository()
+	corProfileRepo := repository.NewCorProfileRepository()
+	corpGuestRepo = repository.NewCorporateGuestRepository()
+	corpBookingReqRepo = repository.NewCorporateBookingRequestRepository()
+	corProfileSvc := services.NewCorProfileService(corCompanyRepo, corBranchRepo, corProfileRepo, corpGuestRepo)
+	corpBookingReqSvc := services.NewCorporateBookingRequestService(corpBookingReqRepo, corpGuestRepo, corProfileSvc)
+	corpBookingReqSvc.SetWorkflowService(workflowService)
+	corProfileHandler := handlers.NewCorProfileHandler(corProfileSvc)
+	corpBookingReqHandler := handlers.NewCorporateBookingRequestHandler(corpBookingReqSvc)
+
+	// Individual booking requests
+	indvBookingReqRepo := repository.NewIndividualBookingRequestRepository()
+	indvBookingReqSvc := services.NewIndividualBookingRequestService(indvBookingReqRepo, roomRepo, bookingSvc)
+	indvBookingReqSvc.SetWorkflowService(workflowService)
+	indvBookingReqHandler := handlers.NewIndividualBookingRequestHandler(indvBookingReqSvc)
 
 	// Background jobs
 	jobs.NewOverdueCheckoutJob(bookingRepo, invoiceRepo, auditLogRepo, orgSettingsRepo).Start()
@@ -156,7 +179,6 @@ func main() {
 		menuHandler,
 		orderHandler,
 		guestAuthHandler,
-		guestBookingHandler,
 		reviewHandler,
 		backofficeAuthHandler,
 		backofficeUserHandler,
@@ -164,7 +186,11 @@ func main() {
 		auditLogHandler,
 		orgSettingsHandler,
 		branchHandler,
-		orgHandler)
+		orgHandler,
+		webUserAuthHandler,
+		corProfileHandler,
+		corpBookingReqHandler,
+		indvBookingReqHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally

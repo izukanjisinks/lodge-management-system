@@ -1,9 +1,10 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"time"
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
@@ -12,52 +13,53 @@ import (
 )
 
 type BookingService struct {
-	repo        *repository.BookingRepository
-	room        *repository.RoomRepository
-	client      *repository.ClientRepository
-	invoice     *InvoiceService
-	bookingDocs *repository.BookingDocumentRepository
+	bookingRepo    *repository.BookingRepository
+	attendeeRepo   *repository.BookingAttendeeRepository
+	assignmentRepo *repository.BookingRoomAssignmentRepository
+	requestRepo    *repository.CorporateBookingRequestRepository
+	guestRepo      *repository.CorporateGuestRepository
+	invoiceSvc     *InvoiceService
 }
 
-func NewBookingService(repo *repository.BookingRepository, room *repository.RoomRepository, client *repository.ClientRepository) *BookingService {
-	return &BookingService{repo: repo, room: room, client: client}
-}
-
-func (s *BookingService) SetBookingDocumentRepository(r *repository.BookingDocumentRepository) {
-	s.bookingDocs = r
-}
-
-// SetInvoiceService injects the invoice service after construction to avoid a circular dependency.
-func (s *BookingService) SetInvoiceService(invoice *InvoiceService) {
-	s.invoice = invoice
-}
-
-
-func (s *BookingService) CreateIndividual(orgID uuid.UUID, req *models.CreateIndividualBookingRequest) (*models.Booking, error) {
-	// Resolve client — look up existing or create on the fly
-	var clientID uuid.UUID
-	if req.ClientID != nil {
-		if _, err := s.client.GetIndividualByID(*req.ClientID, orgID); err != nil {
-			return nil, errors.New("client not found")
-		}
-		clientID = *req.ClientID
-	} else {
-		if req.Client == nil || req.Client.FullName == "" {
-			return nil, errors.New("client.full_name is required when client_id is not provided")
-		}
-		c := &models.IndividualClient{
-			FullName:         req.Client.FullName,
-			Email:            req.Client.Email,
-			Phone:            req.Client.Phone,
-			IDPassportNumber: req.Client.IDPassportNumber,
-			Status:           models.ClientStatusActive,
-		}
-		if err := s.client.CreateIndividual(c, orgID); err != nil {
-			return nil, formatConstraintError(err)
-		}
-		clientID = c.ID
+func NewBookingService(
+	bookingRepo *repository.BookingRepository,
+	attendeeRepo *repository.BookingAttendeeRepository,
+	assignmentRepo *repository.BookingRoomAssignmentRepository,
+	requestRepo *repository.CorporateBookingRequestRepository,
+	guestRepo *repository.CorporateGuestRepository,
+) *BookingService {
+	return &BookingService{
+		bookingRepo:    bookingRepo,
+		attendeeRepo:   attendeeRepo,
+		assignmentRepo: assignmentRepo,
+		requestRepo:    requestRepo,
+		guestRepo:      guestRepo,
 	}
+}
 
+// SetInvoiceService wires the invoice service so confirmed bookings auto-generate
+// a draft invoice. Optional — if unset, invoice generation is skipped.
+func (s *BookingService) SetInvoiceService(inv *InvoiceService) {
+	s.invoiceSvc = inv
+}
+
+// generateInvoice is a best-effort hook: a booking that successfully commits should
+// not be rolled back just because invoice generation failed. Errors are swallowed
+// (the invoice can be regenerated), but generation runs after commit so the booking,
+// attendees, and assignments are all visible.
+func (s *BookingService) generateInvoice(bookingID, orgID uuid.UUID) {
+	if s.invoiceSvc == nil {
+		return
+	}
+	_ = s.invoiceSvc.GenerateForBooking(bookingID, orgID)
+}
+
+// ─── Individual booking ───────────────────────────────────────────────────────
+
+func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, req *models.CreateIndividualBookingRequest) (*models.Booking, error) {
+	if req.BookerName == "" {
+		return nil, errors.New("booker_name is required")
+	}
 	if req.RoomID == uuid.Nil {
 		return nil, errors.New("room_id is required")
 	}
@@ -67,19 +69,8 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, req *models.CreateInd
 	if !req.CheckOut.After(req.CheckIn.Time) {
 		return nil, errors.New("check_out must be after check_in")
 	}
-	if req.Guests <= 0 {
-		return nil, errors.New("guests must be greater than 0")
-	}
 
-	room, err := s.room.GetByID(req.RoomID, orgID)
-	if err != nil {
-		return nil, errors.New("room not found")
-	}
-	if req.Guests > room.Capacity {
-		return nil, fmt.Errorf("guests (%d) exceed room capacity (%d)", req.Guests, room.Capacity)
-	}
-
-	available, err := s.repo.IsRoomAvailable(req.RoomID, req.CheckIn.Time, req.CheckOut.Time, nil)
+	available, err := s.assignmentRepo.IsRoomAvailable(req.RoomID, req.CheckIn.Time, req.CheckOut.Time, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -87,72 +78,7 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, req *models.CreateInd
 		return nil, errors.New("room is not available for the selected dates")
 	}
 
-	duplicate, err := s.repo.HasActiveBookingForClient(clientID, req.RoomID, req.CheckIn.Time, req.CheckOut.Time)
-	if err != nil {
-		return nil, err
-	}
-	if duplicate {
-		return nil, errors.New("client already has an active booking for this room on the selected dates")
-	}
-
-	b := &models.Booking{
-		RoomID:          req.RoomID,
-		BranchID:        room.BranchID,
-		ClientID:        clientID,
-		ClientType:      models.BookingClientTypeIndividual,
-		CheckIn:         req.CheckIn.Time,
-		CheckOut:        req.CheckOut.Time,
-		Guests:          req.Guests,
-		Status:          models.BookingStatusPending,
-		SpecialRequests: req.SpecialRequests,
-	}
-	if err := s.repo.Create(b, orgID); err != nil {
-		return nil, err
-	}
-
-	return s.repo.GetByID(b.ID, orgID)
-}
-
-func (s *BookingService) CreateCorporate(orgID uuid.UUID, req *models.CreateCorporateBookingRequest) (*models.CorporateBookingResponse, error) {
-	if len(req.Guests) == 0 {
-		return nil, errors.New("at least one guest is required for a corporate booking")
-	}
-
-	// Validate all guests up front before touching the DB
-	for i, g := range req.Guests {
-		if g.RoomID == uuid.Nil {
-			return nil, fmt.Errorf("guest %d: room_id is required", i+1)
-		}
-		if g.CheckIn.IsZero() || g.CheckOut.IsZero() {
-			return nil, fmt.Errorf("guest %d: check_in and check_out are required", i+1)
-		}
-		if !g.CheckOut.After(g.CheckIn.Time) {
-			return nil, fmt.Errorf("guest %d: check_out must be after check_in", i+1)
-		}
-		if g.ClientID == nil && g.FullName == "" {
-			return nil, fmt.Errorf("guest %d: full_name is required when client_id is not provided", i+1)
-		}
-	}
-
-	// Validate rooms and availability before starting the transaction
-	for i, g := range req.Guests {
-		room, err := s.room.GetByID(g.RoomID, orgID)
-		if err != nil {
-			return nil, fmt.Errorf("guest %d: room not found", i+1)
-		}
-		if room.Capacity < 1 {
-			return nil, fmt.Errorf("guest %d: room has no capacity", i+1)
-		}
-		available, err := s.repo.IsRoomAvailable(g.RoomID, g.CheckIn.Time, g.CheckOut.Time, nil)
-		if err != nil {
-			return nil, err
-		}
-		if !available {
-			return nil, fmt.Errorf("guest %d: room is not available for the selected dates", i+1)
-		}
-	}
-
-	tx, err := s.repo.Begin()
+	tx, err := s.bookingRepo.Begin()
 	if err != nil {
 		return nil, err
 	}
@@ -162,164 +88,316 @@ func (s *BookingService) CreateCorporate(orgID uuid.UUID, req *models.CreateCorp
 		}
 	}()
 
-	// Resolve or create the corporate client
-	var corp *models.CorporateClient
-	if req.ClientID != nil {
-		corp, err = s.client.GetCorporateByID(*req.ClientID, orgID)
-		if err != nil {
-			return nil, errors.New("corporate client not found")
-		}
-	} else {
-		if req.Client == nil || req.Client.CompanyName == "" {
-			return nil, errors.New("client.company_name is required when client_id is not provided")
-		}
-		corp = &models.CorporateClient{
-			CompanyName:      req.Client.CompanyName,
-			ContactPerson:    req.Client.ContactPerson,
-			Email:            req.Client.Email,
-			Phone:            req.Client.Phone,
-			CompanyRegNumber: req.Client.CompanyRegNumber,
-			Industry:         req.Client.Industry,
-			Status:           models.ClientStatusActive,
-		}
-		if err = s.client.CreateCorporateInTx(tx, corp, orgID); err != nil {
-			log.Printf("[booking] failed to create corporate client (org %s): %v", orgID, err)
-			return nil, fmt.Errorf("failed to create corporate client: %w", err)
-		}
+	b := &models.Booking{
+		OrgID:           orgID,
+		BranchID:        branchID,
+		BookingType:     models.BookingTypeRoom,
+		BookerType:      models.BookerTypeIndividual,
+		BookerName:      req.BookerName,
+		BookerEmail:     req.BookerEmail,
+		BookerPhone:     req.BookerPhone,
+		WebUserID:       req.WebUserID,
+		Status:          models.BookingStatusConfirmed,
+		SpecialRequests: req.SpecialRequests,
+	}
+	if err = s.bookingRepo.Create(tx, b); err != nil {
+		return nil, fmt.Errorf("failed to create booking: %w", err)
 	}
 
-	// Create each guest's individual record and booking
-	var bookingIDs []uuid.UUID
-	for i, g := range req.Guests {
-		var guestClientID uuid.UUID
-		if g.ClientID != nil {
-			individual, lookupErr := s.client.GetIndividualByID(*g.ClientID, orgID)
-			if lookupErr != nil {
-				err = fmt.Errorf("guest %d: client not found", i+1)
-				return nil, err
-			}
-			guestClientID = individual.ID
-		} else {
-			individual := &models.IndividualClient{
-				FullName:         g.FullName,
-				Email:            g.Email,
-				Phone:            g.Phone,
-				IDPassportNumber: g.IDNumber,
-				Status:           models.ClientStatusActive,
-			}
-			if err = s.client.CreateIndividualInTx(tx, individual, orgID); err != nil {
-				log.Printf("[booking] guest %d: failed to create individual client (org %s, name %q): %v", i+1, orgID, individual.FullName, err)
-				err = fmt.Errorf("guest %d: %w", i+1, formatConstraintError(err))
-				return nil, err
-			}
-			guestClientID = individual.ID
-		}
+	// Single attendee — the booker themselves
+	attendee := &models.BookingAttendee{
+		BookingID:          b.ID,
+		FullName:           req.BookerName,
+		Email:              req.BookerEmail,
+		Phone:              req.BookerPhone,
+		IdentificationCard: req.IdentificationCard,
+		IsLeadContact:      true,
+	}
+	if err = s.attendeeRepo.CreateInTx(tx, attendee); err != nil {
+		return nil, fmt.Errorf("failed to create attendee: %w", err)
+	}
 
-		guestRoom, _ := s.room.GetByID(g.RoomID, orgID)
-		var guestBranchID *uuid.UUID
-		if guestRoom != nil {
-			guestBranchID = guestRoom.BranchID
-		}
-		b := &models.Booking{
-			RoomID:            g.RoomID,
-			BranchID:          guestBranchID,
-			ClientID:          guestClientID,
-			ClientType:        models.BookingClientTypeIndividual,
-			CorporateClientID: &corp.ID,
-			CheckIn:           g.CheckIn.Time,
-			CheckOut:          g.CheckOut.Time,
-			Guests:            1,
-			Status:          models.BookingStatusPending,
-			SpecialRequests: g.SpecialRequests,
-		}
-		if err = s.repo.CreateInTx(tx, b, orgID); err != nil {
-			log.Printf("[booking] guest %d: failed to save booking (org %s, room %s, client %s): %v", i+1, orgID, b.RoomID, b.ClientID, err)
-			err = fmt.Errorf("guest %d: failed to create booking: %w", i+1, err)
-			return nil, err
-		}
-		bookingIDs = append(bookingIDs, b.ID)
+	// Single room assignment
+	assignment := &models.BookingRoomAssignment{
+		BookingID:  b.ID,
+		RoomID:     req.RoomID,
+		AttendeeID: &attendee.ID,
+		CheckIn:    req.CheckIn.Time,
+		CheckOut:   req.CheckOut.Time,
+		Status:     models.AssignmentStatusConfirmed,
+	}
+	if err = s.assignmentRepo.CreateInTx(tx, assignment); err != nil {
+		return nil, fmt.Errorf("failed to create room assignment: %w", err)
+	}
+
+	// Set total_amount from room cost (must use tx — assignment not committed yet)
+	total, costErr := s.assignmentRepo.SumRoomCostsInTx(tx, b.ID)
+	if costErr == nil && total > 0 {
+		_ = s.bookingRepo.UpdateTotalAmount(tx, b.ID, orgID, total)
+		b.TotalAmount = total
 	}
 
 	if err = tx.Commit(); err != nil {
-		log.Printf("[booking] failed to commit corporate booking transaction (org %s, corporate client %s): %v", orgID, corp.ID, err)
 		return nil, err
 	}
 
-	// Save documents for the corporate client
-	if s.bookingDocs != nil && len(req.Documents) > 0 {
-		if _, err := s.bookingDocs.Upsert(corp.ID, orgID, req.Documents); err != nil {
-			log.Printf("[booking] warning: failed to save documents for corporate client %s: %v", corp.ID, err)
+	s.generateInvoice(b.ID, orgID)
+
+	b.Attendees = []models.BookingAttendee{*attendee}
+	b.Assignments = []models.BookingRoomAssignment{*assignment}
+	return b, nil
+}
+
+// ─── Corporate booking (materialise from approved request) ────────────────────
+
+func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID, requestID uuid.UUID, matReq *models.MaterialiseRequest) (*models.Booking, error) {
+	req, err := s.requestRepo.GetByID(requestID, orgID)
+	if err != nil {
+		return nil, errors.New("corporate booking request not found")
+	}
+	if req.Status != models.CorporateBookingStatusApproved {
+		return nil, errors.New("only approved requests can be materialised into a booking")
+	}
+
+	// Only accommodation requests require room assignments
+	if req.BookingType == models.CorporateBookingTypeAccommodation {
+		if matReq == nil || len(matReq.Assignments) == 0 {
+			return nil, errors.New("room assignments are required for accommodation requests")
 		}
 	}
 
-	// Generate consolidated invoice for the corporate client
-	if s.invoice != nil {
-		if invErr := s.invoice.GenerateCorporateInvoice(corp.ID, orgID, bookingIDs); invErr != nil {
-			log.Printf("[booking] warning: failed to generate corporate invoice for corp %s: %v", corp.ID, invErr)
+	// Decode payload guests
+	var payload models.SubmitAccommodationRequest
+	var guests []models.CorBookingGuestInput
+	if req.BookingType == models.CorporateBookingTypeAccommodation && req.Payload != nil {
+		if jsonErr := json.Unmarshal(req.Payload, &payload); jsonErr == nil {
+			guests = payload.Guests
 		}
 	}
 
-	// Fetch the created bookings for the response
-	var bookings []models.Booking
-	var totalAmount float64
-	for _, id := range bookingIDs {
-		b, fetchErr := s.repo.GetByID(id, orgID)
-		if fetchErr != nil {
-			continue
+	// Validate all guests have an assignment
+	if req.BookingType == models.CorporateBookingTypeAccommodation {
+		if len(matReq.Assignments) != len(guests) {
+			return nil, fmt.Errorf("expected %d room assignments, got %d", len(guests), len(matReq.Assignments))
 		}
-		bookings = append(bookings, *b)
-		totalAmount += b.TotalAmount
+		// Build index → room map and validate rooms are available
+		for _, a := range matReq.Assignments {
+			if a.GuestIndex < 0 || a.GuestIndex >= len(guests) {
+				return nil, fmt.Errorf("guest_index %d is out of range", a.GuestIndex)
+			}
+			g := guests[a.GuestIndex]
+			checkIn, checkOut, parseErr := parseGuestDates(g)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			available, avErr := s.assignmentRepo.IsRoomAvailable(a.RoomID, checkIn, checkOut, nil)
+			if avErr != nil {
+				return nil, avErr
+			}
+			if !available {
+				return nil, fmt.Errorf("room %s is not available for guest %s %s", a.RoomID, g.FirstName, g.LastName)
+			}
+		}
 	}
 
-	return &models.CorporateBookingResponse{
-		CorporateClientID: corp.ID,
-		CompanyName:       corp.CompanyName,
-		Bookings:          bookings,
-		TotalAmount:       totalAmount,
-	}, nil
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	b := &models.Booking{
+		OrgID:        orgID,
+		BranchID:     branchID,
+		BookingType:  bookingTypeFromRequest(req.BookingType),
+		BookerType:   models.BookerTypeCorporate,
+		BookerName:   req.ProfileName,
+		BookerEmail:  req.AuthoriserEmail,
+		BookerPhone:  req.AuthoriserPhone,
+		CorProfileID: req.CorProfileID,
+		CompanyID:    req.CompanyID,
+		RequestID:    &requestID,
+		Status:       models.BookingStatusConfirmed,
+	}
+	if err = s.bookingRepo.Create(tx, b); err != nil {
+		return nil, fmt.Errorf("failed to create booking: %w", err)
+	}
+
+	// For accommodation: upsert corporate_guests, create attendees + assignments
+	if req.BookingType == models.CorporateBookingTypeAccommodation && req.CorProfileID != nil {
+		assignmentMap := make(map[int]uuid.UUID, len(matReq.Assignments))
+		for _, a := range matReq.Assignments {
+			assignmentMap[a.GuestIndex] = a.RoomID
+		}
+
+		for i, g := range guests {
+			// Upsert into corporate_guests roster
+			corpGuest, upsertErr := s.guestRepo.Upsert(*req.CorProfileID, g)
+			if upsertErr != nil {
+				err = fmt.Errorf("failed to upsert corporate guest: %w", upsertErr)
+				return nil, err
+			}
+
+			corpGuestID := corpGuest.ID
+			attendee := &models.BookingAttendee{
+				BookingID:          b.ID,
+				CorporateGuestID:   &corpGuestID,
+				FullName:           g.FirstName + " " + g.LastName,
+				Email:              g.Email,
+				Phone:              g.Phone,
+				IdentificationCard: g.IdentificationCard,
+				IsLeadContact:      i == 0,
+			}
+			if err = s.attendeeRepo.CreateInTx(tx, attendee); err != nil {
+				return nil, fmt.Errorf("failed to create attendee: %w", err)
+			}
+
+			roomID := assignmentMap[i]
+			checkIn, checkOut, parseErr := parseGuestDates(g)
+			if parseErr != nil {
+				err = parseErr
+				return nil, err
+			}
+			attendeeID := attendee.ID
+			assignment := &models.BookingRoomAssignment{
+				BookingID:  b.ID,
+				RoomID:     roomID,
+				AttendeeID: &attendeeID,
+				CheckIn:    checkIn,
+				CheckOut:   checkOut,
+				Status:     models.AssignmentStatusConfirmed,
+			}
+			if err = s.assignmentRepo.CreateInTx(tx, assignment); err != nil {
+				return nil, fmt.Errorf("failed to create room assignment: %w", err)
+			}
+		}
+
+		// Sum total amount from room costs (must use tx — assignments not committed yet)
+		total, costErr := s.assignmentRepo.SumRoomCostsInTx(tx, b.ID)
+		if costErr == nil && total > 0 {
+			_ = s.bookingRepo.UpdateTotalAmount(tx, b.ID, orgID, total)
+			b.TotalAmount = total
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	s.generateInvoice(b.ID, orgID)
+
+	return b, nil
 }
 
-func (s *BookingService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Booking, error) {
-	return s.repo.GetByID(id, orgID)
+
+func parseGuestDates(g models.CorBookingGuestInput) (checkIn, checkOut time.Time, err error) {
+	layouts := []string{"2006-01-02", time.RFC3339}
+	for _, l := range layouts {
+		if t, e := time.Parse(l, g.CheckIn); e == nil {
+			checkIn = t
+			break
+		}
+	}
+	for _, l := range layouts {
+		if t, e := time.Parse(l, g.CheckOut); e == nil {
+			checkOut = t
+			break
+		}
+	}
+	if checkIn.IsZero() || checkOut.IsZero() {
+		err = fmt.Errorf("invalid check_in/check_out dates for guest %s %s", g.FirstName, g.LastName)
+	}
+	return
 }
 
-func (s *BookingService) List(orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
-	return s.repo.List(orgID, branchID, status, clientType, clientID, page, pageSize)
+func bookingTypeFromRequest(t string) string {
+	switch t {
+	case models.CorporateBookingTypeMeals:
+		return models.BookingTypeMeals
+	case models.CorporateBookingTypeConference:
+		return models.BookingTypeConference
+	case models.CorporateBookingTypeEvent:
+		return models.BookingTypeEvent
+	default:
+		return models.BookingTypeRoom
+	}
 }
 
-func (s *BookingService) Update(id uuid.UUID, orgID uuid.UUID, req *models.UpdateBookingRequest) (*models.Booking, error) {
-	b, err := s.repo.GetByID(id, orgID)
+// ─── Read ─────────────────────────────────────────────────────────────────────
+
+func (s *BookingService) GetByID(id, orgID uuid.UUID) (*models.Booking, error) {
+	b, err := s.bookingRepo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
+	b.Attendees, _ = s.attendeeRepo.ListByBookingID(id)
+	b.Assignments, _ = s.assignmentRepo.ListByBookingID(id)
+	return b, nil
+}
 
-	// Only pending bookings can be edited
-	if b.Status != models.BookingStatusCheckedIn && b.Status != models.BookingStatusConfirmed && b.Status != models.BookingStatusPending {
-		return nil, errors.New("only pending, checked-in, or confirmed bookings can be updated")
-	}
+func (s *BookingService) List(orgID uuid.UUID, bookerType, bookingType, status string, page, pageSize int) ([]models.Booking, int, error) {
+	return s.bookingRepo.List(orgID, bookerType, bookingType, status, page, pageSize)
+}
 
-	if req.CheckIn != nil {
-		b.CheckIn = req.CheckIn.Time
-	}
-	if req.CheckOut != nil {
-		b.CheckOut = req.CheckOut.Time
-	}
-	if req.Guests != nil {
-		b.Guests = *req.Guests
-	}
-	if req.SpecialRequests != nil {
-		b.SpecialRequests = *req.SpecialRequests
+// ─── Status transitions ───────────────────────────────────────────────────────
+
+func (s *BookingService) updateStatus(id, orgID uuid.UUID, newStatus string) error {
+	b, err := s.bookingRepo.GetByID(id, orgID)
+	if err != nil {
+		return errors.New("booking not found")
 	}
 
-	if !b.CheckOut.After(b.CheckIn) {
+	allowed := models.ValidBookingTransitions[b.Status]
+	for _, next := range allowed {
+		if next == newStatus {
+			tx, txErr := s.bookingRepo.Begin()
+			if txErr != nil {
+				return txErr
+			}
+			defer tx.Rollback()
+			if err := s.bookingRepo.UpdateStatus(tx, id, orgID, newStatus); err != nil {
+				return err
+			}
+			return tx.Commit()
+		}
+	}
+	return fmt.Errorf("cannot transition booking from %s to %s", b.Status, newStatus)
+}
+
+func (s *BookingService) CheckIn(id, orgID uuid.UUID) error {
+	return s.updateStatus(id, orgID, models.BookingStatusCheckedIn)
+}
+
+func (s *BookingService) CheckOut(id, orgID uuid.UUID) error {
+	return s.updateStatus(id, orgID, models.BookingStatusCheckedOut)
+}
+
+func (s *BookingService) Cancel(id, orgID uuid.UUID) error {
+	return s.updateStatus(id, orgID, models.BookingStatusCancelled)
+}
+
+func (s *BookingService) UpdateStatus(id, orgID uuid.UUID, newStatus string) error {
+	return s.updateStatus(id, orgID, newStatus)
+}
+
+// ─── Room assignments ─────────────────────────────────────────────────────────
+
+func (s *BookingService) AssignRoom(id, orgID uuid.UUID, req *models.CreateRoomAssignmentRequest) (*models.BookingRoomAssignment, error) {
+	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
+		return nil, errors.New("booking not found")
+	}
+	if req.RoomID == uuid.Nil {
+		return nil, errors.New("room_id is required")
+	}
+	if !req.CheckOut.After(req.CheckIn.Time) {
 		return nil, errors.New("check_out must be after check_in")
 	}
-	if b.Guests <= 0 {
-		return nil, errors.New("guests must be greater than 0")
-	}
 
-	// Re-check room availability excluding this booking
-	available, err := s.repo.IsRoomAvailable(b.RoomID, b.CheckIn, b.CheckOut, &id)
+	available, err := s.assignmentRepo.IsRoomAvailable(req.RoomID, req.CheckIn.Time, req.CheckOut.Time, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -327,70 +405,235 @@ func (s *BookingService) Update(id uuid.UUID, orgID uuid.UUID, req *models.Updat
 		return nil, errors.New("room is not available for the selected dates")
 	}
 
-	if err := s.repo.Update(b, orgID); err != nil {
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	assignment := &models.BookingRoomAssignment{
+		BookingID:  id,
+		RoomID:     req.RoomID,
+		AttendeeID: req.AttendeeID,
+		CheckIn:    req.CheckIn.Time,
+		CheckOut:   req.CheckOut.Time,
+		Status:     models.AssignmentStatusConfirmed,
+	}
+	if err = s.assignmentRepo.CreateInTx(tx, assignment); err != nil {
 		return nil, err
 	}
 
-	// Recalculate room charge and due date if either date changed
-	if (req.CheckIn != nil || req.CheckOut != nil) && s.invoice != nil {
-		if err := s.invoice.RecalculateRoomCharge(id, orgID); err != nil {
-			fmt.Printf("warning: failed to recalculate room charge for booking %s: %v\n", id, err)
-		}
-	}
+	// Recalculate booking total
+	total, _ := s.assignmentRepo.SumRoomCosts(id)
+	_ = s.bookingRepo.UpdateTotalAmount(tx, id, orgID, total)
 
-	return s.repo.GetByID(id, orgID)
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return assignment, nil
 }
 
-func (s *BookingService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, newStatus string) (*models.Booking, error) {
-	b, err := s.repo.GetByID(id, orgID)
-	if err != nil {
+func (s *BookingService) ListAssignments(id, orgID uuid.UUID) ([]models.BookingRoomAssignment, error) {
+	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
+		return nil, errors.New("booking not found")
+	}
+	return s.assignmentRepo.ListByBookingID(id)
+}
+
+func (s *BookingService) UpdateAssignment(id, orgID, assignmentID uuid.UUID, req *models.UpdateRoomAssignmentRequest) (*models.BookingRoomAssignment, error) {
+	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return nil, errors.New("booking not found")
 	}
 
-	// Validate transition
-	allowed := models.ValidBookingTransitions[b.Status]
-	valid := false
-	for _, s := range allowed {
-		if s == newStatus {
-			valid = true
-			break
-		}
-	}
-	if !valid {
-		return nil, fmt.Errorf("cannot transition booking from '%s' to '%s'", b.Status, newStatus)
+	existing, err := s.assignmentRepo.GetByID(assignmentID, id)
+	if err != nil {
+		return nil, errors.New("assignment not found")
 	}
 
-	if err := s.repo.UpdateStatusTx(id, orgID, newStatus); err != nil {
+	roomID := existing.RoomID
+	if req.RoomID != nil {
+		roomID = *req.RoomID
+	}
+	checkIn := existing.CheckIn
+	if req.CheckIn != nil {
+		checkIn = req.CheckIn.Time
+	}
+	checkOut := existing.CheckOut
+	if req.CheckOut != nil {
+		checkOut = req.CheckOut.Time
+	}
+
+	available, err := s.assignmentRepo.IsRoomAvailable(roomID, checkIn, checkOut, &assignmentID)
+	if err != nil {
+		return nil, err
+	}
+	if !available {
+		return nil, errors.New("room is not available for the selected dates")
+	}
+
+	return s.assignmentRepo.Update(assignmentID, id, req)
+}
+
+func (s *BookingService) RemoveAssignment(id, orgID, assignmentID uuid.UUID) error {
+	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
+		return errors.New("booking not found")
+	}
+	return s.assignmentRepo.Delete(assignmentID, id)
+}
+
+func (s *BookingService) CheckInAssignment(id, orgID, assignmentID uuid.UUID) error {
+	b, err := s.bookingRepo.GetByID(id, orgID)
+	if err != nil {
+		return errors.New("booking not found")
+	}
+
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := s.assignmentRepo.UpdateStatusTx(tx, assignmentID, id, models.AssignmentStatusCheckedIn); err != nil {
+		return err
+	}
+
+	// Roll the booking up: the first guest to check in moves a confirmed booking
+	// to checked_in. (No-op if it's already checked_in.)
+	if b.Status == models.BookingStatusConfirmed {
+		if err := s.bookingRepo.UpdateStatus(tx, id, orgID, models.BookingStatusCheckedIn); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (s *BookingService) CheckOutAssignment(id, orgID, assignmentID uuid.UUID) error {
+	b, err := s.bookingRepo.GetByID(id, orgID)
+	if err != nil {
+		return errors.New("booking not found")
+	}
+
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := s.assignmentRepo.UpdateStatusTx(tx, assignmentID, id, models.AssignmentStatusCheckedOut); err != nil {
+		return err
+	}
+
+	// Roll the booking up: only mark the whole booking checked_out once every
+	// non-cancelled assignment has checked out. While guests remain in-house the
+	// booking stays checked_in (or is promoted to it if it was still confirmed).
+	active, checkedOut, err := s.assignmentRepo.StatusCountsTx(tx, id)
+	if err != nil {
+		return err
+	}
+	switch {
+	case active > 0 && checkedOut == active:
+		if b.Status != models.BookingStatusCheckedOut {
+			if err := s.bookingRepo.UpdateStatus(tx, id, orgID, models.BookingStatusCheckedOut); err != nil {
+				return err
+			}
+		}
+	case b.Status == models.BookingStatusConfirmed:
+		// Edge case: a guest checks out without the booking ever being marked
+		// checked_in (e.g. assignment checked in directly). Keep status coherent.
+		if err := s.bookingRepo.UpdateStatus(tx, id, orgID, models.BookingStatusCheckedIn); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// ─── Attendees ────────────────────────────────────────────────────────────────
+
+func (s *BookingService) ListAttendees(id, orgID uuid.UUID) ([]models.BookingAttendee, error) {
+	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
+		return nil, errors.New("booking not found")
+	}
+	return s.attendeeRepo.ListByBookingID(id)
+}
+
+func (s *BookingService) AddAttendee(id, orgID uuid.UUID, req *models.CreateAttendeeRequest) (*models.BookingAttendee, error) {
+	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
+		return nil, errors.New("booking not found")
+	}
+
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	attendee := &models.BookingAttendee{
+		BookingID:          id,
+		CorporateGuestID:   req.CorporateGuestID,
+		FullName:           req.FullName,
+		Email:              req.Email,
+		Phone:              req.Phone,
+		IdentificationCard: req.IdentificationCard,
+		DietaryNotes:       req.DietaryNotes,
+		SpecialNeeds:       req.SpecialNeeds,
+		IsLeadContact:      req.IsLeadContact,
+	}
+	if err = s.attendeeRepo.CreateInTx(tx, attendee); err != nil {
 		return nil, err
 	}
 
-	// Auto-generate invoice when booking is confirmed.
-	// Corporate guest bookings are covered by the consolidated corporate invoice — skip them.
-	if newStatus == models.BookingStatusConfirmed && s.invoice != nil && b.CorporateClientID == nil {
-		if err := s.invoice.GenerateForBooking(id, orgID); err != nil {
-			fmt.Printf("warning: failed to generate invoice for booking %s: %v\n", id, err)
-		}
+	if err = tx.Commit(); err != nil {
+		return nil, err
 	}
-
-	return s.repo.GetByID(id, orgID)
+	return attendee, nil
 }
 
-// ClearOverstayed manually resolves the overstayed flag set by the nightly job.
-func (s *BookingService) ClearOverstayed(id uuid.UUID, orgID uuid.UUID) error {
-	_, err := s.repo.GetByID(id, orgID)
-	if err != nil {
-		return errors.New("booking not found")
+func (s *BookingService) UpdateAttendee(id, orgID, attendeeID uuid.UUID, req *models.UpdateAttendeeRequest) (*models.BookingAttendee, error) {
+	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
+		return nil, errors.New("booking not found")
 	}
-	return s.repo.ClearOverstayed(id, orgID)
+	return s.attendeeRepo.Update(attendeeID, id, req)
 }
 
-func (s *BookingService) Delete(id uuid.UUID, orgID uuid.UUID) error {
-	b, err := s.repo.GetByID(id, orgID)
-	if err != nil {
+func (s *BookingService) RemoveAttendee(id, orgID, attendeeID uuid.UUID) error {
+	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return errors.New("booking not found")
 	}
-	if b.Status == models.BookingStatusCheckedIn {
-		return errors.New("cannot delete a booking that is currently checked in")
+	return s.attendeeRepo.Delete(attendeeID, id)
+}
+
+// ─── Overdue (nightly job) ────────────────────────────────────────────────────
+
+func (s *BookingService) FindOverdueCheckouts(orgIDs []uuid.UUID) ([]repository.OverdueBookingRef, error) {
+	return s.bookingRepo.FindOverdueCheckouts(orgIDs)
+}
+
+func (s *BookingService) MarkOverstayed(id, orgID uuid.UUID) error {
+	return s.bookingRepo.MarkOverstayed(id, orgID)
+}
+
+func (s *BookingService) RecalculateTotal(id, orgID uuid.UUID) error {
+	total, err := s.assignmentRepo.SumRoomCosts(id)
+	if err != nil {
+		return err
 	}
-	return s.repo.Delete(id, orgID)
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := s.bookingRepo.UpdateTotalAmount(tx, id, orgID, total); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

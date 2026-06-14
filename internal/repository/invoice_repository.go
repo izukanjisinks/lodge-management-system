@@ -79,11 +79,7 @@ func (r *InvoiceRepository) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID)
 	return r.fetchOne(`WHERE i.booking_id = $1 AND i.org_id = $2`, bookingID, orgID)
 }
 
-func (r *InvoiceRepository) GetByCorporateClientID(corporateClientID uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
-	return r.fetchOne(`WHERE i.corporate_client_id = $1 AND i.org_id = $2`, corporateClientID, orgID)
-}
-
-func (r *InvoiceRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status string, page, pageSize int) ([]models.Invoice, int, error) {
+func (r *InvoiceRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, page, pageSize int) ([]models.Invoice, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"i.org_id = $1"}
 	i := 2
@@ -98,44 +94,32 @@ func (r *InvoiceRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status st
 		args = append(args, status)
 		i++
 	}
+	if clientType != "" {
+		where = append(where, fmt.Sprintf("b.booker_type = $%d", i))
+		args = append(args, clientType)
+		i++
+	}
 
 	whereStr := strings.Join(where, " AND ")
 
+	// The bookings join is required in both queries because the client_type filter
+	// and client display columns reference it.
+	joins := `
+		LEFT JOIN bookings            b  ON b.id = i.booking_id
+		LEFT JOIN cor_company_details cd ON cd.id = b.company_id`
+
 	var total int
-	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM invoices i WHERE %s`, whereStr), args...).Scan(&total); err != nil {
+	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM invoices i %s WHERE %s`, joins, whereStr), args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT i.id, i.invoice_number, i.booking_id, i.corporate_client_id,
-		       COALESCE(b.client_id, corp.id)   AS client_id,
-		       COALESCE(b.client_type, 'corporate') AS client_type,
-		       COALESCE(
-		           CASE b.client_type
-		               WHEN 'individual' THEN ip.full_name
-		               WHEN 'corporate'  THEN bcp.company_name
-		           END,
-		           corp.company_name
-		       ) AS client_name,
-		       COALESCE(
-		           CASE b.client_type
-		               WHEN 'individual' THEN ip.email
-		               WHEN 'corporate'  THEN bcp.email
-		           END,
-		           corp.email
-		       ) AS client_email,
-		       i.subtotal, i.tax_rate, i.tax, i.total,
-		       i.status, i.issued_at, i.due_date, i.paid_date, i.notes,
-		       i.created_at, i.updated_at
-		FROM invoices i
-		LEFT JOIN bookings            b   ON b.id = i.booking_id
-		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  bcp ON b.client_type = 'corporate'  AND bcp.id = b.client_id
-		LEFT JOIN corporate_profiles  corp ON corp.id = i.corporate_client_id
+		SELECT %s
+		FROM invoices i %s
 		WHERE %s
 		ORDER BY i.created_at DESC
-		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
+		LIMIT $%d OFFSET $%d`, invoiceSelectColumns, joins, whereStr, i, i+1), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -225,35 +209,27 @@ func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, orgID uuid.UUID, status s
 	return err
 }
 
-// fetchOne is a shared helper used by GetByID, GetByBookingID, and GetByCorporateClientID.
+// invoiceSelectColumns is the shared SELECT list for reading invoices. Client display
+// fields come from the denormalized booking row (booker_name/email) and the company
+// join for corporate bookings — there is no longer a separate client profile table.
+const invoiceSelectColumns = `
+	i.id, i.invoice_number, i.booking_id, i.corporate_client_id,
+	COALESCE(b.cor_profile_id, b.company_id, b.id) AS client_id,
+	COALESCE(b.booker_type, 'individual')          AS client_type,
+	COALESCE(NULLIF(cd.company_name, ''), b.booker_name, '') AS client_name,
+	COALESCE(b.booker_email, '')                   AS client_email,
+	i.subtotal, i.tax_rate, i.tax, i.total,
+	i.status, i.issued_at, i.due_date, i.paid_date, i.notes,
+	i.created_at, i.updated_at`
+
+// fetchOne is a shared helper used by GetByID and GetByBookingID.
 func (r *InvoiceRepository) fetchOne(whereClause string, args ...interface{}) (*models.Invoice, error) {
 	row := r.db.QueryRow(fmt.Sprintf(`
-		SELECT i.id, i.invoice_number, i.booking_id, i.corporate_client_id,
-		       COALESCE(b.client_id, corp.id)   AS client_id,
-		       COALESCE(b.client_type, 'corporate') AS client_type,
-		       COALESCE(
-		           CASE b.client_type
-		               WHEN 'individual' THEN ip.full_name
-		               WHEN 'corporate'  THEN bcp.company_name
-		           END,
-		           corp.company_name
-		       ) AS client_name,
-		       COALESCE(
-		           CASE b.client_type
-		               WHEN 'individual' THEN ip.email
-		               WHEN 'corporate'  THEN bcp.email
-		           END,
-		           corp.email
-		       ) AS client_email,
-		       i.subtotal, i.tax_rate, i.tax, i.total,
-		       i.status, i.issued_at, i.due_date, i.paid_date, i.notes,
-		       i.created_at, i.updated_at
+		SELECT %s
 		FROM invoices i
-		LEFT JOIN bookings            b   ON b.id = i.booking_id
-		LEFT JOIN individual_profiles ip  ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  bcp ON b.client_type = 'corporate'  AND bcp.id = b.client_id
-		LEFT JOIN corporate_profiles  corp ON corp.id = i.corporate_client_id
-		%s`, whereClause), args...)
+		LEFT JOIN bookings            b  ON b.id = i.booking_id
+		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
+		%s`, invoiceSelectColumns, whereClause), args...)
 
 	inv, err := scanInvoice(row)
 	if err != nil {

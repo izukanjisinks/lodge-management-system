@@ -1,0 +1,1410 @@
+{
+  "info": {
+    "name": "Lodge Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",          "value": "http://localhost:8080" },
+    { "key": "token",             "value": "" },
+    { "key": "guest_token",       "value": "" },
+    { "key": "web_token",         "value": "" },
+    { "key": "backoffice_token",  "value": "" },
+    { "key": "org_id",                  "value": "" },
+    { "key": "individual_request_id",  "value": "" }
+  ],
+  "item": [
+
+    {
+      "name": "Health",
+      "item": [
+        { "name": "Health Check", "request": { "method": "GET", "url": "{{base_url}}/health" } }
+      ]
+    },
+
+    {
+      "name": "Staff Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var r = pm.response.json(); if (r.token) pm.collectionVariables.set('token', r.token);"
+          ]}}],
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@lodge.dev\",\n  \"password\": \"Admin@123\"\n}" }
+          }
+        },
+        {
+          "name": "Login — Select Org (step 2)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var r = pm.response.json(); if (r.token) pm.collectionVariables.set('token', r.token);"
+          ]}}],
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@lodge.dev\",\n  \"password\": \"Admin@123\",\n  \"org_id\": \"f10fd715-b6d2-41c1-b891-006ca5133566\"\n}" }
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"Jane Mwale\",\n  \"email\": \"jane@lodge.dev\",\n  \"password\": \"Password123!\",\n  \"phone\": \"0977000001\"\n}" }
+          }
+        },
+        {
+          "name": "Me",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/auth/me", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/auth/change-password",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"current_password\": \"Admin@123\",\n  \"new_password\": \"NewAdmin@456\"\n}" }
+          }
+        },
+        {
+          "name": "Generate Password",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/auth/generate-password", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Logout",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/auth/logout", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Backoffice Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var r = pm.response.json(); if (r.token) pm.collectionVariables.set('backoffice_token', r.token);"
+          ]}}],
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/backoffice/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"backoffice@lodge.dev\",\n  \"password\": \"Backoffice@123\"\n}" }
+          }
+        },
+        {
+          "name": "Me",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/backoffice/auth/me", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/backoffice/auth/change-password",
+            "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"current_password\": \"Backoffice@123\",\n  \"new_password\": \"NewBackoffice@456\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Web User Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/web/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"Martin Phiri\",\n  \"email\": \"martin@abccorp.com\",\n  \"phone\": \"0966123456\",\n  \"password\": \"WebPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var r = pm.response.json(); if (r.token) pm.collectionVariables.set('web_token', r.token);"
+          ]}}],
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/web/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"martin@abccorp.com\",\n  \"password\": \"WebPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/web/profile", "header": [{ "key": "Authorization", "value": "Bearer {{web_token}}" }] }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/web/profile",
+            "header": [{ "key": "Authorization", "value": "Bearer {{web_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"Martin K. Phiri\",\n  \"phone\": \"0966999888\"\n}" }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/web/auth/change-password",
+            "header": [{ "key": "Authorization", "value": "Bearer {{web_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"old_password\": \"WebPass123!\",\n  \"new_password\": \"NewWebPass456!\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Guest Auth (App)",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/guest/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"John Banda\",\n  \"email\": \"john@gmail.com\",\n  \"phone\": \"0977111222\",\n  \"password\": \"GuestPass123!\",\n  \"id_passport_number\": \"NRC123456/78/1\"\n}" }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var r = pm.response.json(); if (r.token) pm.collectionVariables.set('guest_token', r.token);"
+          ]}}],
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/guest/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"john@gmail.com\",\n  \"password\": \"GuestPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Me",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/me", "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }] }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/guest/me",
+            "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"John B. Banda\",\n  \"phone\": \"0977999888\"\n}" }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/guest/auth/reset-password",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"john@gmail.com\"\n}" }
+          }
+        },
+        {
+          "name": "List Lodges",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/lodges" }
+        },
+        {
+          "name": "Get Lodge",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/lodges/:org_id" }
+        }
+      ]
+    },
+
+    {
+      "name": "Backoffice — Organizations",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/backoffice/organizations", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        },
+        {
+          "name": "Provision",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/backoffice/organizations/provision",
+            "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"org_name\": \"Sunbird Lodge\",\n  \"org_email\": \"info@sunbird.com\",\n  \"org_phone\": \"0211123456\",\n  \"admin_full_name\": \"Alice Tembo\",\n  \"admin_email\": \"alice@sunbird.com\",\n  \"admin_password\": \"AdminPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/backoffice/organizations/:id", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/backoffice/organizations/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sunbird Lodge & Spa\"\n}" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/backoffice/organizations/:id", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Backoffice — Users",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/backoffice/users", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/backoffice/users",
+            "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"Bob Mwale\",\n  \"email\": \"bob@sunbird.com\",\n  \"password\": \"TempPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/backoffice/users/:id", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/backoffice/users/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"Bob K. Mwale\"\n}" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/backoffice/users/:id", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        },
+        {
+          "name": "Reset Password",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/backoffice/users/:id/reset-password", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        },
+        {
+          "name": "Lock",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/backoffice/users/:id/lock", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        },
+        {
+          "name": "Unlock",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/backoffice/users/:id/unlock", "header": [{ "key": "Authorization", "value": "Bearer {{backoffice_token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Organization",
+      "item": [
+        {
+          "name": "Get My Org",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/organization", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get by ID",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/organization/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/organization",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"The Sanctuary Lodge\",\n  \"phone\": \"0211999888\",\n  \"email\": \"info@sanctuary.com\",\n  \"address\": \"Plot 1234, Great East Road, Lusaka\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Branches",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/branches", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/branches",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Lusaka Main\",\n  \"address\": \"Plot 1234, Great East Road\",\n  \"city\": \"Lusaka\",\n  \"phone\": \"0211123456\",\n  \"email\": \"lusaka@sanctuary.com\",\n  \"check_in_time\": \"14:00\",\n  \"check_out_time\": \"11:00\",\n  \"is_main\": true\n}" }
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/branches/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/branches/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Lusaka Main Branch\",\n  \"phone\": \"0211999000\"\n}" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/branches/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/users", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/users",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"Peter Mwale\",\n  \"email\": \"peter@sanctuary.com\",\n  \"phone\": \"0977333444\",\n  \"role\": \"receptionist\",\n  \"password\": \"TempPass123!\"\n}" }
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/users/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/users/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"Peter K. Mwale\",\n  \"phone\": \"0977555666\"\n}" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/users/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Lock",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/users/:id/lock", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Unlock",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/users/:id/unlock", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "My Profile",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/profile", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "List Roles",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/roles", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Admin — List All Users",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/users", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Admin — Get User",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/users/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Admin — Change Role",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/admin/users/:id/role",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"manager\"\n}" }
+          }
+        },
+        {
+          "name": "Admin — Delete User",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/admin/users/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Admin — Reset Password",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/admin/users/:id/reset-password", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Admin — Lock",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/admin/users/:id/lock", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Admin — Unlock",
+          "request": { "method": "POST", "url": "{{base_url}}/api/v1/admin/users/:id/unlock", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Rooms",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/rooms?type=&is_available=",
+              "query": [
+                { "key": "type", "value": "", "description": "Filter by room type (e.g. standard, deluxe, suite)" },
+                { "key": "is_available", "value": "", "description": "true or false" }
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Available Rooms",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/rooms/available?check_in=2026-07-01&check_out=2026-07-04&type=",
+              "query": [
+                { "key": "check_in", "value": "2026-07-01" },
+                { "key": "check_out", "value": "2026-07-04" },
+                { "key": "type", "value": "", "description": "Optional room type filter" }
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Get",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/rooms/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/rooms",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Room 101\",\n  \"room_type\": \"standard\",\n  \"capacity\": 2,\n  \"price_per_night\": 350.00,\n  \"floor\": \"1\",\n  \"description\": \"Comfortable standard room with garden view\",\n  \"amenities\": [\"WiFi\", \"Air Conditioning\", \"TV\", \"En-suite Bathroom\"]\n}" }
+          }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/rooms/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"price_per_night\": 400.00,\n  \"description\": \"Newly renovated standard room\"\n}" }
+          }
+        },
+        {
+          "name": "Update Images",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/rooms/:id/images",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"images\": [\"https://cdn.example.com/room101-a.jpg\", \"https://cdn.example.com/room101-b.jpg\"]\n}" }
+          }
+        },
+        {
+          "name": "Set Availability",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/v1/rooms/:id/availability",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"is_available\": false\n}" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/v1/rooms/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Guest — List",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/guest/rooms?org_id=&branch_id=&type="
+          }
+        },
+        {
+          "name": "Guest — Available",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/guest/rooms/available?org_id=&branch_id=&check_in=2026-07-01&check_out=2026-07-04&type="
+          }
+        },
+        {
+          "name": "Guest — Get",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/guest/rooms/:id"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Individual Clients",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/individual", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Lookup by ID Number",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/clients/individual/lookup?id_number=NRC654321/90/1", "query": [{ "key": "id_number", "value": "NRC654321/90/1" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/individual/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/clients/individual",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"full_name\": \"Grace Zulu\",\n  \"email\": \"grace@gmail.com\",\n  \"phone\": \"0977444555\",\n  \"id_passport_number\": \"NRC654321/90/1\",\n  \"nationality\": \"Zambian\"\n}" }
+          }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/clients/individual/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"0977000999\"\n}" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/clients/individual/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Corporate Clients (Legacy)",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/corporate", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Search",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/clients/corporate/search?q=acme", "query": [{ "key": "q", "value": "acme" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/corporate/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get with Bookings",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/corporate/:id/bookings", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/clients/corporate",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"company_name\": \"Acme Zambia Ltd\",\n  \"contact_person\": \"Grace Tembo\",\n  \"email\": \"bookings@acme.co.zm\",\n  \"phone\": \"+260211100001\",\n  \"company_reg_number\": \"ZM-2020-1001\",\n  \"industry\": \"Mining\"\n}" }
+          }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/clients/corporate/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"contact_person\": \"Alice Tembo\"\n}" }
+          }
+        },
+        {
+          "name": "Update Documents",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/clients/corporate/:id/documents",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"urls\": [\"https://cdn.example.com/lpo-001.pdf\"]\n}" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/clients/corporate/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Corporate Profiles (New)",
+      "item": [
+        {
+          "name": "Companies — List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/companies", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Companies — Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/companies/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Companies — Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/clients/companies/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"company_name\": \"ABC Corporation Ltd\",\n  \"industry\": \"Mining\",\n  \"status\": \"active\"\n}" }
+          }
+        },
+        {
+          "name": "Branches — List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/companies/:id/branches", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Branches — Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/clients/companies/:id/branches",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Lusaka HQ\",\n  \"address\": \"Plot 567, Cairo Road, Lusaka\",\n  \"phone\": \"0211567890\"\n}" }
+          }
+        },
+        {
+          "name": "Branches — Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/clients/companies/:id/branches/:branch_id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"0211999000\"\n}" }
+          }
+        },
+        {
+          "name": "Profiles — List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/companies/:id/profiles", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Profiles — Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/clients/companies/:id/profiles",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"first_name\": \"Martin\",\n  \"last_name\": \"Phiri\",\n  \"email\": \"martin@abccorp.com\",\n  \"phone\": \"0966123456\",\n  \"job_title\": \"Finance Manager\",\n  \"department\": \"Finance\"\n}" }
+          }
+        },
+        {
+          "name": "Profiles — Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/profiles/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Profiles — Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/clients/profiles/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"job_title\": \"Senior Finance Manager\"\n}" }
+          }
+        },
+        {
+          "name": "Guests — List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/clients/profiles/:id/guests", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Guests — Add",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/clients/profiles/:id/guests",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"first_name\": \"John\",\n  \"last_name\": \"Banda\",\n  \"phone\": \"0977111222\",\n  \"email\": \"john@abccorp.com\",\n  \"identification_card\": \"NRC123456/78/1\"\n}" }
+          }
+        },
+        {
+          "name": "Guests — Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/clients/profiles/:id/guests/:guest_id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"0977999000\"\n}" }
+          }
+        },
+        {
+          "name": "Guests — Delete",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/clients/profiles/:id/guests/:guest_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Booking Requests — Individual",
+      "item": [
+        {
+          "name": "Submit (web user)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var r = pm.response.json(); if (r.id) pm.collectionVariables.set('individual_request_id', r.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/web/bookings",
+            "header": [{ "key": "Authorization", "value": "Bearer {{web_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"booker_name\": \"Grace Zulu\",\n  \"booker_email\": \"grace@gmail.com\",\n  \"booker_phone\": \"0977444555\",\n  \"room_id\": \"ROOM_UUID\",\n  \"check_in\": \"2026-07-01\",\n  \"check_out\": \"2026-07-04\",\n  \"special_requests\": \"High floor preferred\"\n}" }
+          }
+        },
+        {
+          "name": "List (web user)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/web/bookings?page=1&page_size=20",
+            "header": [{ "key": "Authorization", "value": "Bearer {{web_token}}" }]
+          }
+        },
+        {
+          "name": "Get (web user)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/web/bookings/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{web_token}}" }]
+          }
+        },
+        {
+          "name": "Cancel (web user)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/v1/web/bookings/:id/cancel",
+            "header": [{ "key": "Authorization", "value": "Bearer {{web_token}}" }]
+          }
+        },
+        {
+          "name": "List (backoffice)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/booking-requests/individual?page=1&page_size=20&status=pending",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Get (backoffice)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/booking-requests/individual/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Approve (backoffice)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/booking-requests/individual/:id/approve",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Reject (backoffice)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/booking-requests/individual/:id/reject",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Cancel (backoffice)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/booking-requests/individual/:id/cancel",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Booking Requests — Corporate",
+      "item": [
+        {
+          "name": "Submit — Accommodation (public)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/web/bookings/corporate?type=accommodation&org_id={{org_id}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\",\n    \"industry\": \"Mining\",\n    \"country\": \"Zambia\"\n  },\n  \"branch\": {\n    \"name\": \"Lusaka HQ\",\n    \"address\": \"Plot 567, Cairo Road, Lusaka\",\n    \"phone\": \"0211567890\"\n  },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\",\n    \"phone\": \"0966123456\",\n    \"job_title\": \"Finance Manager\",\n    \"department\": \"Finance\"\n  },\n  \"authoriser\": {\n    \"name\": \"Dr. Sarah Mumba\",\n    \"email\": \"sarah.mumba@abccorp.com\",\n    \"phone\": \"0966000111\",\n    \"title\": \"General Manager\",\n    \"department\": \"Executive\",\n    \"gl_code\": \"GL-2026-001\"\n  },\n  \"guests\": [\n    { \"first_name\": \"John\", \"last_name\": \"Banda\", \"identification_card\": \"NRC123456/78/1\", \"phone\": \"0977111222\", \"email\": \"john@abccorp.com\", \"check_in\": \"2026-07-01\", \"check_out\": \"2026-07-04\", \"room_type\": \"standard\" },\n    { \"first_name\": \"Mary\", \"last_name\": \"Tembo\", \"identification_card\": \"NRC654321/90/2\", \"phone\": \"0977333444\", \"email\": \"mary@abccorp.com\", \"check_in\": \"2026-07-01\", \"check_out\": \"2026-07-04\", \"room_type\": \"standard\" }\n  ],\n  \"reason_for_booking\": \"Annual stakeholder conference attendance\",\n  \"notes\": \"Guests require early check-in if possible\",\n  \"documents\": []\n}" }
+          }
+        },
+        {
+          "name": "Submit — Meals (public)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/web/bookings/corporate?type=meals&org_id={{org_id}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\"\n  },\n  \"branch\": { \"name\": \"Lusaka HQ\" },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\"\n  },\n  \"plan_type\": \"full_board\",\n  \"from\": \"2026-07-01\",\n  \"to\": \"2026-07-04\",\n  \"dietary_notes\": \"Some guests are vegetarian\",\n  \"guests\": [\n    {\n      \"first_name\": \"John\",\n      \"last_name\": \"Banda\",\n      \"identification_card\": \"NRC123456/78/1\",\n      \"email\": \"john@abccorp.com\",\n      \"meal_items\": [\n        { \"name\": \"Breakfast Buffet\", \"quantity\": 1, \"price\": 85.00 },\n        { \"name\": \"Lunch\", \"quantity\": 1, \"price\": 120.00 }\n      ]\n    }\n  ],\n  \"reason_for_booking\": \"Team working lunch\",\n  \"documents\": []\n}" }
+          }
+        },
+        {
+          "name": "Submit — Conference (public)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/web/bookings/corporate?type=conference&org_id={{org_id}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\"\n  },\n  \"branch\": { \"name\": \"Lusaka HQ\" },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\"\n  },\n  \"authoriser\": {\n    \"name\": \"Dr. Sarah Mumba\",\n    \"email\": \"sarah.mumba@abccorp.com\",\n    \"gl_code\": \"GL-2026-002\"\n  },\n  \"start_date\": \"2026-07-10\",\n  \"start_time\": \"08:00\",\n  \"end_date\": \"2026-07-10\",\n  \"end_time\": \"17:00\",\n  \"attendees\": 15,\n  \"equipment\": [\"projector\", \"whiteboard\"],\n  \"guests\": [\n    { \"first_name\": \"John\", \"last_name\": \"Banda\", \"email\": \"john@abccorp.com\", \"identification_card\": \"NRC123456/78/1\" }\n  ],\n  \"reason_for_booking\": \"Q3 strategy planning session\",\n  \"notes\": \"Projector and whiteboard required\",\n  \"documents\": []\n}" }
+          }
+        },
+        {
+          "name": "Submit — Event (public)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/web/bookings/corporate?type=event&org_id={{org_id}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\"\n  },\n  \"branch\": { \"name\": \"Lusaka HQ\" },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\"\n  },\n  \"authoriser\": {\n    \"name\": \"Dr. Sarah Mumba\",\n    \"email\": \"sarah.mumba@abccorp.com\",\n    \"gl_code\": \"GL-2026-003\"\n  },\n  \"event_type\": \"corporate_dinner\",\n  \"start_date\": \"2026-07-15\",\n  \"start_time\": \"18:30\",\n  \"end_time\": \"22:00\",\n  \"headcount\": 50,\n  \"catering_required\": true,\n  \"guests\": [\n    { \"first_name\": \"John\", \"last_name\": \"Banda\", \"email\": \"john@abccorp.com\", \"identification_card\": \"NRC123456/78/1\" }\n  ],\n  \"reason_for_booking\": \"Annual staff awards dinner\",\n  \"notes\": \"Red carpet setup preferred\",\n  \"documents\": []\n}" }
+          }
+        },
+        {
+          "name": "List (backoffice)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/booking-requests?page=1&page_size=20&status=pending&type=",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Get (backoffice)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/booking-requests/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Approve (backoffice)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/booking-requests/:id/approve",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Reject (backoffice)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/booking-requests/:id/reject",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Cancel (backoffice)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/booking-requests/:id/cancel",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Materialise to Booking",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/booking-requests/:request_id/materialise",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/bookings?page=1&page_size=20&status=confirmed&booker_type=individual", "query": [{ "key": "page", "value": "1" }, { "key": "page_size", "value": "20" }, { "key": "status", "value": "confirmed" }, { "key": "booker_type", "value": "individual" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/bookings/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create Individual",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/bookings/individual",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"booker_name\": \"Grace Zulu\",\n  \"booker_email\": \"grace@gmail.com\",\n  \"booker_phone\": \"0977444555\",\n  \"identification_card\": \"NRC654321/90/1\",\n  \"room_id\": \"ROOM_UUID\",\n  \"check_in\": \"2026-07-01\",\n  \"check_out\": \"2026-07-04\",\n  \"special_requests\": \"High floor preferred\"\n}" }
+          }
+        },
+        {
+          "name": "Update Status",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/bookings/:id/status",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"confirmed\"\n}" }
+          }
+        },
+        {
+          "name": "Check In",
+          "request": { "method": "PUT", "url": "{{base_url}}/api/v1/bookings/:id/checkin", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Check Out",
+          "request": { "method": "PUT", "url": "{{base_url}}/api/v1/bookings/:id/checkout", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Cancel",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/bookings/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Room Assignments",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/bookings/:id/assignments", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Assign Room",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/bookings/:id/assignments",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"room_id\": \"ROOM_UUID\",\n  \"attendee_id\": \"ATTENDEE_UUID\",\n  \"check_in\": \"2026-07-01\",\n  \"check_out\": \"2026-07-04\"\n}" }
+          }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/bookings/:id/assignments/:assign_id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"room_id\": \"NEW_ROOM_UUID\",\n  \"check_out\": \"2026-07-05\"\n}" }
+          }
+        },
+        {
+          "name": "Remove",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/bookings/:id/assignments/:assign_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Check In Room",
+          "request": { "method": "PUT", "url": "{{base_url}}/api/v1/bookings/:id/assignments/:assign_id/checkin", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Check Out Room",
+          "request": { "method": "PUT", "url": "{{base_url}}/api/v1/bookings/:id/assignments/:assign_id/checkout", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Booking Attendees",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/bookings/:id/attendees", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Add",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/bookings/:id/attendees",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"corporate_guest_id\": \"CORP_GUEST_UUID\",\n  \"full_name\": \"John Banda\",\n  \"email\": \"john@abccorp.com\",\n  \"phone\": \"0977111222\",\n  \"identification_card\": \"NRC123456/78/1\",\n  \"dietary_notes\": \"No pork\",\n  \"special_needs\": \"\",\n  \"is_lead_contact\": true\n}" }
+          }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/bookings/:id/attendees/:attendee_id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"dietary_notes\": \"Vegetarian\",\n  \"special_needs\": \"Wheelchair accessible room\"\n}" }
+          }
+        },
+        {
+          "name": "Remove",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/bookings/:id/attendees/:attendee_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Guest Bookings (App)",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/guest/bookings",
+            "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"booker_name\": \"John Banda\",\n  \"booker_email\": \"john@gmail.com\",\n  \"booker_phone\": \"0977111222\",\n  \"identification_card\": \"NRC123456/78/1\",\n  \"room_id\": \"ROOM_UUID\",\n  \"check_in\": \"2026-07-01\",\n  \"check_out\": \"2026-07-04\",\n  \"special_requests\": \"Late check-in expected\"\n}" }
+          }
+        },
+        {
+          "name": "List My Bookings",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/bookings", "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }] }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/bookings/:id", "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }] }
+        },
+        {
+          "name": "Cancel",
+          "request": { "method": "PATCH", "url": "{{base_url}}/api/v1/guest/bookings/:id/cancel", "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Invoices",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/invoices?page=1&page_size=20&status=draft", "query": [{ "key": "page", "value": "1" }, { "key": "page_size", "value": "20" }, { "key": "status", "value": "draft" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/invoices/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get by Booking",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/invoices/booking/:booking_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update Status",
+          "request": {
+            "method": "PATCH", "url": "{{base_url}}/api/v1/invoices/:id/status",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"paid\",\n  \"paid_date\": \"2026-07-04\",\n  \"notes\": \"Paid via bank transfer\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/orders", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/orders/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Place Order (Booking)",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/orders",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"booking_id\": \"BOOKING_UUID\",\n  \"items\": [\n    { \"menu_item_id\": \"ITEM_UUID\", \"quantity\": 2, \"notes\": \"Extra sauce\" },\n    { \"menu_item_id\": \"ITEM_UUID_2\", \"quantity\": 1, \"notes\": \"\" }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "Place Walk-in Order",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/orders/walk-in",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customer_name\": \"Walk-in Customer\",\n  \"items\": [\n    { \"menu_item_id\": \"ITEM_UUID\", \"quantity\": 1, \"notes\": \"\" }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "Add Item",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/orders/:id/items",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"menu_item_id\": \"ITEM_UUID\",\n  \"quantity\": 1,\n  \"notes\": \"No onions\"\n}" }
+          }
+        },
+        {
+          "name": "Remove Item",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/orders/:id/items/:item_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Close All Orders",
+          "request": { "method": "PATCH", "url": "{{base_url}}/api/v1/orders/close-all", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Menu",
+      "item": [
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/menu", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Upsert Menu",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/menu",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Main Menu\",\n  \"description\": \"Our signature menu\"\n}" }
+          }
+        },
+        {
+          "name": "Add Item",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/menu/items",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Grilled Tilapia\",\n  \"description\": \"Freshwater tilapia grilled with lemon butter\",\n  \"price\": 85.00,\n  \"category\": \"main\",\n  \"is_available\": true\n}" }
+          }
+        },
+        {
+          "name": "Update Item",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/menu/items/:item_id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"price\": 95.00,\n  \"is_available\": true\n}" }
+          }
+        },
+        {
+          "name": "Delete Item",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/menu/items/:item_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Guest — Get Menu",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/guest/menu?branch_id=", "query": [{ "key": "branch_id", "value": "" }] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Meal Plans",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/meal-plans", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/meal-plans",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Full Board\",\n  \"description\": \"Breakfast, lunch and dinner included\",\n  \"price_per_day\": 250.00,\n  \"includes_breakfast\": true,\n  \"includes_lunch\": true,\n  \"includes_dinner\": true\n}" }
+          }
+        },
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/meal-plans/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/meal-plans/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"price_per_day\": 275.00\n}" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/meal-plans/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Guest — List",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/meal-plans" }
+        },
+        {
+          "name": "Guest — Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/meal-plans/:id" }
+        }
+      ]
+    },
+
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "Summary",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/reviews/summary", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Submit (Guest)",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/guest/reviews",
+            "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"booking_id\": \"BOOKING_UUID\",\n  \"facilities\": 4.5,\n  \"cleanliness\": 5.0,\n  \"services\": 4.0,\n  \"comfort\": 4.5,\n  \"location\": 3.5,\n  \"comment\": \"Excellent stay, very clean rooms and friendly staff!\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Stats",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/dashboard/stats", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Get",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/settings", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/settings",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"auto_extend_checkout\": true,\n  \"checkout_grace_period_hours\": 2\n}" }
+          }
+        },
+        {
+          "name": "Get Password Policy",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/password-policy", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update Password Policy",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/password-policy",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"min_length\": 8,\n  \"require_uppercase\": true,\n  \"require_number\": true,\n  \"require_special\": true,\n  \"max_failed_attempts\": 5,\n  \"lockout_duration_minutes\": 30\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Audit Logs",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/audit-logs?page=1&page_size=20", "query": [{ "key": "page", "value": "1" }, { "key": "page_size", "value": "20" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Workflow",
+      "item": [
+        {
+          "name": "My Tasks",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/workflow/my-tasks", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "My Pending Tasks",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/workflow/my-tasks/pending", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get Task",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/workflow/tasks/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get Instance by Task",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/workflow/task/:task_id/instance", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Initiate",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/workflow/instances",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"workflow_type\": \"booking_approval\",\n  \"task_id\": \"TASK_UUID\",\n  \"priority\": \"medium\"\n}" }
+          }
+        },
+        {
+          "name": "Process Action",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/workflow/instances/:id/action",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"approve\",\n  \"comment\": \"Approved — rates confirmed with client\"\n}" }
+          }
+        },
+        {
+          "name": "Get History",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/workflow/instances/:id/history", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    },
+
+    {
+      "name": "Workflow Admin",
+      "item": [
+        {
+          "name": "List Workflow Types",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/workflow-types", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "List Workflows",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/workflows", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create Workflow",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/admin/workflows",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Booking Approval\",\n  \"workflow_type\": \"booking_approval\",\n  \"description\": \"Standard booking approval flow\"\n}" }
+          }
+        },
+        {
+          "name": "Get Workflow",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/workflows/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update Workflow",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/admin/workflows/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Booking Approval v2\"\n}" }
+          }
+        },
+        {
+          "name": "Deactivate Workflow",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/admin/workflows/:id/deactivate", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Delete Workflow",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/admin/workflows/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get Workflow Steps",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/workflows/:id/steps", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get Workflow Structure",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/workflows/:id/structure", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get Workflow Transitions",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/workflows/:id/transitions", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create Step",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/admin/workflow-steps",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"workflow_id\": \"WORKFLOW_UUID\",\n  \"name\": \"Manager Review\",\n  \"step_order\": 1,\n  \"assigned_role\": \"manager\"\n}" }
+          }
+        },
+        {
+          "name": "Get Step",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/workflow-steps/:step_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Update Step",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/admin/workflow-steps/:step_id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Senior Manager Review\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Step",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/admin/workflow-steps/:step_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Get Step Transitions",
+          "request": { "method": "GET", "url": "{{base_url}}/api/v1/admin/workflow-steps/:step_id/transitions", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        },
+        {
+          "name": "Create Transition",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/api/v1/admin/workflow-transitions",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"from_step_id\": \"STEP_UUID\",\n  \"to_step_id\": \"STEP_UUID_2\",\n  \"action\": \"approve\",\n  \"allowed_roles\": [\"manager\", \"admin\"]\n}" }
+          }
+        },
+        {
+          "name": "Update Transition",
+          "request": {
+            "method": "PUT", "url": "{{base_url}}/api/v1/admin/workflow-transitions/:transition_id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"allowed_roles\": [\"manager\", \"admin\", \"branch_admin\"]\n}" }
+          }
+        },
+        {
+          "name": "Delete Transition",
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/admin/workflow-transitions/:transition_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
+        }
+      ]
+    }
+
+  ]
+}

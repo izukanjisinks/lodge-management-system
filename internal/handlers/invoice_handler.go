@@ -23,6 +23,7 @@ func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	pag := utils.ParsePagination(r)
 	status := r.URL.Query().Get("status")
+	clientType := r.URL.Query().Get("client_type")
 
 	branchID, err := middleware.ResolveBranchID(r)
 	if err != nil {
@@ -30,7 +31,7 @@ func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invoices, total, err := h.service.List(orgID, branchID, status, pag.Page, pag.PageSize)
+	invoices, total, err := h.service.List(orgID, branchID, status, clientType, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

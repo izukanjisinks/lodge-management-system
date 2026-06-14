@@ -91,6 +91,37 @@ func GuestJWTAuth(next http.Handler) http.Handler {
 	})
 }
 
+// WebUserJWTAuth validates a web-user JWT (token type "guest") and injects user_id into context.
+func WebUserJWTAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := extractAndValidateClaims(w, r)
+		if !ok {
+			return
+		}
+
+		if claims.TokenType != utils.TokenTypeGuest {
+			utils.RespondError(w, http.StatusUnauthorized, "Invalid token type for this endpoint")
+			return
+		}
+
+		webUserRepo := repository.NewWebUserRepository()
+		u, err := webUserRepo.GetByID(claims.UserID)
+		if err != nil {
+			utils.RespondError(w, http.StatusUnauthorized, "User not found")
+			return
+		}
+
+		if !u.IsActive {
+			utils.RespondError(w, http.StatusUnauthorized, "Account is inactive")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, UserEmail, claims.Email)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // BackofficeJWTAuth validates a backoffice JWT and injects backoffice_user_id into context.
 func BackofficeJWTAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

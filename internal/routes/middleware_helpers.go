@@ -37,3 +37,9 @@ func withBackofficeAuth(handler http.HandlerFunc) http.HandlerFunc {
 		middleware.BackofficeJWTAuth(http.HandlerFunc(handler)).ServeHTTP(w, r)
 	}
 }
+
+func withWebUserAuth(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		middleware.WebUserJWTAuth(http.HandlerFunc(handler)).ServeHTTP(w, r)
+	}
+}

@@ -1,0 +1,236 @@
+package repository
+
+import (
+	"database/sql"
+	"fmt"
+	"time"
+
+	"lodge-system/internal/database"
+	"lodge-system/internal/models"
+
+	"github.com/google/uuid"
+)
+
+type BookingRoomAssignmentRepository struct {
+	db *sql.DB
+}
+
+func NewBookingRoomAssignmentRepository() *BookingRoomAssignmentRepository {
+	return &BookingRoomAssignmentRepository{db: database.DB}
+}
+
+func (r *BookingRoomAssignmentRepository) CreateInTx(tx *sql.Tx, a *models.BookingRoomAssignment) error {
+	a.ID = uuid.New()
+	now := time.Now()
+	a.CreatedAt = now
+	a.UpdatedAt = now
+
+	return tx.QueryRow(`
+		INSERT INTO booking_room_assignments (
+			id, booking_id, room_id, attendee_id,
+			check_in, check_out, status, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		RETURNING id`,
+		a.ID, a.BookingID, a.RoomID, a.AttendeeID,
+		a.CheckIn, a.CheckOut, a.Status, now, now,
+	).Scan(&a.ID)
+}
+
+func (r *BookingRoomAssignmentRepository) ListByBookingID(bookingID uuid.UUID) ([]models.BookingRoomAssignment, error) {
+	rows, err := r.db.Query(`
+		SELECT a.id, a.booking_id, a.room_id, a.attendee_id,
+		       a.check_in, a.check_out, a.status, a.created_at, a.updated_at,
+		       r.name AS room_name,
+		       COALESCE(att.full_name, '') AS attendee_name,
+		       (a.check_out - a.check_in) AS nights,
+		       (a.check_out - a.check_in) * r.price_per_night AS room_cost
+		FROM booking_room_assignments a
+		JOIN rooms r ON r.id = a.room_id
+		LEFT JOIN booking_attendees att ON att.id = a.attendee_id
+		WHERE a.booking_id = $1
+		ORDER BY a.check_in, r.name`, bookingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var assignments []models.BookingRoomAssignment
+	for rows.Next() {
+		a, err := scanAssignment(rows)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, *a)
+	}
+	return assignments, rows.Err()
+}
+
+func (r *BookingRoomAssignmentRepository) GetByID(id, bookingID uuid.UUID) (*models.BookingRoomAssignment, error) {
+	row := r.db.QueryRow(`
+		SELECT a.id, a.booking_id, a.room_id, a.attendee_id,
+		       a.check_in, a.check_out, a.status, a.created_at, a.updated_at,
+		       r.name AS room_name,
+		       COALESCE(att.full_name, '') AS attendee_name,
+		       (a.check_out - a.check_in) AS nights,
+		       (a.check_out - a.check_in) * r.price_per_night AS room_cost
+		FROM booking_room_assignments a
+		JOIN rooms r ON r.id = a.room_id
+		LEFT JOIN booking_attendees att ON att.id = a.attendee_id
+		WHERE a.id = $1 AND a.booking_id = $2`, id, bookingID)
+	return scanAssignment(row)
+}
+
+func (r *BookingRoomAssignmentRepository) Update(id, bookingID uuid.UUID, req *models.UpdateRoomAssignmentRequest) (*models.BookingRoomAssignment, error) {
+	_, err := r.db.Exec(`
+		UPDATE booking_room_assignments SET
+			room_id   = COALESCE($1, room_id),
+			check_in  = COALESCE($2, check_in),
+			check_out = COALESCE($3, check_out),
+			updated_at = $4
+		WHERE id = $5 AND booking_id = $6`,
+		req.RoomID, req.CheckIn, req.CheckOut, time.Now(), id, bookingID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetByID(id, bookingID)
+}
+
+func (r *BookingRoomAssignmentRepository) UpdateStatus(id, bookingID uuid.UUID, status string) error {
+	_, err := r.db.Exec(`
+		UPDATE booking_room_assignments SET status=$1, updated_at=$2
+		WHERE id=$3 AND booking_id=$4`,
+		status, time.Now(), id, bookingID)
+	return err
+}
+
+func (r *BookingRoomAssignmentRepository) UpdateStatusTx(tx *sql.Tx, id, bookingID uuid.UUID, status string) error {
+	_, err := tx.Exec(`
+		UPDATE booking_room_assignments SET status=$1, updated_at=$2
+		WHERE id=$3 AND booking_id=$4`,
+		status, time.Now(), id, bookingID)
+	return err
+}
+
+// StatusCountsTx returns, within a transaction, the number of non-cancelled
+// assignments for a booking and how many of those are checked out. Used to roll
+// the parent booking's status up from its room assignments.
+func (r *BookingRoomAssignmentRepository) StatusCountsTx(tx *sql.Tx, bookingID uuid.UUID) (active, checkedOut int, err error) {
+	err = tx.QueryRow(`
+		SELECT
+			COUNT(*) FILTER (WHERE status != 'cancelled'),
+			COUNT(*) FILTER (WHERE status = 'checked_out')
+		FROM booking_room_assignments
+		WHERE booking_id = $1`, bookingID).Scan(&active, &checkedOut)
+	return active, checkedOut, err
+}
+
+func (r *BookingRoomAssignmentRepository) Delete(id, bookingID uuid.UUID) error {
+	_, err := r.db.Exec(`DELETE FROM booking_room_assignments WHERE id=$1 AND booking_id=$2`, id, bookingID)
+	return err
+}
+
+// InvoiceAssignmentRow carries the data invoice generation needs per room assignment.
+type InvoiceAssignmentRow struct {
+	RoomName     string
+	AttendeeName string
+	CheckIn      time.Time
+	CheckOut     time.Time
+	PricePerNight float64
+}
+
+// GetAssignmentsForInvoice returns all non-cancelled assignments for a booking with room pricing.
+func (r *BookingRoomAssignmentRepository) GetAssignmentsForInvoice(bookingID uuid.UUID) ([]InvoiceAssignmentRow, error) {
+	rows, err := r.db.Query(`
+		SELECT ro.name, COALESCE(att.full_name, ''), a.check_in, a.check_out, ro.price_per_night
+		FROM booking_room_assignments a
+		JOIN rooms ro ON ro.id = a.room_id
+		LEFT JOIN booking_attendees att ON att.id = a.attendee_id
+		WHERE a.booking_id = $1 AND a.status != 'cancelled'
+		ORDER BY a.check_in`, bookingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []InvoiceAssignmentRow
+	for rows.Next() {
+		var row InvoiceAssignmentRow
+		if err := rows.Scan(&row.RoomName, &row.AttendeeName, &row.CheckIn, &row.CheckOut, &row.PricePerNight); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// IsRoomAvailable checks no active assignment overlaps the requested dates for the given room.
+func (r *BookingRoomAssignmentRepository) IsRoomAvailable(roomID uuid.UUID, checkIn, checkOut time.Time, excludeID *uuid.UUID) (bool, error) {
+	args := []interface{}{roomID, checkOut, checkIn}
+	excludeClause := ""
+	if excludeID != nil {
+		args = append(args, *excludeID)
+		excludeClause = fmt.Sprintf(" AND id != $%d", len(args))
+	}
+
+	var count int
+	err := r.db.QueryRow(fmt.Sprintf(`
+		SELECT COUNT(*) FROM booking_room_assignments
+		WHERE room_id = $1
+		  AND status IN ('pending','confirmed','checked_in')
+		  AND check_in  < $2
+		  AND check_out > $3%s`, excludeClause), args...).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
+// SumRoomCosts returns the total room cost across all assignments for a booking.
+func (r *BookingRoomAssignmentRepository) SumRoomCosts(bookingID uuid.UUID) (float64, error) {
+	var total float64
+	err := r.db.QueryRow(`
+		SELECT COALESCE(SUM((a.check_out - a.check_in) * ro.price_per_night), 0)
+		FROM booking_room_assignments a
+		JOIN rooms ro ON ro.id = a.room_id
+		WHERE a.booking_id = $1
+		  AND a.status != 'cancelled'`, bookingID).Scan(&total)
+	return total, err
+}
+
+func (r *BookingRoomAssignmentRepository) SumRoomCostsInTx(tx *sql.Tx, bookingID uuid.UUID) (float64, error) {
+	var total float64
+	err := tx.QueryRow(`
+		SELECT COALESCE(SUM((a.check_out - a.check_in) * ro.price_per_night), 0)
+		FROM booking_room_assignments a
+		JOIN rooms ro ON ro.id = a.room_id
+		WHERE a.booking_id = $1
+		  AND a.status != 'cancelled'`, bookingID).Scan(&total)
+	return total, err
+}
+
+type assignmentScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanAssignment(row assignmentScanner) (*models.BookingRoomAssignment, error) {
+	var a models.BookingRoomAssignment
+	var attendeeID uuid.NullUUID
+	var attendeeName sql.NullString
+
+	err := row.Scan(
+		&a.ID, &a.BookingID, &a.RoomID, &attendeeID,
+		&a.CheckIn, &a.CheckOut, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+		&a.RoomName, &attendeeName, &a.Nights, &a.RoomCost,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if attendeeID.Valid {
+		a.AttendeeID = &attendeeID.UUID
+	}
+	if attendeeName.Valid {
+		a.AttendeeName = attendeeName.String
+	}
+	return &a, nil
+}

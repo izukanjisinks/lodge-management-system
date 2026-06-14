@@ -18,9 +18,12 @@ type Order struct {
 	ID            uuid.UUID   `json:"id"`
 	OrgID         uuid.UUID   `json:"org_id"`
 	BookingID     *uuid.UUID  `json:"booking_id,omitempty"`
+	AttendeeID    *uuid.UUID  `json:"attendee_id,omitempty"`
 	BookingNumber string      `json:"booking_number,omitempty"`
 	RoomName      string      `json:"room_name,omitempty"`
 	ClientName    string      `json:"client_name,omitempty"`
+	CompanyName   string      `json:"company_name,omitempty"`
+	AttendeeName  string      `json:"attendee_name,omitempty"`
 	OrderNumber   string      `json:"order_number"`
 	Type          string      `json:"type"`
 	Status        string      `json:"status"`
@@ -45,9 +48,10 @@ type OrderItem struct {
 
 // PlaceOrderRequest creates a new in-house order tied to a booking.
 type PlaceOrderRequest struct {
-	BookingID uuid.UUID              `json:"booking_id"`
-	Notes     string                 `json:"notes,omitempty"`
-	Items     []PlaceOrderItemRequest `json:"items"`
+	BookingID  uuid.UUID  `json:"booking_id"`
+	AttendeeID *uuid.UUID `json:"attendee_id,omitempty"`
+	Notes      string     `json:"notes,omitempty"`
+	Items      []PlaceOrderItemRequest `json:"items"`
 }
 
 // PlaceWalkInOrderRequest creates a new walk-in order with no booking.

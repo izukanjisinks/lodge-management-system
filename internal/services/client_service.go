@@ -195,17 +195,16 @@ func (s *ClientService) GetCorporateWithBookings(id, orgID uuid.UUID) (*models.C
 	var documents []string
 
 	if s.bookingRepo != nil {
-		bookings, err := s.bookingRepo.ListByCorporateClientID(id, orgID)
+		bookings, _, err := s.bookingRepo.List(orgID, models.BookerTypeCorporate, "", "", 1, 100)
 		if err == nil {
 			for _, b := range bookings {
+				if b.CompanyID == nil || *b.CompanyID != id {
+					continue
+				}
 				guests = append(guests, models.CorporateBookingGuest{
 					BookingID:     b.ID.String(),
 					BookingNumber: b.BookingNumber,
-					ClientName:    b.ClientName,
-					RoomName:      b.RoomName,
-					CheckIn:       b.CheckIn.Format("2006-01-02"),
-					CheckOut:      b.CheckOut.Format("2006-01-02"),
-					Guests:        b.Guests,
+					ClientName:    b.BookerName,
 					Status:        b.Status,
 				})
 			}

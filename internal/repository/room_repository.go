@@ -221,11 +221,11 @@ func (r *RoomRepository) ListAvailable(orgID uuid.UUID, branchID *uuid.UUID, che
 		FROM rooms
 		WHERE is_available = TRUE AND org_id = $3%s
 		  AND id NOT IN (
-		    SELECT room_id FROM bookings
-		    WHERE room_id IS NOT NULL
-		      AND status IN ('pending', 'confirmed', 'checked_in')
-		      AND check_in::date  < $1::date
-		      AND check_out::date > $2::date
+		    SELECT bra.room_id
+		    FROM booking_room_assignments bra
+		    WHERE bra.status IN ('pending', 'confirmed', 'checked_in')
+		      AND bra.check_in::date  < $1::date
+		      AND bra.check_out::date > $2::date
 		  )
 		ORDER BY name ASC`, extra), args...)
 	if err != nil {
@@ -285,7 +285,7 @@ func (r *RoomRepository) Delete(id uuid.UUID, orgID uuid.UUID) error {
 func (r *RoomRepository) GetBookedDates(roomID uuid.UUID) ([]models.BookedDate, error) {
 	rows, err := r.db.Query(`
 		SELECT TO_CHAR(check_in, 'YYYY-MM-DD'), TO_CHAR(check_out, 'YYYY-MM-DD'), status
-		FROM bookings
+		FROM booking_room_assignments
 		WHERE room_id = $1
 		  AND status IN ('pending', 'confirmed', 'checked_in')
 		ORDER BY check_in ASC`, roomID)

@@ -18,7 +18,6 @@ func RegisterRoutes(
 	menuHandler *handlers.MenuHandler,
 	orderHandler *handlers.OrderHandler,
 	guestAuthHandler *handlers.GuestAuthHandler,
-	guestBookingHandler *handlers.GuestBookingHandler,
 	reviewHandler *handlers.ReviewHandler,
 	backofficeAuthHandler *handlers.BackofficeAuthHandler,
 	backofficeUserHandler *handlers.BackofficeUserHandler,
@@ -27,6 +26,10 @@ func RegisterRoutes(
 	orgSettingsHandler *handlers.OrganizationSettingsHandler,
 	branchHandler *handlers.BranchHandler,
 	orgHandler *handlers.OrganizationHandler,
+	webUserHandler *handlers.WebUserAuthHandler,
+	corProfileHandler *handlers.CorProfileHandler,
+	corpBookingReqHandler *handlers.CorporateBookingRequestHandler,
+	indvBookingReqHandler *handlers.IndividualBookingRequestHandler,
 ) {
 	RegisterPublicRoutes(authHandler)
 	RegisterAuthRoutes(authHandler)
@@ -41,11 +44,14 @@ func RegisterRoutes(
 	RegisterWorkflowAdminRoutes(workflowAdminHandler)
 	RegisterMenuRoutes(menuHandler)
 	RegisterOrderRoutes(orderHandler)
-	RegisterGuestRoutes(guestAuthHandler, guestBookingHandler, roomHandler, menuHandler, mealPlanHandler)
+	RegisterGuestRoutes(guestAuthHandler, roomHandler, menuHandler, mealPlanHandler)
 	RegisterReviewRoutes(reviewHandler)
 	RegisterBackofficeRoutes(backofficeAuthHandler, backofficeUserHandler, backofficeOrgHandler)
 	RegisterAuditLogRoutes(auditLogHandler)
 	RegisterOrganizationSettingsRoutes(orgSettingsHandler)
 	RegisterBranchRoutes(branchHandler)
 	RegisterOrganizationRoutes(orgHandler)
+	RegisterWebUserRoutes(webUserHandler)
+	RegisterCorProfileRoutes(corProfileHandler, corpBookingReqHandler)
+	RegisterIndividualBookingRequestRoutes(indvBookingReqHandler)
 }

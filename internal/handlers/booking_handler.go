@@ -19,139 +19,106 @@ func NewBookingHandler(service *services.BookingService) *BookingHandler {
 	return &BookingHandler{service: service}
 }
 
-func (h *BookingHandler) List(w http.ResponseWriter, r *http.Request) {
+// ─── Individual booking ───────────────────────────────────────────────────────
+
+// CreateIndividual handles POST /api/v1/bookings/individual
+func (h *BookingHandler) CreateIndividual(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	pag := utils.ParsePagination(r)
-	status := r.URL.Query().Get("status")
-	clientType := r.URL.Query().Get("client_type")
+	branchID := middleware.GetBranchIDFromContext(r.Context())
 
-	branchID, err := middleware.ResolveBranchID(r)
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	var clientID *uuid.UUID
-	if v := r.URL.Query().Get("client_id"); v != "" {
-		id, err := uuid.Parse(v)
-		if err != nil {
-			utils.RespondError(w, http.StatusBadRequest, "Invalid client_id")
-			return
-		}
-		clientID = &id
-	}
-
-	bookings, total, err := h.service.List(orgID, branchID, status, clientType, clientID, pag.Page, pag.PageSize)
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
-		Data:     bookings,
-		Page:     pag.Page,
-		PageSize: pag.PageSize,
-		Total:    total,
-	})
-}
-
-func (h *BookingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
-		return
-	}
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-
-	booking, err := h.service.GetByID(id, orgID)
-	if err != nil {
-		utils.RespondError(w, http.StatusNotFound, "Booking not found")
-		return
-	}
-
-	utils.RespondJSON(w, http.StatusOK, booking)
-}
-
-func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
-	_, ok := middleware.GetUserIDFromContext(r.Context())
-	if !ok {
-		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-
-	// Peek at client_type to route to the correct path.
-	// DecodeJson restores the body after reading so it can be decoded again below.
-	var peek struct {
-		ClientType string `json:"client_type"`
-	}
-	if err := utils.DecodeJson(r, &peek); err != nil || peek.ClientType == "" {
-		utils.RespondError(w, http.StatusBadRequest, "client_type is required")
-		return
-	}
-
-	switch peek.ClientType {
-	case models.BookingClientTypeIndividual:
-		var req models.CreateIndividualBookingRequest
-		if err := utils.DecodeJson(r, &req); err != nil {
-			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-		booking, err := h.service.CreateIndividual(orgID, &req)
-		if err != nil {
-			utils.RespondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		utils.RespondJSON(w, http.StatusCreated, booking)
-
-	case models.BookingClientTypeCorporate:
-		var req models.CreateCorporateBookingRequest
-		if err := utils.DecodeJson(r, &req); err != nil {
-			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-		resp, err := h.service.CreateCorporate(orgID, &req)
-		if err != nil {
-			utils.RespondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		utils.RespondJSON(w, http.StatusCreated, resp)
-
-	default:
-		utils.RespondError(w, http.StatusBadRequest, "client_type must be 'individual' or 'corporate'")
-	}
-}
-
-func (h *BookingHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
-		return
-	}
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-
-	var req models.UpdateBookingRequest
+	var req models.CreateIndividualBookingRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	booking, err := h.service.Update(id, orgID, &req)
+	booking, err := h.service.CreateIndividual(orgID, branchID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, booking)
+}
+
+// CreateFromRequest handles POST /api/v1/booking-requests/{request_id}/materialise
+func (h *BookingHandler) CreateFromRequest(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	branchID := middleware.GetBranchIDFromContext(r.Context())
+
+	requestID, err := uuid.Parse(r.PathValue("request_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request ID")
+		return
+	}
+
+	var matReq models.MaterialiseRequest
+	if err := utils.DecodeJson(r, &matReq); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	booking, err := h.service.CreateFromRequest(orgID, branchID, requestID, &matReq)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, booking)
+}
+
+// ─── List & get ───────────────────────────────────────────────────────────────
+
+// List handles GET /api/v1/bookings
+func (h *BookingHandler) List(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	p := utils.ParsePagination(r)
+	bookerType := r.URL.Query().Get("booker_type")
+	bookingType := r.URL.Query().Get("booking_type")
+	status := r.URL.Query().Get("status")
+
+	bookings, total, err := h.service.List(orgID, bookerType, bookingType, status, p.Page, p.PageSize)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
+		Data:     bookings,
+		Page:     p.Page,
+		PageSize: p.PageSize,
+		Total:    total,
+	})
+}
+
+// GetByID handles GET /api/v1/bookings/{id}
+func (h *BookingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+
+	booking, err := h.service.GetByID(id, orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	utils.RespondJSON(w, http.StatusOK, booking)
 }
 
+// ─── Status ───────────────────────────────────────────────────────────────────
+
+// UpdateStatus handles PUT /api/v1/bookings/{id}/status
 func (h *BookingHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
 		return
 	}
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
 	var req models.UpdateBookingStatusRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
@@ -159,43 +126,295 @@ func (h *BookingHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	booking, err := h.service.UpdateStatus(id, orgID, req.Status)
-	if err != nil {
+	if err := h.service.UpdateStatus(id, orgID, req.Status); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusOK, booking)
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Status updated"})
 }
 
-func (h *BookingHandler) ClearOverstayed(w http.ResponseWriter, r *http.Request) {
+// CheckIn handles PUT /api/v1/bookings/{id}/checkin
+func (h *BookingHandler) CheckIn(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
 		return
 	}
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.ClearOverstayed(id, orgID); err != nil {
+	if err := h.service.CheckIn(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Overstayed flag cleared"})
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Checked in"})
 }
 
-func (h *BookingHandler) Delete(w http.ResponseWriter, r *http.Request) {
+// CheckOut handles PUT /api/v1/bookings/{id}/checkout
+func (h *BookingHandler) CheckOut(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
 		return
 	}
-	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.Delete(id, orgID); err != nil {
+	if err := h.service.CheckOut(id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Booking deleted successfully"})
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Checked out"})
+}
+
+// Cancel handles DELETE /api/v1/bookings/{id}
+func (h *BookingHandler) Cancel(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+
+	if err := h.service.Cancel(id, orgID); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Booking cancelled"})
+}
+
+// ─── Room assignments ─────────────────────────────────────────────────────────
+
+// AssignRoom handles POST /api/v1/bookings/{id}/assignments
+func (h *BookingHandler) AssignRoom(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+
+	var req models.CreateRoomAssignmentRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	assignment, err := h.service.AssignRoom(id, orgID, &req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, assignment)
+}
+
+// ListAssignments handles GET /api/v1/bookings/{id}/assignments
+func (h *BookingHandler) ListAssignments(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+
+	assignments, err := h.service.ListAssignments(id, orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, assignments)
+}
+
+// UpdateAssignment handles PUT /api/v1/bookings/{id}/assignments/{assign_id}
+func (h *BookingHandler) UpdateAssignment(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+	assignID, err := uuid.Parse(r.PathValue("assign_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid assignment ID")
+		return
+	}
+
+	var req models.UpdateRoomAssignmentRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	assignment, err := h.service.UpdateAssignment(id, orgID, assignID, &req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, assignment)
+}
+
+// RemoveAssignment handles DELETE /api/v1/bookings/{id}/assignments/{assign_id}
+func (h *BookingHandler) RemoveAssignment(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+	assignID, err := uuid.Parse(r.PathValue("assign_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid assignment ID")
+		return
+	}
+
+	if err := h.service.RemoveAssignment(id, orgID, assignID); err != nil {
+		utils.RespondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Assignment removed"})
+}
+
+// CheckInAssignment handles PUT /api/v1/bookings/{id}/assignments/{assign_id}/checkin
+func (h *BookingHandler) CheckInAssignment(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+	assignID, err := uuid.Parse(r.PathValue("assign_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid assignment ID")
+		return
+	}
+
+	if err := h.service.CheckInAssignment(id, orgID, assignID); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Room checked in"})
+}
+
+// CheckOutAssignment handles PUT /api/v1/bookings/{id}/assignments/{assign_id}/checkout
+func (h *BookingHandler) CheckOutAssignment(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+	assignID, err := uuid.Parse(r.PathValue("assign_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid assignment ID")
+		return
+	}
+
+	if err := h.service.CheckOutAssignment(id, orgID, assignID); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Room checked out"})
+}
+
+// ─── Attendees ────────────────────────────────────────────────────────────────
+
+// ListAttendees handles GET /api/v1/bookings/{id}/attendees
+func (h *BookingHandler) ListAttendees(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+
+	attendees, err := h.service.ListAttendees(id, orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, attendees)
+}
+
+// AddAttendee handles POST /api/v1/bookings/{id}/attendees
+func (h *BookingHandler) AddAttendee(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+
+	var req models.CreateAttendeeRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	attendee, err := h.service.AddAttendee(id, orgID, &req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, attendee)
+}
+
+// UpdateAttendee handles PUT /api/v1/bookings/{id}/attendees/{attendee_id}
+func (h *BookingHandler) UpdateAttendee(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+	attendeeID, err := uuid.Parse(r.PathValue("attendee_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid attendee ID")
+		return
+	}
+
+	var req models.UpdateAttendeeRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	attendee, err := h.service.UpdateAttendee(id, orgID, attendeeID, &req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, attendee)
+}
+
+// RemoveAttendee handles DELETE /api/v1/bookings/{id}/attendees/{attendee_id}
+func (h *BookingHandler) RemoveAttendee(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
+		return
+	}
+	attendeeID, err := uuid.Parse(r.PathValue("attendee_id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid attendee ID")
+		return
+	}
+
+	if err := h.service.RemoveAttendee(id, orgID, attendeeID); err != nil {
+		utils.RespondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Attendee removed"})
 }

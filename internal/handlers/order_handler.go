@@ -6,6 +6,7 @@ import (
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
+	"lodge-system/internal/repository"
 	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
@@ -74,6 +75,19 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		PageSize: pag.PageSize,
 		Total:    total,
 	})
+}
+
+func (h *OrderHandler) ListInHouseGuests(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	guests, err := h.service.ListCheckedInGuests(orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if guests == nil {
+		guests = []repository.InHouseGuest{}
+	}
+	utils.RespondJSON(w, http.StatusOK, guests)
 }
 
 func (h *OrderHandler) GetByID(w http.ResponseWriter, r *http.Request) {

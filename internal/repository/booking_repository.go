@@ -24,107 +24,64 @@ func (r *BookingRepository) Begin() (*sql.Tx, error) {
 	return r.db.Begin()
 }
 
-func (r *BookingRepository) Create(b *models.Booking, orgID uuid.UUID) error {
-	b.ID = uuid.New()
-	now := time.Now()
-	b.CreatedAt = now
-	b.UpdatedAt = now
-	_, err := r.db.Exec(`
-		INSERT INTO bookings
-		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, branch_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-		b.ID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
-		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
-		orgID, b.BranchID, b.CreatedAt, b.UpdatedAt,
-	)
-	return err
-}
-
-// CreateInTx inserts a booking within an existing transaction.
-func (r *BookingRepository) CreateInTx(tx *sql.Tx, b *models.Booking, orgID uuid.UUID) error {
+func (r *BookingRepository) Create(tx *sql.Tx, b *models.Booking) error {
 	b.ID = uuid.New()
 	now := time.Now()
 	b.CreatedAt = now
 	b.UpdatedAt = now
 
 	return tx.QueryRow(`
-		INSERT INTO bookings
-		    (id, room_id, client_id, client_type, corporate_client_id, check_in, check_out, guests, status, special_requests, org_id, branch_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-		RETURNING booking_number`,
-		b.ID, b.RoomID, b.ClientID, b.ClientType, b.CorporateClientID,
-		b.CheckIn, b.CheckOut, b.Guests, b.Status, b.SpecialRequests,
-		orgID, b.BranchID, now, now,
+		INSERT INTO bookings (
+			id, org_id, branch_id,
+			booking_type, booker_type,
+			booker_name, booker_email, booker_phone,
+			web_user_id, cor_profile_id, company_id, request_id, venue_id,
+			total_amount, status, special_requests, overstayed,
+			created_at, updated_at
+		) VALUES (
+			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
+		) RETURNING booking_number`,
+		b.ID, b.OrgID, b.BranchID,
+		b.BookingType, b.BookerType,
+		b.BookerName, b.BookerEmail, b.BookerPhone,
+		b.WebUserID, b.CorProfileID, b.CompanyID, b.RequestID, b.VenueID,
+		b.TotalAmount, b.Status, b.SpecialRequests, b.Overstayed,
+		now, now,
 	).Scan(&b.BookingNumber)
 }
 
-// GetByIDUnscoped fetches a booking by ID with no org filter — use only in guest/review flows
-// where the caller has already verified ownership via client_id.
-func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {
+func (r *BookingRepository) GetByID(id, orgID uuid.UUID) (*models.Booking, error) {
 	row := r.db.QueryRow(`
-		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
-		       b.org_id, o.name AS org_name, b.branch_id,
-		       b.client_id, b.client_type,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
-		       b.corporate_client_id, corp.company_name AS corporate_client_name,
-		       b.check_in, b.check_out, b.guests,
-		       GREATEST(b.check_out - b.check_in, 1) AS nights,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.overstayed, b.special_requests,
+		SELECT b.id, b.booking_number, b.org_id, b.branch_id,
+		       b.booking_type, b.booker_type,
+		       b.booker_name, b.booker_email, b.booker_phone,
+		       b.web_user_id, b.cor_profile_id, b.company_id, b.request_id, b.venue_id,
+		       COALESCE(cd.company_name, '')      AS company_name,
+		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
+		       COALESCE(v.name, '')               AS venue_name,
+		       b.total_amount, b.status, b.special_requests, b.overstayed,
 		       b.created_at, b.updated_at
 		FROM bookings b
-		JOIN rooms                    r    ON r.id = b.room_id
-		LEFT JOIN organizations       o    ON o.id = b.org_id
-		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
-		WHERE b.id = $1`, id)
-	return scanBooking(row)
-}
-
-func (r *BookingRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Booking, error) {
-	row := r.db.QueryRow(`
-		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
-		       b.org_id, o.name AS org_name, b.branch_id,
-		       b.client_id, b.client_type,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
-		       b.corporate_client_id, corp.company_name AS corporate_client_name,
-		       b.check_in, b.check_out, b.guests,
-		       GREATEST(b.check_out - b.check_in, 1) AS nights,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.overstayed, b.special_requests,
-		       b.created_at, b.updated_at
-		FROM bookings b
-		JOIN rooms                    r    ON r.id = b.room_id
-		LEFT JOIN organizations       o    ON o.id = b.org_id
-		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
+		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
+		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
+		LEFT JOIN venues              v  ON v.id  = b.venue_id
 		WHERE b.id = $1 AND b.org_id = $2`, id, orgID)
 	return scanBooking(row)
 }
 
-func (r *BookingRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, clientID *uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
-	args := []interface{}{}
-	where := []string{}
-	i := 1
+func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, status string, page, pageSize int) ([]models.Booking, int, error) {
+	args := []interface{}{orgID}
+	where := []string{"b.org_id = $1"}
+	i := 2
 
-	if orgID != uuid.Nil {
-		where = append(where, fmt.Sprintf("b.org_id = $%d", i))
-		args = append(args, orgID)
+	if bookerType != "" {
+		where = append(where, fmt.Sprintf("b.booker_type = $%d", i))
+		args = append(args, bookerType)
 		i++
 	}
-	if branchID != nil {
-		where = append(where, fmt.Sprintf("b.branch_id = $%d", i))
-		args = append(args, *branchID)
+	if bookingType != "" {
+		where = append(where, fmt.Sprintf("b.booking_type = $%d", i))
+		args = append(args, bookingType)
 		i++
 	}
 	if status != "" {
@@ -132,21 +89,8 @@ func (r *BookingRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status, c
 		args = append(args, status)
 		i++
 	}
-	if clientType != "" {
-		where = append(where, fmt.Sprintf("b.client_type = $%d", i))
-		args = append(args, clientType)
-		i++
-	}
-	if clientID != nil {
-		where = append(where, fmt.Sprintf("b.client_id = $%d", i))
-		args = append(args, *clientID)
-		i++
-	}
 
-	whereStr := "b.id IS NOT NULL"
-	if len(where) > 0 {
-		whereStr = strings.Join(where, " AND ")
-	}
+	whereStr := strings.Join(where, " AND ")
 
 	var total int
 	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM bookings b WHERE %s`, whereStr), args...).Scan(&total); err != nil {
@@ -155,29 +99,137 @@ func (r *BookingRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status, c
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
-		       b.org_id, o.name AS org_name, b.branch_id,
-		       b.client_id, b.client_type,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
-		       b.corporate_client_id, corp.company_name AS corporate_client_name,
-		       b.check_in, b.check_out, b.guests,
-		       GREATEST(b.check_out - b.check_in, 1) AS nights,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.overstayed, b.special_requests,
-		       b.created_at, b.updated_at
+		SELECT b.id, b.booking_number, b.org_id, b.branch_id,
+		       b.booking_type, b.booker_type,
+		       b.booker_name, b.booker_email, b.booker_phone,
+		       b.web_user_id, b.cor_profile_id, b.company_id, b.request_id, b.venue_id,
+		       COALESCE(cd.company_name, '')      AS company_name,
+		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
+		       COALESCE(v.name, '')               AS venue_name,
+		       b.total_amount, b.status, b.special_requests, b.overstayed,
+		       b.created_at, b.updated_at,
+		       asg.id, asg.room_id, asg.check_in, asg.check_out, asg.status, COALESCE(r.name, '')
 		FROM bookings b
-		JOIN rooms                    r    ON r.id = b.room_id
-		LEFT JOIN organizations       o    ON o.id = b.org_id
-		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
+		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
+		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
+		LEFT JOIN venues              v  ON v.id  = b.venue_id
+		LEFT JOIN LATERAL (
+		    SELECT bra.id, bra.room_id, bra.check_in, bra.check_out, bra.status
+		    FROM booking_room_assignments bra
+		    WHERE bra.booking_id = b.id
+		    ORDER BY bra.check_in ASC LIMIT 1
+		) asg ON TRUE
+		LEFT JOIN rooms r ON r.id = asg.room_id
 		WHERE %s
 		ORDER BY b.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var bookings []models.Booking
+	for rows.Next() {
+		var b models.Booking
+		var branchID, webUserID, corProfileID, companyID, requestID, venueID uuid.NullUUID
+		var bookerEmail, bookerPhone, specialRequests sql.NullString
+		var companyName, profileName, venueName sql.NullString
+		// lead assignment columns (nullable — individual only)
+		var asgID uuid.NullUUID
+		var asgRoomID uuid.NullUUID
+		var asgCheckIn, asgCheckOut sql.NullTime
+		var asgStatus, asgRoomName sql.NullString
+
+		if err := rows.Scan(
+			&b.ID, &b.BookingNumber, &b.OrgID, &branchID,
+			&b.BookingType, &b.BookerType,
+			&b.BookerName, &bookerEmail, &bookerPhone,
+			&webUserID, &corProfileID, &companyID, &requestID, &venueID,
+			&companyName, &profileName, &venueName,
+			&b.TotalAmount, &b.Status, &specialRequests, &b.Overstayed,
+			&b.CreatedAt, &b.UpdatedAt,
+			&asgID, &asgRoomID, &asgCheckIn, &asgCheckOut, &asgStatus, &asgRoomName,
+		); err != nil {
+			return nil, 0, err
+		}
+		if branchID.Valid { b.BranchID = &branchID.UUID }
+		if webUserID.Valid { b.WebUserID = &webUserID.UUID }
+		if corProfileID.Valid { b.CorProfileID = &corProfileID.UUID }
+		if companyID.Valid { b.CompanyID = &companyID.UUID }
+		if requestID.Valid { b.RequestID = &requestID.UUID }
+		if venueID.Valid { b.VenueID = &venueID.UUID }
+		if bookerEmail.Valid { b.BookerEmail = bookerEmail.String }
+		if bookerPhone.Valid { b.BookerPhone = bookerPhone.String }
+		if specialRequests.Valid { b.SpecialRequests = specialRequests.String }
+		if companyName.Valid { b.CompanyName = companyName.String }
+		if profileName.Valid { b.ProfileName = profileName.String }
+		if venueName.Valid { b.VenueName = venueName.String }
+
+		if asgID.Valid {
+			nights := 0
+			if asgCheckIn.Valid && asgCheckOut.Valid {
+				nights = int(asgCheckOut.Time.Sub(asgCheckIn.Time).Hours() / 24)
+			}
+			a := models.BookingRoomAssignment{
+				ID:       asgID.UUID,
+				BookingID: b.ID,
+				Status:   asgStatus.String,
+				RoomName: asgRoomName.String,
+				Nights:   nights,
+			}
+			if asgRoomID.Valid { a.RoomID = asgRoomID.UUID }
+			if asgCheckIn.Valid { a.CheckIn = asgCheckIn.Time }
+			if asgCheckOut.Valid { a.CheckOut = asgCheckOut.Time }
+			b.Assignments = []models.BookingRoomAssignment{a}
+		}
+
+		bookings = append(bookings, b)
+	}
+	return bookings, total, rows.Err()
+}
+
+func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {
+	row := r.db.QueryRow(`
+		SELECT b.id, b.booking_number, b.org_id, b.branch_id,
+		       b.booking_type, b.booker_type,
+		       b.booker_name, b.booker_email, b.booker_phone,
+		       b.web_user_id, b.cor_profile_id, b.company_id, b.request_id, b.venue_id,
+		       COALESCE(cd.company_name, '')                   AS company_name,
+		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
+		       COALESCE(v.name, '')                            AS venue_name,
+		       b.total_amount, b.status, b.special_requests, b.overstayed,
+		       b.created_at, b.updated_at
+		FROM bookings b
+		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
+		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
+		LEFT JOIN venues              v  ON v.id  = b.venue_id
+		WHERE b.id = $1`, id)
+	return scanBooking(row)
+}
+
+func (r *BookingRepository) ListByWebUserID(webUserID uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+	var total int
+	if err := r.db.QueryRow(`SELECT COUNT(*) FROM bookings WHERE web_user_id = $1`, webUserID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := r.db.Query(`
+		SELECT b.id, b.booking_number, b.org_id, b.branch_id,
+		       b.booking_type, b.booker_type,
+		       b.booker_name, b.booker_email, b.booker_phone,
+		       b.web_user_id, b.cor_profile_id, b.company_id, b.request_id, b.venue_id,
+		       COALESCE(cd.company_name, '')                   AS company_name,
+		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
+		       COALESCE(v.name, '')                            AS venue_name,
+		       b.total_amount, b.status, b.special_requests, b.overstayed,
+		       b.created_at, b.updated_at
+		FROM bookings b
+		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
+		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
+		LEFT JOIN venues              v  ON v.id  = b.venue_id
+		WHERE b.web_user_id = $1
+		ORDER BY b.created_at DESC
+		LIMIT $2 OFFSET $3`, webUserID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -194,188 +246,53 @@ func (r *BookingRepository) List(orgID uuid.UUID, branchID *uuid.UUID, status, c
 	return bookings, total, rows.Err()
 }
 
-func (r *BookingRepository) ListByCorporateClientID(corporateClientID, orgID uuid.UUID) ([]models.Booking, error) {
-	rows, err := r.db.Query(`
-		SELECT b.id, b.booking_number, b.room_id, r.name AS room_name,
-		       b.org_id, o.name AS org_name, b.branch_id,
-		       b.client_id, b.client_type,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
-		       b.corporate_client_id, corp.company_name AS corporate_client_name,
-		       b.check_in, b.check_out, b.guests,
-		       GREATEST(b.check_out - b.check_in, 1) AS nights,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS room_cost,
-		       GREATEST(b.check_out - b.check_in, 1) * r.price_per_night AS total_amount,
-		       b.status, b.overstayed, b.special_requests,
-		       b.created_at, b.updated_at
-		FROM bookings b
-		JOIN rooms                    r    ON r.id = b.room_id
-		LEFT JOIN organizations       o    ON o.id = b.org_id
-		LEFT JOIN individual_profiles ip   ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp   ON b.client_type = 'corporate'  AND cp.id = b.client_id
-		LEFT JOIN corporate_profiles  corp ON corp.id = b.corporate_client_id
-		WHERE b.corporate_client_id = $1 AND b.org_id = $2
-		ORDER BY b.created_at DESC`, corporateClientID, orgID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var bookings []models.Booking
-	for rows.Next() {
-		b, err := scanBooking(rows)
-		if err != nil {
-			return nil, err
-		}
-		bookings = append(bookings, *b)
-	}
-	return bookings, rows.Err()
-}
-
-func (r *BookingRepository) Update(b *models.Booking, orgID uuid.UUID) error {
-	b.UpdatedAt = time.Now()
-	_, err := r.db.Exec(`
-		UPDATE bookings
-		SET check_in=$1, check_out=$2, guests=$3, special_requests=$4, updated_at=$5
-		WHERE id=$6 AND org_id=$7`,
-		b.CheckIn, b.CheckOut, b.Guests, b.SpecialRequests, b.UpdatedAt, b.ID, orgID,
-	)
+func (r *BookingRepository) UpdateStatus(tx *sql.Tx, id, orgID uuid.UUID, status string) error {
+	_, err := tx.Exec(`
+		UPDATE bookings SET status=$1, updated_at=$2 WHERE id=$3 AND org_id=$4`,
+		status, time.Now(), id, orgID)
 	return err
 }
 
-// UpdateStatusTx updates the booking status and the room's availability atomically.
-// confirmed  → room becomes unavailable
-// checked_out / cancelled → room becomes available again
-func (r *BookingRepository) UpdateStatusTx(id uuid.UUID, orgID uuid.UUID, newStatus string) error {
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
-
-	// Fetch current booking to get room_id, scoped to org
-	var roomID uuid.UUID
-	var currentStatus string
-	err = tx.QueryRow(`SELECT room_id, status FROM bookings WHERE id=$1 AND org_id=$2`, id, orgID).Scan(&roomID, &currentStatus)
-	if err != nil {
-		return fmt.Errorf("booking not found")
-	}
-
-	// Update booking status
-	_, err = tx.Exec(`UPDATE bookings SET status=$1, updated_at=$2 WHERE id=$3 AND org_id=$4`,
-		newStatus, time.Now(), id, orgID)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
+func (r *BookingRepository) UpdateTotalAmount(tx *sql.Tx, id, orgID uuid.UUID, amount float64) error {
+	_, err := tx.Exec(`
+		UPDATE bookings SET total_amount=$1, updated_at=$2 WHERE id=$3 AND org_id=$4`,
+		amount, time.Now(), id, orgID)
+	return err
 }
 
-func (r *BookingRepository) Delete(id uuid.UUID, orgID uuid.UUID) error {
-	res, err := r.db.Exec(`DELETE FROM bookings WHERE id=$1 AND org_id=$2`, id, orgID)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return fmt.Errorf("booking not found")
-	}
-	return nil
+func (r *BookingRepository) ExtendCheckout(id, orgID uuid.UUID, newDate time.Time) error {
+	_, err := r.db.Exec(`
+		UPDATE bookings SET updated_at=$1 WHERE id=$2 AND org_id=$3`,
+		time.Now(), id, orgID)
+	return err
 }
 
-// IsRoomAvailable returns true if the room has no active bookings (pending/confirmed/checked_in)
-// overlapping [checkIn, checkOut), optionally excluding a booking by ID (for updates).
-func (r *BookingRepository) IsRoomAvailable(roomID uuid.UUID, checkIn, checkOut time.Time, excludeID *uuid.UUID) (bool, error) {
-	args := []interface{}{roomID, checkOut, checkIn}
-	excludeClause := ""
-	if excludeID != nil {
-		args = append(args, *excludeID)
-		excludeClause = fmt.Sprintf(" AND id != $%d", len(args))
-	}
-
-	var count int
-	err := r.db.QueryRow(fmt.Sprintf(`
-		SELECT COUNT(*) FROM bookings
-		WHERE room_id = $1
-		  AND status IN ('pending', 'confirmed', 'checked_in')
-		  AND check_in  < $2
-		  AND check_out > $3%s`, excludeClause), args...).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count == 0, nil
+func (r *BookingRepository) MarkOverstayed(id, orgID uuid.UUID) error {
+	_, err := r.db.Exec(`
+		UPDATE bookings SET overstayed=TRUE, updated_at=$1 WHERE id=$2 AND org_id=$3`,
+		time.Now(), id, orgID)
+	return err
 }
 
-// HasActiveBookingForClient returns true if the client already has a pending/confirmed/checked_in
-// booking on the same room overlapping [checkIn, checkOut).
-func (r *BookingRepository) HasActiveBookingForClient(clientID, roomID uuid.UUID, checkIn, checkOut time.Time) (bool, error) {
-	var count int
-	err := r.db.QueryRow(`
-		SELECT COUNT(*) FROM bookings
-		WHERE client_id = $1
-		  AND room_id   = $2
-		  AND status IN ('pending', 'confirmed', 'checked_in')
-		  AND check_in  < $3
-		  AND check_out > $4`,
-		clientID, roomID, checkOut, checkIn).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
-// OverdueBookingRef carries all details the nightly job needs to extend and log an overstayed booking.
+// OverdueBookingRef carries details the nightly job needs to flag overstayed bookings.
 type OverdueBookingRef struct {
-	ID               uuid.UUID
-	OrgID            uuid.UUID
-	BookingNumber    string
-	RoomName         string
-	ClientName       string
+	ID            uuid.UUID
+	OrgID         uuid.UUID
+	BookingNumber string
+	BookerName    string
 	OriginalCheckOut time.Time
 }
 
-// MarkOverstayed sets overstayed=TRUE on a booking. Called only by the nightly job.
-func (r *BookingRepository) MarkOverstayed(id uuid.UUID, orgID uuid.UUID) error {
-	_, err := r.db.Exec(`
-		UPDATE bookings SET overstayed=TRUE, updated_at=$1 WHERE id=$2 AND org_id=$3`,
-		time.Now(), id, orgID,
-	)
-	return err
-}
-
-// ClearOverstayed sets overstayed=FALSE on a booking. Called when staff manually resolves the flag.
-func (r *BookingRepository) ClearOverstayed(id uuid.UUID, orgID uuid.UUID) error {
-	_, err := r.db.Exec(`
-		UPDATE bookings SET overstayed=FALSE, updated_at=$1 WHERE id=$2 AND org_id=$3`,
-		time.Now(), id, orgID,
-	)
-	return err
-}
-
-// FindOverdueCheckouts returns all checked_in bookings whose check_out date is before today,
-// scoped to the provided org IDs (orgs that have auto_extend_checkout enabled).
 func (r *BookingRepository) FindOverdueCheckouts(orgIDs []uuid.UUID) ([]OverdueBookingRef, error) {
 	rows, err := r.db.Query(`
-		SELECT b.id, b.org_id, b.booking_number,
-		       r.name AS room_name,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
-		       b.check_out
+		SELECT b.id, b.org_id, b.booking_number, b.booker_name,
+		       MAX(a.check_out) AS latest_checkout
 		FROM bookings b
-		JOIN rooms r ON r.id = b.room_id
-		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		JOIN booking_room_assignments a ON a.booking_id = b.id
 		WHERE b.status = 'checked_in'
-		  AND b.check_out < CURRENT_DATE
-		  AND b.org_id = ANY($1)`, orgIDs)
+		  AND a.check_out < CURRENT_DATE
+		  AND b.org_id = ANY($1)
+		GROUP BY b.id, b.org_id, b.booking_number, b.booker_name`, orgIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -384,26 +301,12 @@ func (r *BookingRepository) FindOverdueCheckouts(orgIDs []uuid.UUID) ([]OverdueB
 	var refs []OverdueBookingRef
 	for rows.Next() {
 		var ref OverdueBookingRef
-		var clientName sql.NullString
-		if err := rows.Scan(&ref.ID, &ref.OrgID, &ref.BookingNumber, &ref.RoomName, &clientName, &ref.OriginalCheckOut); err != nil {
+		if err := rows.Scan(&ref.ID, &ref.OrgID, &ref.BookingNumber, &ref.BookerName, &ref.OriginalCheckOut); err != nil {
 			return nil, err
-		}
-		if clientName.Valid {
-			ref.ClientName = clientName.String
 		}
 		refs = append(refs, ref)
 	}
 	return refs, rows.Err()
-}
-
-// ExtendCheckout updates a booking's check_out to newDate.
-// Used by the nightly job to roll forward overdue guests to today.
-func (r *BookingRepository) ExtendCheckout(id uuid.UUID, orgID uuid.UUID, newDate time.Time) error {
-	_, err := r.db.Exec(`
-		UPDATE bookings SET check_out=$1, updated_at=$2 WHERE id=$3 AND org_id=$4`,
-		newDate, time.Now(), id, orgID,
-	)
-	return err
 }
 
 type bookingScanner interface {
@@ -412,42 +315,57 @@ type bookingScanner interface {
 
 func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var b models.Booking
-	var roomName, orgName, clientName, corporateClientName, specialRequests sql.NullString
-	var branchID uuid.NullUUID
-	var corporateClientID uuid.NullUUID
+	var branchID, webUserID, corProfileID, companyID, requestID, venueID uuid.NullUUID
+	var bookerEmail, bookerPhone, specialRequests sql.NullString
+	var companyName, profileName, venueName sql.NullString
+
 	err := row.Scan(
-		&b.ID, &b.BookingNumber, &b.RoomID, &roomName,
-		&b.OrgID, &orgName, &branchID,
-		&b.ClientID, &b.ClientType, &clientName,
-		&corporateClientID, &corporateClientName,
-		&b.CheckIn, &b.CheckOut, &b.Guests,
-		&b.Nights, &b.RoomCost, &b.TotalAmount,
-		&b.Status, &b.Overstayed, &specialRequests,
+		&b.ID, &b.BookingNumber, &b.OrgID, &branchID,
+		&b.BookingType, &b.BookerType,
+		&b.BookerName, &bookerEmail, &bookerPhone,
+		&webUserID, &corProfileID, &companyID, &requestID, &venueID,
+		&companyName, &profileName, &venueName,
+		&b.TotalAmount, &b.Status, &specialRequests, &b.Overstayed,
 		&b.CreatedAt, &b.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
-	if roomName.Valid {
-		b.RoomName = roomName.String
-	}
-	if orgName.Valid {
-		b.OrgName = orgName.String
-	}
 	if branchID.Valid {
 		b.BranchID = &branchID.UUID
 	}
-	if clientName.Valid {
-		b.ClientName = clientName.String
+	if webUserID.Valid {
+		b.WebUserID = &webUserID.UUID
 	}
-	if corporateClientID.Valid {
-		b.CorporateClientID = &corporateClientID.UUID
+	if corProfileID.Valid {
+		b.CorProfileID = &corProfileID.UUID
 	}
-	if corporateClientName.Valid {
-		b.CorporateClientName = corporateClientName.String
+	if companyID.Valid {
+		b.CompanyID = &companyID.UUID
+	}
+	if requestID.Valid {
+		b.RequestID = &requestID.UUID
+	}
+	if venueID.Valid {
+		b.VenueID = &venueID.UUID
+	}
+	if bookerEmail.Valid {
+		b.BookerEmail = bookerEmail.String
+	}
+	if bookerPhone.Valid {
+		b.BookerPhone = bookerPhone.String
 	}
 	if specialRequests.Valid {
 		b.SpecialRequests = specialRequests.String
+	}
+	if companyName.Valid {
+		b.CompanyName = companyName.String
+	}
+	if profileName.Valid {
+		b.ProfileName = profileName.String
+	}
+	if venueName.Valid {
+		b.VenueName = venueName.String
 	}
 	return &b, nil
 }

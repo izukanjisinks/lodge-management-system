@@ -45,9 +45,10 @@ func (s *OrderService) PlaceOrder(orgID uuid.UUID, req *models.PlaceOrderRequest
 	}
 
 	o := &models.Order{
-		BookingID: &req.BookingID,
-		Type:      models.OrderTypeInHouse,
-		Notes:     req.Notes,
+		BookingID:  &req.BookingID,
+		AttendeeID: req.AttendeeID,
+		Type:       models.OrderTypeInHouse,
+		Notes:      req.Notes,
 	}
 	order, err := s.repo.Create(o, req.Items, orgID)
 	if err != nil {
@@ -139,6 +140,10 @@ func (s *OrderService) writeOrdersClosedAuditLog(orgID uuid.UUID, count int64) {
 	}
 }
 
+func (s *OrderService) ListCheckedInGuests(orgID uuid.UUID) ([]repository.InHouseGuest, error) {
+	return s.repo.ListCheckedInGuests(orgID)
+}
+
 func (s *OrderService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, error) {
 	o, err := s.repo.GetByID(id, orgID)
 	if err != nil {
@@ -152,7 +157,7 @@ func (s *OrderService) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, sta
 }
 
 // appendToInvoice writes one invoice line item per order item onto the booking's invoice.
-// For corporate guest bookings it targets the consolidated corporate invoice instead.
+// For corporate bookings the description is prefixed with the booker name.
 // Non-fatal — logs on failure so the order itself is never rolled back.
 func (s *OrderService) appendToInvoice(order *models.Order, orgID uuid.UUID, items []models.OrderItem) {
 	if order.BookingID == nil || len(items) == 0 {
@@ -165,23 +170,23 @@ func (s *OrderService) appendToInvoice(order *models.Order, orgID uuid.UUID, ite
 	}
 
 	var inv *models.Invoice
-	if b.CorporateClientID != nil {
-		inv, err = s.invoice.GetByCorporateClientID(*b.CorporateClientID, orgID)
-	} else {
-		inv, err = s.invoice.GetByBookingID(*order.BookingID, orgID)
-	}
+	inv, err = s.invoice.GetByBookingID(*order.BookingID, orgID)
 	if err != nil {
 		return
 	}
 
 	orderID := order.ID
 	bookingID := *order.BookingID
-	isCorporateGuest := b.CorporateClientID != nil
+	isCorporate := b.BookerType == models.BookerTypeCorporate
+	guestLabel := b.BookerName
+	if order.AttendeeName != "" {
+		guestLabel = order.AttendeeName
+	}
 	for _, item := range items {
 		itemID := item.ID
 		var description string
-		if isCorporateGuest {
-			description = fmt.Sprintf("%s — %s × %d", b.ClientName, item.ItemName, item.Quantity)
+		if isCorporate {
+			description = fmt.Sprintf("%s — %s × %d", guestLabel, item.ItemName, item.Quantity)
 		} else {
 			description = fmt.Sprintf("%s × %d", item.ItemName, item.Quantity)
 		}

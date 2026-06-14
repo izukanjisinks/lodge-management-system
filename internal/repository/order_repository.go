@@ -40,10 +40,10 @@ func (r *OrderRepository) Create(o *models.Order, items []models.PlaceOrderItemR
 	}()
 
 	err = tx.QueryRow(`
-		INSERT INTO orders (id, org_id, booking_id, type, status, notes, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		INSERT INTO orders (id, org_id, booking_id, attendee_id, type, status, notes, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		RETURNING order_number`,
-		o.ID, orgID, o.BookingID, o.Type, models.OrderStatusOpen, o.Notes, now, now,
+		o.ID, orgID, o.BookingID, o.AttendeeID, o.Type, models.OrderStatusOpen, o.Notes, now, now,
 	).Scan(&o.OrderNumber)
 	if err != nil {
 		return nil, err
@@ -74,32 +74,40 @@ func (r *OrderRepository) Create(o *models.Order, items []models.PlaceOrderItemR
 
 func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, error) {
 	var o models.Order
-	var bookingID uuid.NullUUID
-	var notes, bookingNumber, roomName, clientName sql.NullString
+	var bookingID, attendeeID uuid.NullUUID
+	var notes, bookingNumber, roomName, clientName, companyName, attendeeName sql.NullString
 
 	err := r.db.QueryRow(`
-		SELECT o.id, o.org_id, o.booking_id, o.order_number, o.type, o.status, o.notes,
+		SELECT o.id, o.org_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
-		       r.name AS room_name,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
+		       asg.room_name,
+		       COALESCE(NULLIF(att.full_name, ''), NULLIF(cd.company_name, ''), b.booker_name) AS client_name,
+		       cd.company_name,
+		       att.full_name AS attendee_name,
 		       o.created_at, o.updated_at
 		FROM orders o
-		LEFT JOIN bookings            b  ON b.id = o.booking_id
-		LEFT JOIN rooms               r  ON r.id = b.room_id
-		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN bookings            b   ON b.id = o.booking_id
+		LEFT JOIN cor_company_details cd  ON cd.id = b.company_id
+		LEFT JOIN booking_attendees   att ON att.id = o.attendee_id
+		LEFT JOIN LATERAL (
+		    SELECT ro.name AS room_name
+		    FROM booking_room_assignments bra
+		    JOIN rooms ro ON ro.id = bra.room_id
+		    WHERE bra.booking_id = b.id
+		    ORDER BY bra.check_in ASC LIMIT 1
+		) asg ON TRUE
 		WHERE o.id=$1 AND o.org_id=$2`, id, orgID).
-		Scan(&o.ID, &o.OrgID, &bookingID, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
-			&bookingNumber, &roomName, &clientName, &o.CreatedAt, &o.UpdatedAt)
+		Scan(&o.ID, &o.OrgID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
+			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	if bookingID.Valid {
 		o.BookingID = &bookingID.UUID
+	}
+	if attendeeID.Valid {
+		o.AttendeeID = &attendeeID.UUID
 	}
 	if notes.Valid {
 		o.Notes = notes.String
@@ -112,6 +120,12 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	}
 	if clientName.Valid {
 		o.ClientName = clientName.String
+	}
+	if companyName.Valid {
+		o.CompanyName = companyName.String
+	}
+	if attendeeName.Valid {
+		o.AttendeeName = attendeeName.String
 	}
 	o.Items, err = r.fetchItems(id)
 	if err != nil {
@@ -168,20 +182,25 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT o.id, o.org_id, o.booking_id, o.order_number, o.type, o.status, o.notes,
+		SELECT o.id, o.org_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
-		       r.name AS room_name,
-		       CASE b.client_type
-		           WHEN 'individual' THEN ip.full_name
-		           WHEN 'corporate'  THEN cp.company_name
-		       END AS client_name,
+		       asg.room_name,
+		       COALESCE(NULLIF(att.full_name, ''), NULLIF(cd.company_name, ''), b.booker_name) AS client_name,
+		       cd.company_name,
+		       att.full_name AS attendee_name,
 		       o.created_at, o.updated_at
 		FROM orders o
-		LEFT JOIN bookings            b  ON b.id = o.booking_id
-		LEFT JOIN rooms               r  ON r.id = b.room_id
-		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN bookings            b   ON b.id = o.booking_id
+		LEFT JOIN cor_company_details cd  ON cd.id = b.company_id
+		LEFT JOIN booking_attendees   att ON att.id = o.attendee_id
+		LEFT JOIN LATERAL (
+		    SELECT ro.name AS room_name
+		    FROM booking_room_assignments bra
+		    JOIN rooms ro ON ro.id = bra.room_id
+		    WHERE bra.booking_id = b.id
+		    ORDER BY bra.check_in ASC LIMIT 1
+		) asg ON TRUE
 		WHERE o.org_id = $1%s
 		ORDER BY o.created_at DESC
 		LIMIT $%d OFFSET $%d`, extraWhere, i, i+1), append(args, pageSize, (page-1)*pageSize)...)
@@ -194,14 +213,17 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 	var orders []models.Order
 	for rows.Next() {
 		var o models.Order
-		var bid uuid.NullUUID
-		var notes, bookingNumber, roomName, clientName sql.NullString
-		if err := rows.Scan(&o.ID, &o.OrgID, &bid, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
-			&bookingNumber, &roomName, &clientName, &o.CreatedAt, &o.UpdatedAt); err != nil {
+		var bid, aid uuid.NullUUID
+		var notes, bookingNumber, roomName, clientName, companyName, attendeeName sql.NullString
+		if err := rows.Scan(&o.ID, &o.OrgID, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
+			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		if bid.Valid {
 			o.BookingID = &bid.UUID
+		}
+		if aid.Valid {
+			o.AttendeeID = &aid.UUID
 		}
 		if notes.Valid {
 			o.Notes = notes.String
@@ -215,9 +237,66 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		if clientName.Valid {
 			o.ClientName = clientName.String
 		}
+		if companyName.Valid {
+			o.CompanyName = companyName.String
+		}
+		if attendeeName.Valid {
+			o.AttendeeName = attendeeName.String
+		}
 		orders = append(orders, o)
 	}
 	return orders, total, rows.Err()
+}
+
+// InHouseGuest is a flat projection of a checked-in room assignment with enough
+// context for the order picker: one row per guest, individual or corporate.
+type InHouseGuest struct {
+	BookingID     uuid.UUID
+	BookingNumber string
+	AttendeeID    *uuid.UUID
+	GuestName     string
+	RoomName      string
+	CompanyName   string
+}
+
+// ListCheckedInGuests returns one row per checked-in room assignment across all
+// active bookings for the org. Individual bookings produce one row (booker_name);
+// corporate bookings produce one row per delegate (attendee full_name).
+func (r *OrderRepository) ListCheckedInGuests(orgID uuid.UUID) ([]InHouseGuest, error) {
+	rows, err := r.db.Query(`
+		SELECT
+		    b.id                                                           AS booking_id,
+		    b.booking_number,
+		    att.id                                                         AS attendee_id,
+		    COALESCE(att.full_name, b.booker_name)                        AS guest_name,
+		    COALESCE(ro.name, '')                                          AS room_name,
+		    COALESCE(NULLIF(cd.company_name, ''), '')                     AS company_name
+		FROM booking_room_assignments bra
+		JOIN bookings            b   ON b.id  = bra.booking_id
+		JOIN rooms               ro  ON ro.id = bra.room_id
+		LEFT JOIN booking_attendees  att ON att.id = bra.attendee_id
+		LEFT JOIN cor_company_details cd ON cd.id  = b.company_id
+		WHERE b.org_id = $1
+		  AND bra.status = 'checked_in'
+		ORDER BY b.booking_number, ro.name`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var guests []InHouseGuest
+	for rows.Next() {
+		var g InHouseGuest
+		var aid uuid.NullUUID
+		if err := rows.Scan(&g.BookingID, &g.BookingNumber, &aid, &g.GuestName, &g.RoomName, &g.CompanyName); err != nil {
+			return nil, err
+		}
+		if aid.Valid {
+			g.AttendeeID = &aid.UUID
+		}
+		guests = append(guests, g)
+	}
+	return guests, rows.Err()
 }
 
 // AddItems appends more items to an existing order, snapshotting prices at the time of addition.

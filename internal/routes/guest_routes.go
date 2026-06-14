@@ -8,7 +8,6 @@ import (
 
 func RegisterGuestRoutes(
 	guestAuthHandler *handlers.GuestAuthHandler,
-	guestBookingHandler *handlers.GuestBookingHandler,
 	roomHandler *handlers.RoomHandler,
 	menuHandler *handlers.MenuHandler,
 	mealPlanHandler *handlers.MealPlanHandler,
@@ -29,11 +28,4 @@ func RegisterGuestRoutes(
 	// Authenticated guest — profile
 	http.HandleFunc("GET /api/v1/guest/me", withGuestAuth(guestAuthHandler.Me))
 	http.HandleFunc("PUT /api/v1/guest/me", withGuestAuth(guestAuthHandler.UpdateProfile))
-
-	// Authenticated guest — bookings
-	http.HandleFunc("POST /api/v1/guest/bookings", withGuestAuth(guestBookingHandler.Create))
-	http.HandleFunc("POST /api/v1/guest/bookings/corporate", withGuestAuth(guestBookingHandler.CreateCorporate))
-	http.HandleFunc("GET /api/v1/guest/bookings", withGuestAuth(guestBookingHandler.List))
-	http.HandleFunc("GET /api/v1/guest/bookings/{id}", withGuestAuth(guestBookingHandler.GetByID))
-	http.HandleFunc("PATCH /api/v1/guest/bookings/{id}/cancel", withGuestAuth(guestBookingHandler.Cancel))
 }

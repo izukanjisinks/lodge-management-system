@@ -25,16 +25,23 @@ func (r *DashboardRepository) StatCards(orgID uuid.UUID, branchID *uuid.UUID) (m
 
 	query := `
 		SELECT
-		    COUNT(*) FILTER (WHERE status = 'pending') AS new_bookings_this_month,
-		    COUNT(*) FILTER (WHERE check_in::date = $1::date AND status IN ('confirmed','checked_in')) AS checkins_today,
-		    COUNT(*) FILTER (WHERE check_out::date = $1::date AND status = 'checked_in') AS checkouts_today
-		FROM bookings
-		WHERE org_id = $2`
+		    (SELECT COUNT(*) FROM bookings b
+		        WHERE b.org_id = $2 AND b.status = 'pending'%[1]s) AS new_bookings_this_month,
+		    (SELECT COUNT(*) FROM booking_room_assignments bra
+		        JOIN bookings b ON b.id = bra.booking_id
+		        WHERE b.org_id = $2 AND bra.check_in::date = $1::date
+		          AND bra.status IN ('confirmed','checked_in')%[1]s) AS checkins_today,
+		    (SELECT COUNT(*) FROM booking_room_assignments bra
+		        JOIN bookings b ON b.id = bra.booking_id
+		        WHERE b.org_id = $2 AND bra.check_out::date = $1::date
+		          AND bra.status = 'checked_in'%[1]s) AS checkouts_today`
 	args := []interface{}{today, orgID}
+	branchFilter := ""
 	if branchID != nil {
 		args = append(args, *branchID)
-		query += fmt.Sprintf(" AND branch_id = $%d", len(args))
+		branchFilter = fmt.Sprintf(" AND b.branch_id = $%d", len(args))
 	}
+	query = fmt.Sprintf(query, branchFilter)
 	err := r.db.QueryRow(query, args...).Scan(&s.NewBookingsThisMonth, &s.CheckInsToday, &s.CheckOutsToday)
 	return s, err
 }
@@ -44,20 +51,20 @@ func (r *DashboardRepository) RoomSummary(orgID uuid.UUID, branchID *uuid.UUID) 
 	query := `
 		SELECT
 		    COUNT(*) FILTER (WHERE EXISTS (
-		        SELECT 1 FROM bookings b
-		        WHERE b.room_id = r.id AND b.status = 'checked_in'
+		        SELECT 1 FROM booking_room_assignments bra
+		        WHERE bra.room_id = r.id AND bra.status = 'checked_in'
 		    )) AS occupied,
 		    COUNT(*) FILTER (WHERE EXISTS (
-		        SELECT 1 FROM bookings b
-		        WHERE b.room_id = r.id AND b.status = 'confirmed'
+		        SELECT 1 FROM booking_room_assignments bra
+		        WHERE bra.room_id = r.id AND bra.status = 'confirmed'
 		    )) AS reserved,
 		    COUNT(*) FILTER (WHERE r.is_available = TRUE AND NOT EXISTS (
-		        SELECT 1 FROM bookings b
-		        WHERE b.room_id = r.id AND b.status IN ('confirmed','checked_in')
+		        SELECT 1 FROM booking_room_assignments bra
+		        WHERE bra.room_id = r.id AND bra.status IN ('confirmed','checked_in')
 		    )) AS available,
 		    COUNT(*) FILTER (WHERE r.is_available = FALSE AND NOT EXISTS (
-		        SELECT 1 FROM bookings b
-		        WHERE b.room_id = r.id AND b.status IN ('confirmed','checked_in')
+		        SELECT 1 FROM booking_room_assignments bra
+		        WHERE bra.room_id = r.id AND bra.status IN ('confirmed','checked_in')
 		    )) AS not_ready
 		FROM rooms r
 		WHERE r.org_id = $1`
@@ -156,19 +163,21 @@ func (r *DashboardRepository) RecentBookings(orgID uuid.UUID, branchID *uuid.UUI
 		SELECT
 		    b.id,
 		    b.booking_number,
-		    CASE b.client_type
-		        WHEN 'individual' THEN ip.full_name
-		        WHEN 'corporate'  THEN cp.company_name
-		    END AS client_name,
-		    r.name  AS room_name,
-		    r.type  AS room_type,
-		    TO_CHAR(b.check_in,  'Mon DD, YYYY') AS check_in,
-		    TO_CHAR(b.check_out, 'Mon DD, YYYY') AS check_out,
+		    b.booker_name AS client_name,
+		    COALESCE(r.name, '') AS room_name,
+		    COALESCE(r.type::text, '')  AS room_type,
+		    COALESCE(TO_CHAR(asg.check_in,  'Mon DD, YYYY'), '') AS check_in,
+		    COALESCE(TO_CHAR(asg.check_out, 'Mon DD, YYYY'), '') AS check_out,
 		    b.status
 		FROM bookings b
-		JOIN rooms r                  ON r.id = b.room_id
-		LEFT JOIN individual_profiles ip ON b.client_type = 'individual' AND ip.id = b.client_id
-		LEFT JOIN corporate_profiles  cp ON b.client_type = 'corporate'  AND cp.id = b.client_id
+		LEFT JOIN LATERAL (
+		    SELECT bra.room_id, bra.check_in, bra.check_out
+		    FROM booking_room_assignments bra
+		    WHERE bra.booking_id = b.id
+		    ORDER BY bra.check_in ASC
+		    LIMIT 1
+		) asg ON TRUE
+		LEFT JOIN rooms r ON r.id = asg.room_id
 		WHERE b.org_id = $1%s
 		ORDER BY b.created_at DESC
 		LIMIT $2`, branchFilter)

@@ -1,0 +1,231 @@
+package services
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"lodge-system/internal/models"
+	"lodge-system/internal/repository"
+
+	"github.com/google/uuid"
+)
+
+type IndividualBookingRequestService struct {
+	requestRepo    *repository.IndividualBookingRequestRepository
+	roomRepo       *repository.RoomRepository
+	bookingService *BookingService
+	workflow       *WorkflowService
+}
+
+func NewIndividualBookingRequestService(
+	requestRepo *repository.IndividualBookingRequestRepository,
+	roomRepo *repository.RoomRepository,
+	bookingService *BookingService,
+) *IndividualBookingRequestService {
+	return &IndividualBookingRequestService{
+		requestRepo:    requestRepo,
+		roomRepo:       roomRepo,
+		bookingService: bookingService,
+	}
+}
+
+func (s *IndividualBookingRequestService) SetWorkflowService(svc *WorkflowService) {
+	s.workflow = svc
+}
+
+// ─── Submission ───────────────────────────────────────────────────────────────
+
+func (s *IndividualBookingRequestService) Submit(webUserID uuid.UUID, req *models.SubmitIndividualBookingRequest) (*models.IndividualBookingRequest, error) {
+	if req.BookerName == "" {
+		return nil, errors.New("booker_name is required")
+	}
+	if req.RoomID == uuid.Nil {
+		return nil, errors.New("room_id is required")
+	}
+	if req.CheckIn.IsZero() || req.CheckOut.IsZero() {
+		return nil, errors.New("check_in and check_out are required")
+	}
+	if !req.CheckOut.After(req.CheckIn.Time) {
+		return nil, errors.New("check_out must be after check_in")
+	}
+
+	// Resolve org from the room
+	room, err := s.roomRepo.GetByIDUnscoped(req.RoomID)
+	if err != nil {
+		return nil, errors.New("room not found")
+	}
+	orgID := uuid.Nil
+	if room.OrgID != nil {
+		orgID = *room.OrgID
+	}
+
+	payload := models.IndividualBookingPayload{
+		RoomID:          req.RoomID,
+		CheckIn:         req.CheckIn.Time.Format("2006-01-02"),
+		CheckOut:        req.CheckOut.Time.Format("2006-01-02"),
+		SpecialRequests: req.SpecialRequests,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	r := &models.IndividualBookingRequest{
+		OrgID:       orgID,
+		WebUserID:   &webUserID,
+		BookerName:  req.BookerName,
+		BookerEmail: req.BookerEmail,
+		BookerPhone: req.BookerPhone,
+		BookingType: models.BookingTypeRoom,
+		Status:      models.IndividualBookingStatusPending,
+		Notes:       req.Notes,
+		Documents:   req.Documents,
+		Payload:     json.RawMessage(payloadBytes),
+	}
+	if r.Documents == nil {
+		r.Documents = []string{}
+	}
+
+	if err := s.requestRepo.Create(r); err != nil {
+		return nil, err
+	}
+
+	s.startWorkflow(r, orgID)
+	return r, nil
+}
+
+// ─── Web user ─────────────────────────────────────────────────────────────────
+
+func (s *IndividualBookingRequestService) GetForWebUser(id, webUserID uuid.UUID) (*models.IndividualBookingRequest, error) {
+	return s.requestRepo.GetByIDForWebUser(id, webUserID)
+}
+
+func (s *IndividualBookingRequestService) ListForWebUser(webUserID uuid.UUID, page, pageSize int) ([]models.IndividualBookingRequest, int, error) {
+	return s.requestRepo.ListByWebUser(webUserID, page, pageSize)
+}
+
+func (s *IndividualBookingRequestService) CancelForWebUser(id, webUserID uuid.UUID) error {
+	req, err := s.requestRepo.GetByIDForWebUser(id, webUserID)
+	if err != nil {
+		return err
+	}
+	if req.Status != models.IndividualBookingStatusPending {
+		return fmt.Errorf("only pending requests can be cancelled")
+	}
+	return s.requestRepo.UpdateStatus(id, req.OrgID, models.IndividualBookingStatusCancelled)
+}
+
+// ─── Backoffice ───────────────────────────────────────────────────────────────
+
+func (s *IndividualBookingRequestService) GetByID(id, orgID uuid.UUID) (*models.IndividualBookingRequest, error) {
+	return s.requestRepo.GetByID(id, orgID)
+}
+
+func (s *IndividualBookingRequestService) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.IndividualBookingRequest, int, error) {
+	return s.requestRepo.List(orgID, status, page, pageSize)
+}
+
+func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.Booking, error) {
+	req, err := s.requestRepo.GetByID(id, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if req.Status != models.IndividualBookingStatusPending {
+		return nil, errors.New("only pending requests can be approved")
+	}
+
+	// Decode the stored payload
+	var p models.IndividualBookingPayload
+	if err := json.Unmarshal(req.Payload, &p); err != nil {
+		return nil, errors.New("invalid request payload")
+	}
+
+	checkIn := models.DateOnly{}
+	if err := checkIn.UnmarshalJSON([]byte(`"` + p.CheckIn + `"`)); err != nil {
+		return nil, fmt.Errorf("invalid check_in date: %w", err)
+	}
+	checkOut := models.DateOnly{}
+	if err := checkOut.UnmarshalJSON([]byte(`"` + p.CheckOut + `"`)); err != nil {
+		return nil, fmt.Errorf("invalid check_out date: %w", err)
+	}
+
+	// Resolve branch from room
+	room, err := s.roomRepo.GetByIDUnscoped(p.RoomID)
+	if err != nil {
+		return nil, errors.New("room not found")
+	}
+
+	bookingReq := &models.CreateIndividualBookingRequest{
+		WebUserID:       req.WebUserID,
+		BookerName:      req.BookerName,
+		BookerEmail:     req.BookerEmail,
+		BookerPhone:     req.BookerPhone,
+		RoomID:          p.RoomID,
+		CheckIn:         checkIn,
+		CheckOut:        checkOut,
+		SpecialRequests: p.SpecialRequests,
+	}
+
+	booking, err := s.bookingService.CreateIndividual(orgID, room.BranchID, bookingReq)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.requestRepo.UpdateStatus(id, orgID, models.IndividualBookingStatusApproved); err != nil {
+		return nil, err
+	}
+
+	return booking, nil
+}
+
+func (s *IndividualBookingRequestService) Reject(id, orgID uuid.UUID) error {
+	req, err := s.requestRepo.GetByID(id, orgID)
+	if err != nil {
+		return err
+	}
+	if req.Status != models.IndividualBookingStatusPending {
+		return errors.New("only pending requests can be rejected")
+	}
+	return s.requestRepo.UpdateStatus(id, orgID, models.IndividualBookingStatusRejected)
+}
+
+func (s *IndividualBookingRequestService) Cancel(id, orgID uuid.UUID) error {
+	req, err := s.requestRepo.GetByID(id, orgID)
+	if err != nil {
+		return err
+	}
+	if req.Status == models.IndividualBookingStatusApproved {
+		return errors.New("approved requests cannot be cancelled")
+	}
+	return s.requestRepo.UpdateStatus(id, orgID, models.IndividualBookingStatusCancelled)
+}
+
+// ─── Workflow ─────────────────────────────────────────────────────────────────
+
+func (s *IndividualBookingRequestService) startWorkflow(r *models.IndividualBookingRequest, orgID uuid.UUID) {
+	if s.workflow == nil {
+		return
+	}
+	go func() {
+		taskDetails := models.TaskDetails{
+			TaskID:          r.ID.String(),
+			TaskRef:         r.ID.String()[:8],
+			TaskType:        "individual_booking",
+			TaskDescription: fmt.Sprintf("Room booking request from %s", r.BookerName),
+			SenderDetails: models.SenderDetails{
+				SenderID:   r.ID.String(),
+				SenderName: r.BookerName,
+				Position:   "Guest",
+				Department: "Guest",
+			},
+		}
+		if _, err := s.workflow.InitiateWorkflow(
+			models.WorkflowTypeBookingApproval,
+			taskDetails,
+			r.ID.String(),
+			"medium",
+			nil,
+			orgID.String(),
+		); err != nil {
+			_ = err
+		}
+	}()
+}

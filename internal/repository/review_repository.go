@@ -21,14 +21,14 @@ func NewReviewRepository() *ReviewRepository {
 
 func (r *ReviewRepository) Create(review *models.Review) error {
 	query := `
-		INSERT INTO reviews (id, booking_id, guest_id, facilities, cleanliness, services, comfort, location, comment, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+		INSERT INTO reviews (id, booking_id, facilities, cleanliness, services, comfort, location, comment, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	review.ID = uuid.New()
 	review.CreatedAt = time.Now()
 
 	_, err := r.db.Exec(query,
-		review.ID, review.BookingID, review.GuestID,
+		review.ID, review.BookingID,
 		review.Facilities, review.Cleanliness, review.Services, review.Comfort, review.Location,
 		review.Comment, review.CreatedAt,
 	)

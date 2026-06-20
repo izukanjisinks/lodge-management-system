@@ -36,7 +36,6 @@ func main() {
 	roomRepo := repository.NewRoomRepository()
 	clientRepo := repository.NewClientRepository()
 	bookingRepo := repository.NewBookingRepository()
-	mealPlanRepo := repository.NewMealPlanRepository()
 	invoiceRepo := repository.NewInvoiceRepository()
 	dashboardRepo := repository.NewDashboardRepository()
 	auditLogRepo := repository.NewAuditLogRepository()
@@ -89,12 +88,15 @@ func main() {
 	assignmentRepo := repository.NewBookingRoomAssignmentRepository()
 	corpBookingReqRepo := repository.NewCorporateBookingRequestRepository()
 	corpGuestRepo := repository.NewCorporateGuestRepository()
-	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo, assignmentRepo)
-	bookingSvc := services.NewBookingService(bookingRepo, attendeeRepo, assignmentRepo, corpBookingReqRepo, corpGuestRepo)
+	bookingEventRepo := repository.NewBookingEventRepository()
+	venueRepo := repository.NewVenueRepository()
+	orderRepo := repository.NewOrderRepository()
+	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo, assignmentRepo, bookingEventRepo, orderRepo)
+	bookingSvc := services.NewBookingService(bookingRepo, attendeeRepo, assignmentRepo, corpBookingReqRepo, corpGuestRepo, bookingEventRepo, venueRepo)
 	bookingSvc.SetInvoiceService(invoiceSvc) // auto-generate draft invoice on booking confirm/materialise
+	bookingSvc.SetOrderRepository(orderRepo)  // approved meals requests materialise into orders
 
 	bookingHandler := handlers.NewBookingHandler(bookingSvc)
-	mealPlanHandler := handlers.NewMealPlanHandler(services.NewMealPlanService(mealPlanRepo))
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)
 	dashboardHandler := handlers.NewDashboardHandler(services.NewDashboardService(dashboardRepo))
 	workflowHandler := handlers.NewWorkflowHandler(workflowService)
@@ -124,13 +126,14 @@ func main() {
 	backofficeOrgHandler := handlers.NewBackofficeOrganizationHandler(backofficeOrgSvc)
 
 	menuRepo := repository.NewMenuRepository()
-	orderRepo := repository.NewOrderRepository()
 	menuHandler := handlers.NewMenuHandler(services.NewMenuService(menuRepo))
 	orderSvc := services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo)
 	orderHandler := handlers.NewOrderHandler(orderSvc)
 
 	branchHandler := handlers.NewBranchHandler(services.NewBranchService(branchRepo))
 	orgHandler := handlers.NewOrganizationHandler(backofficeOrgSvc)
+
+	venueHandler := handlers.NewVenueHandler(services.NewVenueService(venueRepo))
 
 	reviewRepo := repository.NewReviewRepository()
 	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo))
@@ -150,6 +153,9 @@ func main() {
 	corProfileSvc := services.NewCorProfileService(corCompanyRepo, corBranchRepo, corProfileRepo, corpGuestRepo)
 	corpBookingReqSvc := services.NewCorporateBookingRequestService(corpBookingReqRepo, corpGuestRepo, corProfileSvc)
 	corpBookingReqSvc.SetWorkflowService(workflowService)
+	corpBookingReqSvc.SetVenueRepository(venueRepo)
+	corpBookingReqSvc.SetMenuRepository(menuRepo) // resolve menu item names/prices for meals task display
+	corpBookingReqSvc.SetBookingService(bookingSvc) // approve auto-creates event/conference bookings
 	corProfileHandler := handlers.NewCorProfileHandler(corProfileSvc)
 	corpBookingReqHandler := handlers.NewCorporateBookingRequestHandler(corpBookingReqSvc)
 
@@ -171,7 +177,6 @@ func main() {
 		roomHandler,
 		clientHandler,
 		bookingHandler,
-		mealPlanHandler,
 		invoiceHandler,
 		dashboardHandler,
 		workflowHandler,
@@ -190,7 +195,8 @@ func main() {
 		webUserAuthHandler,
 		corProfileHandler,
 		corpBookingReqHandler,
-		indvBookingReqHandler)
+		indvBookingReqHandler,
+		venueHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 
 	// Apply CORS middleware globally

@@ -148,7 +148,12 @@ func (h *BookingHandler) CheckIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Checked in"})
+	booking, err := h.service.GetByID(id, orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, booking)
 }
 
 // CheckOut handles PUT /api/v1/bookings/{id}/checkout
@@ -165,7 +170,12 @@ func (h *BookingHandler) CheckOut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Checked out"})
+	booking, err := h.service.GetByID(id, orgID)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, booking)
 }
 
 // Cancel handles DELETE /api/v1/bookings/{id}

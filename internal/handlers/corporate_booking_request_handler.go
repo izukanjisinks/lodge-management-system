@@ -21,7 +21,7 @@ func NewCorporateBookingRequestHandler(service *services.CorporateBookingRequest
 
 // ─── Guest submission ─────────────────────────────────────────────────────────
 
-// Submit handles POST /api/v1/web/bookings/corporate?type=accommodation|meals|conference|event
+// Submit handles POST /api/v1/web/bookings/corporate?type=accommodation|meals|event
 func (h *CorporateBookingRequestHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	orgIDStr := r.URL.Query().Get("org_id")
 	if orgIDStr == "" {
@@ -65,20 +65,6 @@ func (h *CorporateBookingRequestHandler) Submit(w http.ResponseWriter, r *http.R
 		}
 		utils.RespondJSON(w, http.StatusCreated, result)
 
-	case models.CorporateBookingTypeConference:
-		var req models.SubmitConferenceRequest
-		if err := utils.DecodeJson(r, &req); err != nil {
-			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-		req.OrgID = orgID
-		result, err := h.service.SubmitConference(orgID, &req)
-		if err != nil {
-			utils.RespondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		utils.RespondJSON(w, http.StatusCreated, result)
-
 	case models.CorporateBookingTypeEvent:
 		var req models.SubmitEventRequest
 		if err := utils.DecodeJson(r, &req); err != nil {
@@ -94,7 +80,7 @@ func (h *CorporateBookingRequestHandler) Submit(w http.ResponseWriter, r *http.R
 		utils.RespondJSON(w, http.StatusCreated, result)
 
 	default:
-		utils.RespondError(w, http.StatusBadRequest, "type must be accommodation, meals, conference, or event")
+		utils.RespondError(w, http.StatusBadRequest, "type must be accommodation, meals, or event")
 	}
 }
 

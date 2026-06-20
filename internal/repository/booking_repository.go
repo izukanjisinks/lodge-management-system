@@ -260,6 +260,16 @@ func (r *BookingRepository) UpdateTotalAmount(tx *sql.Tx, id, orgID uuid.UUID, a
 	return err
 }
 
+// UpdateVenueAndTotal pins the chosen venue and hire charge on an event booking.
+// The booking row is inserted before the venue is resolved, so this writes both
+// back in one update during materialisation.
+func (r *BookingRepository) UpdateVenueAndTotal(tx *sql.Tx, id, orgID, venueID uuid.UUID, amount float64) error {
+	_, err := tx.Exec(`
+		UPDATE bookings SET venue_id=$1, total_amount=$2, updated_at=$3 WHERE id=$4 AND org_id=$5`,
+		venueID, amount, time.Now(), id, orgID)
+	return err
+}
+
 func (r *BookingRepository) ExtendCheckout(id, orgID uuid.UUID, newDate time.Time) error {
 	_, err := r.db.Exec(`
 		UPDATE bookings SET updated_at=$1 WHERE id=$2 AND org_id=$3`,

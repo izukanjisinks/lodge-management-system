@@ -93,6 +93,30 @@ type Booking struct {
 	// Child data (populated on GetByID)
 	Attendees   []BookingAttendee      `json:"attendees,omitempty"`
 	Assignments []BookingRoomAssignment `json:"assignments,omitempty"`
+	Events      []BookingEvent          `json:"events,omitempty"`
+}
+
+// BookingEvent is the venue reservation behind a conference/event booking.
+// One per event booking under current scope (single venue, single date range).
+type BookingEvent struct {
+	ID               uuid.UUID  `json:"id"`
+	BookingID        uuid.UUID  `json:"booking_id"`
+	VenueID          *uuid.UUID `json:"venue_id,omitempty"`
+	EventType        string     `json:"event_type"`
+	StartDate        time.Time  `json:"start_date"`
+	EndDate          time.Time  `json:"end_date"`
+	StartTime        string     `json:"start_time,omitempty"`
+	EndTime          string     `json:"end_time,omitempty"`
+	PaxCount         int        `json:"pax_count"`
+	Price            float64    `json:"price"`
+	CateringRequired bool       `json:"catering_required"`
+	Notes            string     `json:"notes,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+
+	// Joined
+	VenueName string `json:"venue_name,omitempty"`
+	Days      int    `json:"days,omitempty"`
 }
 
 type BookingAttendee struct {

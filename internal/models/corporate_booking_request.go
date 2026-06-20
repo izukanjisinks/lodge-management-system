@@ -10,7 +10,6 @@ import (
 const (
 	CorporateBookingTypeAccommodation = "accommodation"
 	CorporateBookingTypeMeals         = "meals"
-	CorporateBookingTypeConference    = "conference"
 	CorporateBookingTypeEvent         = "event"
 
 	CorporateBookingStatusPending   = "pending"
@@ -44,6 +43,38 @@ type CorporateBookingRequest struct {
 	CompanyName string `json:"company_name,omitempty"`
 	BranchName  string `json:"branch_name,omitempty"`
 	ProfileName string `json:"profile_name,omitempty"`
+
+	// MealsSummary is populated only for meals requests on detail reads. It resolves
+	// each menu_item_id in the payload to its current name + price so the back-office
+	// can show what was ordered and the estimated cost before approval.
+	MealsSummary *MealsRequestSummary `json:"meals_summary,omitempty"`
+}
+
+// MealsRequestSummary is the display-ready, price-resolved view of a meals request.
+type MealsRequestSummary struct {
+	From          string             `json:"from,omitempty"`
+	To            string             `json:"to,omitempty"`
+	Headcount     int                `json:"headcount,omitempty"`
+	DietaryNotes  string             `json:"dietary_notes,omitempty"`
+	Guests        []MealsSummaryGuest `json:"guests,omitempty"`        // itemised, per named guest
+	BuffetItems   []MealsSummaryItem `json:"buffet_items,omitempty"`  // top-level / shared items
+	EstimatedTotal float64           `json:"estimated_total"`
+}
+
+type MealsSummaryGuest struct {
+	Name               string             `json:"name"`
+	IdentificationCard string             `json:"identification_card,omitempty"`
+	Items              []MealsSummaryItem `json:"items"`
+	Subtotal           float64            `json:"subtotal"`
+}
+
+type MealsSummaryItem struct {
+	MenuItemID uuid.UUID `json:"menu_item_id"`
+	Name       string    `json:"name"`
+	Quantity   int       `json:"quantity"`
+	UnitPrice  float64   `json:"unit_price"`
+	Subtotal   float64   `json:"subtotal"`
+	Notes      string    `json:"notes,omitempty"`
 }
 
 // ── Submission payloads per booking type ─────────────────────────────────────
@@ -104,11 +135,13 @@ type SubmitAccommodationRequest struct {
 	Documents        []string               `json:"documents,omitempty"`
 }
 
+// CorMealItemInput is a menu-item selection on a meals request. Only the item id
+// and quantity are sent — the price is looked up server-side from menu_items at
+// materialise time, never trusted from the client.
 type CorMealItemInput struct {
-	MenuItemID string  `json:"menu_item_id"`
-	Name       string  `json:"name"`
-	Quantity   int     `json:"quantity"`
-	Price      float64 `json:"price"`
+	MenuItemID uuid.UUID `json:"menu_item_id"`
+	Quantity   int       `json:"quantity"`
+	Notes      string    `json:"notes,omitempty"`
 }
 
 type CorMealGuestInput struct {
@@ -116,9 +149,14 @@ type CorMealGuestInput struct {
 	LastName           string             `json:"last_name"`
 	Email              string             `json:"email,omitempty"`
 	IdentificationCard string             `json:"identification_card,omitempty"`
-	MealItems          []CorMealItemInput `json:"meal_items,omitempty"`
+	Items              []CorMealItemInput `json:"items,omitempty"`
 }
 
+// SubmitMealsRequest supports two interchangeable shapes that share one engine —
+// every selection is a menu item with a quantity, priced from menu_items:
+//   - Itemised: named Guests, each with their own Items (per-guest selections).
+//   - Buffet:   a Headcount and top-level Items (e.g. one buffet item × headcount).
+// Both may appear in a single request; at least one source of items is required.
 type SubmitMealsRequest struct {
 	OrgID            uuid.UUID             `json:"org_id"`
 	BranchID         *uuid.UUID            `json:"branch_id,omitempty"`
@@ -126,12 +164,13 @@ type SubmitMealsRequest struct {
 	Branch           *CorBookingBranchInput `json:"branch,omitempty"`
 	Profile          CorBookingProfileInput `json:"booked_by"`
 	ReasonForBooking string                `json:"reason_for_booking,omitempty"`
-	PlanType         string                `json:"plan_type"`
 	From             string                `json:"from"`
 	To               string                `json:"to"`
+	Headcount        int                   `json:"headcount,omitempty"`
+	Items            []CorMealItemInput    `json:"items,omitempty"`
 	DietaryNotes     string                `json:"dietary_notes,omitempty"`
 	Authoriser       *CorBookingAuthoriser `json:"authoriser,omitempty"`
-	Guests           []CorMealGuestInput   `json:"guests"`
+	Guests           []CorMealGuestInput   `json:"guests,omitempty"`
 	Documents        []string              `json:"documents,omitempty"`
 }
 
@@ -142,34 +181,27 @@ type CorConferenceGuestInput struct {
 	IdentificationCard string `json:"identification_card,omitempty"`
 }
 
-type SubmitConferenceRequest struct {
-	OrgID            uuid.UUID                 `json:"org_id"`
-	BranchID         *uuid.UUID                `json:"branch_id,omitempty"`
-	Company          CorBookingCompanyInput     `json:"company"`
-	Branch           *CorBookingBranchInput     `json:"branch,omitempty"`
-	Profile          CorBookingProfileInput     `json:"booked_by"`
-	ReasonForBooking string                    `json:"reason_for_booking,omitempty"`
-	StartDate        string                    `json:"start_date"`
-	EndDate          string                    `json:"end_date,omitempty"`
-	StartTime        string                    `json:"start_time"`
-	EndTime          string                    `json:"end_time,omitempty"`
-	Attendees        int                       `json:"attendees"`
-	Equipment        []string                  `json:"equipment,omitempty"`
-	Notes            string                    `json:"notes,omitempty"`
-	Authoriser       *CorBookingAuthoriser     `json:"authoriser,omitempty"`
-	Guests           []CorConferenceGuestInput  `json:"guests,omitempty"`
-	Documents        []string                  `json:"documents,omitempty"`
-}
-
 // MaterialiseGuestAssignment maps a guest (by index in payload.guests) to a real room picked by staff.
 type MaterialiseGuestAssignment struct {
 	GuestIndex int       `json:"guest_index"`
 	RoomID     uuid.UUID `json:"room_id"`
 }
 
-// MaterialiseRequest is the body for POST /api/v1/booking-requests/:id/materialise
+// MaterialiseRequest is the body for POST /api/v1/booking-requests/:id/materialise.
+// Accommodation requests use Assignments; conference/event requests use Event.
 type MaterialiseRequest struct {
-	Assignments []MaterialiseGuestAssignment `json:"assignments"`
+	Assignments []MaterialiseGuestAssignment `json:"assignments,omitempty"`
+	Event       *MaterialiseEvent            `json:"event,omitempty"`
+}
+
+// MaterialiseEvent is the staff-supplied venue + pricing when turning an approved
+// conference/event request into a booking. Price is optional — if zero, the booking
+// service falls back to the venue's base_rate.
+type MaterialiseEvent struct {
+	VenueID   uuid.UUID `json:"venue_id"`
+	StartDate string    `json:"start_date,omitempty"`
+	EndDate   string    `json:"end_date,omitempty"`
+	Price     float64   `json:"price,omitempty"`
 }
 
 type SubmitEventRequest struct {
@@ -178,6 +210,7 @@ type SubmitEventRequest struct {
 	Company          CorBookingCompanyInput     `json:"company"`
 	Branch           *CorBookingBranchInput     `json:"branch,omitempty"`
 	Profile          CorBookingProfileInput     `json:"booked_by"`
+	VenueID          uuid.UUID                 `json:"venue_id"`
 	ReasonForBooking string                    `json:"reason_for_booking,omitempty"`
 	EventType        string                    `json:"event_type"`
 	StartDate        string                    `json:"start_date"`

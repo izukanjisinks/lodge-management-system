@@ -798,6 +798,93 @@
     },
 
     {
+      "name": "Venues",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/venues?page=1&page_size=20",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Get",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/venues/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/venues",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "description": "venue_type: conference_hall | event_space | boardroom | outdoor | dining. rate_type: hourly | daily. base_rate is read here (not from booking payloads) and is what an event booking is priced from (base_rate × days).",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Main Conference Hall\",\n  \"venue_type\": \"conference_hall\",\n  \"capacity\": 200,\n  \"base_rate\": 8000,\n  \"rate_type\": \"daily\",\n  \"floor\": \"Ground Floor\",\n  \"area_sqm\": 250.5,\n  \"notes\": \"Built-in projector and PA system\",\n  \"amenities\": [\"Projector\", \"PA System\", \"Air Conditioning\", \"Wi-Fi\"],\n  \"images\": []\n}" }
+          }
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/venues/:id",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Main Conference Hall\",\n  \"venue_type\": \"conference_hall\",\n  \"capacity\": 220,\n  \"base_rate\": 8500,\n  \"rate_type\": \"daily\",\n  \"amenities\": [\"Projector\", \"PA System\", \"Air Conditioning\", \"Wi-Fi\", \"Stage\"]\n}" }
+          }
+        },
+        {
+          "name": "Update Images",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/venues/:id/images",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"images\": [\n    \"https://storage.example.com/venues/hall-1.jpg\",\n    \"https://storage.example.com/venues/hall-2.jpg\"\n  ]\n}" }
+          }
+        },
+        {
+          "name": "Set Availability",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/v1/venues/:id/availability",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{ \"is_available\": false }" }
+          }
+        },
+        {
+          "name": "Delete",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/v1/venues/:id",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Guest — List (public)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/guest/venues?org_id={{org_id}}",
+            "header": []
+          }
+        }
+      ]
+    },
+
+    {
       "name": "Booking Requests — Corporate",
       "item": [
         {
@@ -810,21 +897,23 @@
           }
         },
         {
-          "name": "Submit — Meals (public)",
+          "name": "Submit — Meals · Itemised (public)",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/v1/web/bookings/corporate?type=meals&org_id={{org_id}}",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\"\n  },\n  \"branch\": { \"name\": \"Lusaka HQ\" },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\"\n  },\n  \"plan_type\": \"full_board\",\n  \"from\": \"2026-07-01\",\n  \"to\": \"2026-07-04\",\n  \"dietary_notes\": \"Some guests are vegetarian\",\n  \"guests\": [\n    {\n      \"first_name\": \"John\",\n      \"last_name\": \"Banda\",\n      \"identification_card\": \"NRC123456/78/1\",\n      \"email\": \"john@abccorp.com\",\n      \"meal_items\": [\n        { \"name\": \"Breakfast Buffet\", \"quantity\": 1, \"price\": 85.00 },\n        { \"name\": \"Lunch\", \"quantity\": 1, \"price\": 120.00 }\n      ]\n    }\n  ],\n  \"reason_for_booking\": \"Team working lunch\",\n  \"documents\": []\n}" }
+            "description": "Named guests, each picking menu items. Every selection is a menu item with a quantity — the price is looked up server-side from menu_items (no price field is sent). Replace menu_item_id values with real ids from POST /api/v1/menu/items.",
+            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\",\n    \"industry\": \"Mining\",\n    \"country\": \"Zambia\"\n  },\n  \"branch\": {\n    \"name\": \"Lusaka HQ\",\n    \"address\": \"Plot 567, Cairo Road, Lusaka\",\n    \"phone\": \"0211567890\"\n  },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\",\n    \"phone\": \"0966123456\",\n    \"job_title\": \"Finance Manager\",\n    \"department\": \"Finance\"\n  },\n  \"authoriser\": {\n    \"name\": \"Dr. Sarah Mumba\",\n    \"email\": \"sarah.mumba@abccorp.com\",\n    \"phone\": \"0966000111\",\n    \"title\": \"General Manager\",\n    \"department\": \"Executive\",\n    \"gl_code\": \"GL-2026-001\"\n  },\n  \"reason_for_booking\": \"Working lunch for audit team\",\n  \"from\": \"2026-07-10\",\n  \"to\": \"2026-07-10\",\n  \"dietary_notes\": \"One vegetarian\",\n  \"guests\": [\n    {\n      \"first_name\": \"John\",\n      \"last_name\": \"Banda\",\n      \"email\": \"john@abccorp.com\",\n      \"identification_card\": \"NRC123456/78/1\",\n      \"items\": [\n        { \"menu_item_id\": \"REPLACE_WITH_MENU_ITEM_ID\", \"quantity\": 1 }\n      ]\n    },\n    {\n      \"first_name\": \"Grace\",\n      \"last_name\": \"Phiri\",\n      \"email\": \"grace@abccorp.com\",\n      \"identification_card\": \"NRC654321/90/2\",\n      \"items\": [\n        { \"menu_item_id\": \"REPLACE_WITH_MENU_ITEM_ID\", \"quantity\": 1, \"notes\": \"no nuts\" }\n      ]\n    }\n  ],\n  \"documents\": []\n}" }
           }
         },
         {
-          "name": "Submit — Conference (public)",
+          "name": "Submit — Meals · Buffet / Headcount (public)",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/v1/web/bookings/corporate?type=conference&org_id={{org_id}}",
+            "url": "{{base_url}}/api/v1/web/bookings/corporate?type=meals&org_id={{org_id}}",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\"\n  },\n  \"branch\": { \"name\": \"Lusaka HQ\" },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\"\n  },\n  \"authoriser\": {\n    \"name\": \"Dr. Sarah Mumba\",\n    \"email\": \"sarah.mumba@abccorp.com\",\n    \"gl_code\": \"GL-2026-002\"\n  },\n  \"start_date\": \"2026-07-10\",\n  \"start_time\": \"08:00\",\n  \"end_date\": \"2026-07-10\",\n  \"end_time\": \"17:00\",\n  \"attendees\": 15,\n  \"equipment\": [\"projector\", \"whiteboard\"],\n  \"guests\": [\n    { \"first_name\": \"John\", \"last_name\": \"Banda\", \"email\": \"john@abccorp.com\", \"identification_card\": \"NRC123456/78/1\" }\n  ],\n  \"reason_for_booking\": \"Q3 strategy planning session\",\n  \"notes\": \"Projector and whiteboard required\",\n  \"documents\": []\n}" }
+            "description": "No named roster — a headcount plus a top-level buffet item. The buffet is itself a menu item; quantity drives billing (here one cover per head). pax = headcount; no attendees are created.",
+            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\"\n  },\n  \"branch\": {\n    \"name\": \"Lusaka HQ\",\n    \"address\": \"Plot 567, Cairo Road, Lusaka\"\n  },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\"\n  },\n  \"authoriser\": {\n    \"name\": \"Dr. Sarah Mumba\",\n    \"email\": \"sarah.mumba@abccorp.com\",\n    \"gl_code\": \"GL-2026-001\"\n  },\n  \"reason_for_booking\": \"Conference lunch buffet\",\n  \"from\": \"2026-07-10\",\n  \"to\": \"2026-07-10\",\n  \"headcount\": 120,\n  \"dietary_notes\": \"Two vegetarians, one gluten-free\",\n  \"items\": [\n    { \"menu_item_id\": \"REPLACE_WITH_BUFFET_MENU_ITEM_ID\", \"quantity\": 120 }\n  ],\n  \"documents\": []\n}" }
           }
         },
         {
@@ -833,7 +922,8 @@
             "method": "POST",
             "url": "{{base_url}}/api/v1/web/bookings/corporate?type=event&org_id={{org_id}}",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\"\n  },\n  \"branch\": { \"name\": \"Lusaka HQ\" },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\"\n  },\n  \"authoriser\": {\n    \"name\": \"Dr. Sarah Mumba\",\n    \"email\": \"sarah.mumba@abccorp.com\",\n    \"gl_code\": \"GL-2026-003\"\n  },\n  \"event_type\": \"corporate_dinner\",\n  \"start_date\": \"2026-07-15\",\n  \"start_time\": \"18:30\",\n  \"end_time\": \"22:00\",\n  \"headcount\": 50,\n  \"catering_required\": true,\n  \"guests\": [\n    { \"first_name\": \"John\", \"last_name\": \"Banda\", \"email\": \"john@abccorp.com\", \"identification_card\": \"NRC123456/78/1\" }\n  ],\n  \"reason_for_booking\": \"Annual staff awards dinner\",\n  \"notes\": \"Red carpet setup preferred\",\n  \"documents\": []\n}" }
+            "description": "Conference / gala / wedding etc. are all 'event' — event_type names the kind. The guest picks a venue at submission (venue_id, required); approval auto-creates the booking priced at venue.base_rate × days. Roster is optional: omit guests and rely on headcount, or name some/all.",
+            "body": { "mode": "raw", "raw": "{\n  \"company\": {\n    \"company_name\": \"ABC Corporation Ltd\",\n    \"reg_number\": \"ZM123456\",\n    \"tpin\": \"1002345678\"\n  },\n  \"branch\": { \"name\": \"Lusaka HQ\" },\n  \"booked_by\": {\n    \"first_name\": \"Martin\",\n    \"last_name\": \"Phiri\",\n    \"email\": \"martin@abccorp.com\"\n  },\n  \"authoriser\": {\n    \"name\": \"Dr. Sarah Mumba\",\n    \"email\": \"sarah.mumba@abccorp.com\",\n    \"gl_code\": \"GL-2026-003\"\n  },\n  \"venue_id\": \"REPLACE_WITH_VENUE_ID\",\n  \"event_type\": \"conference\",\n  \"start_date\": \"2026-07-15\",\n  \"end_date\": \"2026-07-15\",\n  \"start_time\": \"08:00\",\n  \"end_time\": \"17:00\",\n  \"headcount\": 50,\n  \"catering_required\": true,\n  \"guests\": [\n    { \"first_name\": \"John\", \"last_name\": \"Banda\", \"email\": \"john@abccorp.com\", \"identification_card\": \"NRC123456/78/1\" }\n  ],\n  \"reason_for_booking\": \"Q3 strategy conference\",\n  \"notes\": \"Registration desk at entrance\",\n  \"documents\": []\n}" }
           }
         },
         {
@@ -849,7 +939,8 @@
           "request": {
             "method": "GET",
             "url": "{{base_url}}/api/v1/booking-requests/:id",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "description": "For meals requests the response includes a meals_summary object: each payload menu_item_id resolved to its current name + unit_price, with per-line, per-guest and estimated_total (pre-VAT) — this is what the back-office workflow task renders."
           }
         },
         {
@@ -857,7 +948,8 @@
           "request": {
             "method": "PUT",
             "url": "{{base_url}}/api/v1/booking-requests/:id/approve",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "description": "Event and meals requests auto-materialise into a booking on approval (event → venue reservation; meals → orders), plus a draft invoice. Accommodation only marks the request approved — staff then assign rooms via Materialise to Booking."
           }
         },
         {
@@ -877,11 +969,16 @@
           }
         },
         {
-          "name": "Materialise to Booking",
+          "name": "Materialise to Booking (accommodation)",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/v1/booking-requests/:request_id/materialise",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "description": "Accommodation only — assign a room to each guest (guest_index maps to the position in the request's guests array). Event and meals materialise automatically on approve and do not use this endpoint.",
+            "body": { "mode": "raw", "raw": "{\n  \"assignments\": [\n    { \"guest_index\": 0, \"room_id\": \"REPLACE_WITH_ROOM_ID\" },\n    { \"guest_index\": 1, \"room_id\": \"REPLACE_WITH_ROOM_ID\" }\n  ]\n}" }
           }
         }
       ]
@@ -1148,47 +1245,6 @@
       ]
     },
 
-    {
-      "name": "Meal Plans",
-      "item": [
-        {
-          "name": "List",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/meal-plans", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
-        },
-        {
-          "name": "Create",
-          "request": {
-            "method": "POST", "url": "{{base_url}}/api/v1/meal-plans",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Full Board\",\n  \"description\": \"Breakfast, lunch and dinner included\",\n  \"price_per_day\": 250.00,\n  \"includes_breakfast\": true,\n  \"includes_lunch\": true,\n  \"includes_dinner\": true\n}" }
-          }
-        },
-        {
-          "name": "Get",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/meal-plans/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
-        },
-        {
-          "name": "Update",
-          "request": {
-            "method": "PUT", "url": "{{base_url}}/api/v1/meal-plans/:id",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"price_per_day\": 275.00\n}" }
-          }
-        },
-        {
-          "name": "Delete",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/meal-plans/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
-        },
-        {
-          "name": "Guest — List",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/meal-plans" }
-        },
-        {
-          "name": "Guest — Get",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/meal-plans/:id" }
-        }
-      ]
-    },
 
     {
       "name": "Reviews",

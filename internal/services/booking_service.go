@@ -1,9 +1,11 @@
 package services
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"lodge-system/internal/models"
@@ -18,6 +20,9 @@ type BookingService struct {
 	assignmentRepo *repository.BookingRoomAssignmentRepository
 	requestRepo    *repository.CorporateBookingRequestRepository
 	guestRepo      *repository.CorporateGuestRepository
+	eventRepo      *repository.BookingEventRepository
+	venueRepo      *repository.VenueRepository
+	orderRepo      *repository.OrderRepository
 	invoiceSvc     *InvoiceService
 }
 
@@ -27,6 +32,8 @@ func NewBookingService(
 	assignmentRepo *repository.BookingRoomAssignmentRepository,
 	requestRepo *repository.CorporateBookingRequestRepository,
 	guestRepo *repository.CorporateGuestRepository,
+	eventRepo *repository.BookingEventRepository,
+	venueRepo *repository.VenueRepository,
 ) *BookingService {
 	return &BookingService{
 		bookingRepo:    bookingRepo,
@@ -34,6 +41,8 @@ func NewBookingService(
 		assignmentRepo: assignmentRepo,
 		requestRepo:    requestRepo,
 		guestRepo:      guestRepo,
+		eventRepo:      eventRepo,
+		venueRepo:      venueRepo,
 	}
 }
 
@@ -41,6 +50,12 @@ func NewBookingService(
 // a draft invoice. Optional — if unset, invoice generation is skipped.
 func (s *BookingService) SetInvoiceService(inv *InvoiceService) {
 	s.invoiceSvc = inv
+}
+
+// SetOrderRepository wires the orders repo so approved meals requests materialise
+// into orders (one per named guest, plus a buffet order for top-level items).
+func (s *BookingService) SetOrderRepository(repo *repository.OrderRepository) {
+	s.orderRepo = repo
 }
 
 // generateInvoice is a best-effort hook: a booking that successfully commits should
@@ -284,13 +299,283 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 		}
 	}
 
+	// For events: register the named roster (if any) and create the single venue
+	// reservation (booking_events) priced from the guest's chosen venue.
+	if req.BookingType == models.CorporateBookingTypeEvent {
+		if err = s.materialiseEvent(tx, orgID, b, req, matReq); err != nil {
+			return nil, err
+		}
+	}
+
+	// For meals: create an attendee per named guest inside the tx so orders can
+	// reference them. Orders themselves are created after commit (the order repo
+	// opens its own transaction). guestAttendeeIDs maps guest index → attendee id.
+	var mealsPayload models.SubmitMealsRequest
+	var guestAttendeeIDs []uuid.UUID
+	if req.BookingType == models.CorporateBookingTypeMeals {
+		guestAttendeeIDs, err = s.materialiseMealAttendees(tx, b, req, &mealsPayload)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if err = tx.Commit(); err != nil {
 		return nil, err
+	}
+
+	// Meals orders are created post-commit: one order per named guest (carrying
+	// their attendee_id + items) plus one buffet order for top-level items. Prices
+	// are looked up from menu_items by the order repo.
+	if req.BookingType == models.CorporateBookingTypeMeals {
+		if err = s.materialiseMealOrders(orgID, b.ID, &mealsPayload, guestAttendeeIDs); err != nil {
+			return nil, err
+		}
 	}
 
 	s.generateInvoice(b.ID, orgID)
 
 	return b, nil
+}
+
+// materialiseMealAttendees decodes the meals payload and creates one attendee per
+// named guest (buffet-only requests create none). Returns attendee ids aligned with
+// payload.Guests by index.
+func (s *BookingService) materialiseMealAttendees(
+	tx *sql.Tx,
+	b *models.Booking,
+	req *models.CorporateBookingRequest,
+	payload *models.SubmitMealsRequest,
+) ([]uuid.UUID, error) {
+	if req.Payload != nil {
+		if jsonErr := json.Unmarshal(req.Payload, payload); jsonErr != nil {
+			return nil, fmt.Errorf("invalid meals payload: %w", jsonErr)
+		}
+	}
+
+	attendeeIDs := make([]uuid.UUID, len(payload.Guests))
+	for i, g := range payload.Guests {
+		attendee := &models.BookingAttendee{
+			BookingID:          b.ID,
+			FullName:           strings.TrimSpace(g.FirstName + " " + g.LastName),
+			Email:              g.Email,
+			IdentificationCard: g.IdentificationCard,
+			IsLeadContact:      i == 0,
+		}
+		if err := s.attendeeRepo.CreateInTx(tx, attendee); err != nil {
+			return nil, fmt.Errorf("failed to create meal attendee: %w", err)
+		}
+		attendeeIDs[i] = attendee.ID
+	}
+	return attendeeIDs, nil
+}
+
+// materialiseMealOrders turns the meals payload into orders. Each named guest with
+// selections gets their own order (linked to their attendee); top-level items become
+// a single buffet order with no attendee. The order repo snapshots prices from
+// menu_items, so any client-sent price is irrelevant.
+func (s *BookingService) materialiseMealOrders(
+	orgID, bookingID uuid.UUID,
+	payload *models.SubmitMealsRequest,
+	guestAttendeeIDs []uuid.UUID,
+) error {
+	if s.orderRepo == nil {
+		return errors.New("orders are not configured; cannot materialise meals booking")
+	}
+
+	toOrderItems := func(items []models.CorMealItemInput) []models.PlaceOrderItemRequest {
+		out := make([]models.PlaceOrderItemRequest, 0, len(items))
+		for _, it := range items {
+			if it.Quantity <= 0 {
+				continue
+			}
+			out = append(out, models.PlaceOrderItemRequest{
+				MenuItemID: it.MenuItemID,
+				Quantity:   it.Quantity,
+				Notes:      it.Notes,
+			})
+		}
+		return out
+	}
+
+	// Per-guest orders.
+	for i, g := range payload.Guests {
+		items := toOrderItems(g.Items)
+		if len(items) == 0 {
+			continue
+		}
+		attendeeID := guestAttendeeIDs[i]
+		order := &models.Order{
+			BookingID:  &bookingID,
+			AttendeeID: &attendeeID,
+			Type:       models.OrderTypeInHouse,
+		}
+		if _, err := s.orderRepo.Create(order, items, orgID); err != nil {
+			return fmt.Errorf("failed to create order for guest %s: %w", g.FirstName, err)
+		}
+	}
+
+	// Buffet / shared order from top-level items (no attendee).
+	if buffet := toOrderItems(payload.Items); len(buffet) > 0 {
+		order := &models.Order{
+			BookingID: &bookingID,
+			Type:      models.OrderTypeInHouse,
+			Notes:     "Buffet / shared order",
+		}
+		if _, err := s.orderRepo.Create(order, buffet, orgID); err != nil {
+			return fmt.Errorf("failed to create buffet order: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// materialiseEvent seeds the named roster (if any) + the booking_events venue
+// reservation for an event booking. The guest's chosen venue comes from the stored
+// request payload; staff may override venue/price/dates via matReq.Event (optional).
+// Price defaults to the venue's base_rate.
+func (s *BookingService) materialiseEvent(
+	tx *sql.Tx,
+	orgID uuid.UUID,
+	b *models.Booking,
+	req *models.CorporateBookingRequest,
+	matReq *models.MaterialiseRequest,
+) error {
+	d := eventDetailsFromRequest(req)
+
+	// Venue: staff override (matReq.Event) wins, else the guest's chosen venue.
+	venueID := d.VenueID
+	var overrideStart, overrideEnd string
+	var overridePrice float64
+	if matReq != nil && matReq.Event != nil {
+		if matReq.Event.VenueID != uuid.Nil {
+			venueID = matReq.Event.VenueID
+		}
+		overrideStart, overrideEnd = matReq.Event.StartDate, matReq.Event.EndDate
+		overridePrice = matReq.Event.Price
+	}
+	if venueID == uuid.Nil {
+		return errors.New("a venue is required to materialise an event booking")
+	}
+
+	venue, err := s.venueRepo.GetByID(venueID, orgID)
+	if err != nil {
+		return errors.New("venue not found")
+	}
+
+	// The roster is optional: a booker may name every guest, name a few, or none at
+	// all and rely on headcount. We create an attendee row for each named guest.
+	for i, g := range d.Guests {
+		attendee := &models.BookingAttendee{
+			BookingID:          b.ID,
+			FullName:           strings.TrimSpace(g.FirstName + " " + g.LastName),
+			Email:              g.Email,
+			IdentificationCard: g.IdentificationCard,
+			IsLeadContact:      i == 0,
+		}
+		if err := s.attendeeRepo.CreateInTx(tx, attendee); err != nil {
+			return fmt.Errorf("failed to create attendee: %w", err)
+		}
+	}
+
+	// Dates: staff override wins, else fall back to the payload.
+	startDate := parseEventDate(overrideStart, d.StartDate)
+	endDate := parseEventDate(overrideEnd, d.EndDate)
+	if endDate.Before(startDate) {
+		endDate = startDate
+	}
+
+	price := overridePrice
+	if price <= 0 {
+		price = venue.BaseRate
+	}
+
+	// pax: an explicit headcount is the real figure (rosters may be partial); fall
+	// back to the named-guest count when no headcount was given.
+	paxCount := d.Headcount
+	if paxCount <= 0 {
+		paxCount = len(d.Guests)
+	}
+
+	bookingEvent := &models.BookingEvent{
+		BookingID:        b.ID,
+		VenueID:          &venueID,
+		EventType:        d.EventType,
+		StartDate:        startDate,
+		EndDate:          endDate,
+		StartTime:        d.StartTime,
+		EndTime:          d.EndTime,
+		PaxCount:         paxCount,
+		Price:            price,
+		CateringRequired: d.CateringRequired,
+	}
+	if err := s.eventRepo.CreateInTx(tx, bookingEvent); err != nil {
+		return fmt.Errorf("failed to create booking event: %w", err)
+	}
+
+	// Pin the venue on the booking and roll the hire charge into total_amount.
+	days := int(endDate.Sub(startDate).Hours()/24) + 1
+	if days < 1 {
+		days = 1
+	}
+	total := price * float64(days)
+	b.VenueID = &venueID
+	b.TotalAmount = total
+	if err := s.bookingRepo.UpdateVenueAndTotal(tx, b.ID, orgID, venueID, total); err != nil {
+		return fmt.Errorf("failed to pin venue on booking: %w", err)
+	}
+
+	b.Events = []models.BookingEvent{*bookingEvent}
+	return nil
+}
+
+// eventPayloadDetails holds everything materialiseEvent needs out of a stored event
+// request payload.
+type eventPayloadDetails struct {
+	Guests           []models.CorConferenceGuestInput
+	EventType        string
+	StartDate        string
+	EndDate          string
+	StartTime        string
+	EndTime          string
+	Headcount        int
+	CateringRequired bool
+	VenueID          uuid.UUID
+}
+
+// eventDetailsFromRequest unpacks the stored event request payload. event_type defaults
+// to "event" when the payload doesn't specify one.
+func eventDetailsFromRequest(req *models.CorporateBookingRequest) eventPayloadDetails {
+	d := eventPayloadDetails{EventType: "event"}
+	if req.Payload == nil {
+		return d
+	}
+	var p models.SubmitEventRequest
+	if json.Unmarshal(req.Payload, &p) == nil {
+		d.Guests = p.Guests
+		d.StartDate, d.EndDate = p.StartDate, p.EndDate
+		d.StartTime, d.EndTime = p.StartTime, p.EndTime
+		d.Headcount = p.Headcount
+		d.CateringRequired = p.CateringRequired
+		d.VenueID = p.VenueID
+		if p.EventType != "" {
+			d.EventType = p.EventType
+		}
+	}
+	return d
+}
+
+func parseEventDate(override, fallback string) time.Time {
+	for _, s := range []string{override, fallback} {
+		if s == "" {
+			continue
+		}
+		for _, l := range []string{"2006-01-02", time.RFC3339} {
+			if t, err := time.Parse(l, s); err == nil {
+				return t.UTC().Truncate(24 * time.Hour)
+			}
+		}
+	}
+	return time.Now().UTC().Truncate(24 * time.Hour)
 }
 
 
@@ -318,8 +603,6 @@ func bookingTypeFromRequest(t string) string {
 	switch t {
 	case models.CorporateBookingTypeMeals:
 		return models.BookingTypeMeals
-	case models.CorporateBookingTypeConference:
-		return models.BookingTypeConference
 	case models.CorporateBookingTypeEvent:
 		return models.BookingTypeEvent
 	default:
@@ -336,6 +619,7 @@ func (s *BookingService) GetByID(id, orgID uuid.UUID) (*models.Booking, error) {
 	}
 	b.Attendees, _ = s.attendeeRepo.ListByBookingID(id)
 	b.Assignments, _ = s.assignmentRepo.ListByBookingID(id)
+	b.Events, _ = s.eventRepo.ListByBookingID(id)
 	return b, nil
 }
 

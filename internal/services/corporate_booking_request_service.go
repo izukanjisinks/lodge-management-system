@@ -17,6 +17,9 @@ type CorporateBookingRequestService struct {
 	guestRepo   *repository.CorporateGuestRepository
 	corProfile  *CorProfileService
 	workflow    *WorkflowService
+	venueRepo   *repository.VenueRepository
+	menuRepo    *repository.MenuRepository
+	booking     *BookingService
 }
 
 func NewCorporateBookingRequestService(
@@ -33,6 +36,52 @@ func NewCorporateBookingRequestService(
 
 func (s *CorporateBookingRequestService) SetWorkflowService(svc *WorkflowService) {
 	s.workflow = svc
+}
+
+func (s *CorporateBookingRequestService) SetVenueRepository(repo *repository.VenueRepository) {
+	s.venueRepo = repo
+}
+
+func (s *CorporateBookingRequestService) SetMenuRepository(repo *repository.MenuRepository) {
+	s.menuRepo = repo
+}
+
+// SetBookingService wires the booking service so approving an event/conference
+// request auto-creates the booking from the guest's chosen venue.
+func (s *CorporateBookingRequestService) SetBookingService(svc *BookingService) {
+	s.booking = svc
+}
+
+// validateVenue ensures a guest-chosen venue exists and is in service.
+func (s *CorporateBookingRequestService) validateVenue(orgID, venueID uuid.UUID) error {
+	if venueID == uuid.Nil {
+		return errors.New("venue_id is required")
+	}
+	if s.venueRepo == nil {
+		return nil
+	}
+	venue, err := s.venueRepo.GetByID(venueID, orgID)
+	if err != nil {
+		return errors.New("selected venue not found")
+	}
+	if !venue.IsAvailable {
+		return errors.New("selected venue is not available")
+	}
+	return nil
+}
+
+// venueBranchID resolves the lodge branch a venue physically belongs to. This is
+// the branch an event booking inherits — distinct from the request's branch_id,
+// which references the corporate client's branch (cor_branch_details).
+func (s *CorporateBookingRequestService) venueBranchID(orgID, venueID uuid.UUID) *uuid.UUID {
+	if s.venueRepo == nil || venueID == uuid.Nil {
+		return nil
+	}
+	venue, err := s.venueRepo.GetByID(venueID, orgID)
+	if err != nil {
+		return nil
+	}
+	return venue.BranchID
 }
 
 // ─── Submission ───────────────────────────────────────────────────────────────
@@ -108,8 +157,20 @@ func (s *CorporateBookingRequestService) SubmitMeals(orgID uuid.UUID, req *model
 	if req.Profile.FirstName == "" || req.Profile.Email == "" {
 		return nil, errors.New("booked_by first_name and email are required")
 	}
-	if req.PlanType == "" || req.From == "" || req.To == "" {
-		return nil, errors.New("plan_type, from, and to are required")
+	if req.From == "" || req.To == "" {
+		return nil, errors.New("from and to are required")
+	}
+	// Every meal selection is a menu item with a quantity. A request must carry at
+	// least one — either as a buffet (top-level items) or per-guest selections.
+	hasGuestItems := false
+	for _, g := range req.Guests {
+		if len(g.Items) > 0 {
+			hasGuestItems = true
+			break
+		}
+	}
+	if len(req.Items) == 0 && !hasGuestItems {
+		return nil, errors.New("at least one menu item is required (buffet items or per-guest items)")
 	}
 
 	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, req.Company, req.Branch, req.Profile)
@@ -148,57 +209,15 @@ func (s *CorporateBookingRequestService) SubmitMeals(orgID uuid.UUID, req *model
 	return r, nil
 }
 
-func (s *CorporateBookingRequestService) SubmitConference(orgID uuid.UUID, req *models.SubmitConferenceRequest) (*models.CorporateBookingRequest, error) {
-	if req.Profile.FirstName == "" || req.Profile.Email == "" {
-		return nil, errors.New("booked_by first_name and email are required")
-	}
-	if req.StartDate == "" || req.StartTime == "" {
-		return nil, errors.New("start_date and start_time are required")
-	}
-
-	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, req.Company, req.Branch, req.Profile)
-	if err != nil {
-		return nil, err
-	}
-
-	payloadBytes, _ := json.Marshal(req)
-	payload := json.RawMessage(payloadBytes)
-
-	r := &models.CorporateBookingRequest{
-		OrgID:            orgID,
-		BranchID:         branchID,
-		CorProfileID:     &profileID,
-		CompanyID:        &companyID,
-		BookingType:      models.CorporateBookingTypeConference,
-		Status:           models.CorporateBookingStatusPending,
-		ReasonForBooking: req.ReasonForBooking,
-		Notes:            req.Notes,
-		Documents:        req.Documents,
-		Payload:          payload,
-	}
-	if req.Authoriser != nil {
-		r.AuthoriserName = req.Authoriser.Name
-		r.AuthoriserEmail = req.Authoriser.Email
-		r.AuthoriserPhone = req.Authoriser.Phone
-		r.AuthoriserTitle = req.Authoriser.Title
-		r.AuthoriserDepartment = req.Authoriser.Department
-		r.AuthoriserGLCode = req.Authoriser.GLCode
-	}
-
-	if err := s.requestRepo.Create(r); err != nil {
-		return nil, err
-	}
-
-	s.startWorflow(r, orgID)
-	return r, nil
-}
-
 func (s *CorporateBookingRequestService) SubmitEvent(orgID uuid.UUID, req *models.SubmitEventRequest) (*models.CorporateBookingRequest, error) {
 	if req.Profile.FirstName == "" || req.Profile.Email == "" {
 		return nil, errors.New("booked_by first_name and email are required")
 	}
 	if req.EventType == "" || req.StartDate == "" {
 		return nil, errors.New("event_type and start_date are required")
+	}
+	if err := s.validateVenue(orgID, req.VenueID); err != nil {
+		return nil, err
 	}
 
 	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, req.Company, req.Branch, req.Profile)
@@ -241,7 +260,82 @@ func (s *CorporateBookingRequestService) SubmitEvent(orgID uuid.UUID, req *model
 // ─── Backoffice ───────────────────────────────────────────────────────────────
 
 func (s *CorporateBookingRequestService) GetByID(id, orgID uuid.UUID) (*models.CorporateBookingRequest, error) {
-	return s.requestRepo.GetByID(id, orgID)
+	req, err := s.requestRepo.GetByID(id, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if req.BookingType == models.CorporateBookingTypeMeals {
+		req.MealsSummary = s.buildMealsSummary(orgID, req.Payload)
+	}
+	return req, nil
+}
+
+// buildMealsSummary resolves each menu_item_id in a meals payload to its current
+// name + price (from menu_items, the same source billing uses) and computes
+// per-line, per-guest, and grand totals for back-office display. Items whose menu
+// item no longer exists are shown with a fallback name and zero price.
+func (s *CorporateBookingRequestService) buildMealsSummary(orgID uuid.UUID, payload json.RawMessage) *models.MealsRequestSummary {
+	if s.menuRepo == nil || len(payload) == 0 {
+		return nil
+	}
+	var p models.SubmitMealsRequest
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil
+	}
+
+	// Cache lookups so a shared item is only fetched once.
+	cache := map[uuid.UUID]*models.MenuItem{}
+	resolve := func(in models.CorMealItemInput) models.MealsSummaryItem {
+		mi, ok := cache[in.MenuItemID]
+		if !ok {
+			mi, _ = s.menuRepo.GetMenuItemByID(in.MenuItemID, orgID)
+			cache[in.MenuItemID] = mi
+		}
+		item := models.MealsSummaryItem{
+			MenuItemID: in.MenuItemID,
+			Quantity:   in.Quantity,
+			Notes:      in.Notes,
+			Name:       "(unknown item)",
+		}
+		if mi != nil {
+			item.Name = mi.Name
+			item.UnitPrice = mi.Price
+		}
+		item.Subtotal = item.UnitPrice * float64(in.Quantity)
+		return item
+	}
+
+	summary := &models.MealsRequestSummary{
+		From:         p.From,
+		To:           p.To,
+		Headcount:    p.Headcount,
+		DietaryNotes: p.DietaryNotes,
+	}
+
+	for _, g := range p.Guests {
+		if len(g.Items) == 0 {
+			continue
+		}
+		sg := models.MealsSummaryGuest{
+			Name:               strings.TrimSpace(g.FirstName + " " + g.LastName),
+			IdentificationCard: g.IdentificationCard,
+		}
+		for _, in := range g.Items {
+			line := resolve(in)
+			sg.Items = append(sg.Items, line)
+			sg.Subtotal += line.Subtotal
+		}
+		summary.EstimatedTotal += sg.Subtotal
+		summary.Guests = append(summary.Guests, sg)
+	}
+
+	for _, in := range p.Items {
+		line := resolve(in)
+		summary.BuffetItems = append(summary.BuffetItems, line)
+		summary.EstimatedTotal += line.Subtotal
+	}
+
+	return summary
 }
 
 func (s *CorporateBookingRequestService) List(orgID uuid.UUID, bookingType, status string, page, pageSize int) ([]models.CorporateBookingRequest, int, error) {
@@ -256,7 +350,32 @@ func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
 	if req.Status != models.CorporateBookingStatusPending {
 		return errors.New("only pending requests can be approved")
 	}
-	return s.requestRepo.UpdateStatus(id, orgID, models.CorporateBookingStatusApproved)
+	if err := s.requestRepo.UpdateStatus(id, orgID, models.CorporateBookingStatusApproved); err != nil {
+		return err
+	}
+
+	// Event and meals requests are self-contained (venue/menu chosen at submission),
+	// so approval materialises the booking automatically — no separate staff step.
+	// Accommodation still needs staff to assign rooms, so it stays approved-only.
+	if s.booking != nil && req.BookingType == models.CorporateBookingTypeEvent {
+		// The booking belongs to the lodge branch the venue physically sits at —
+		// NOT req.BranchID, which references the corporate client's branch
+		// (cor_branch_details) and would violate bookings_branch_id_fkey.
+		var payload models.SubmitEventRequest
+		_ = json.Unmarshal(req.Payload, &payload)
+		lodgeBranchID := s.venueBranchID(orgID, payload.VenueID)
+
+		if _, err := s.booking.CreateFromRequest(orgID, lodgeBranchID, id, nil); err != nil {
+			return fmt.Errorf("request approved but booking creation failed: %w", err)
+		}
+	}
+	if s.booking != nil && req.BookingType == models.CorporateBookingTypeMeals {
+		// Meals are not tied to a physical venue; leave branch to org context (nil).
+		if _, err := s.booking.CreateFromRequest(orgID, nil, id, nil); err != nil {
+			return fmt.Errorf("request approved but booking creation failed: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *CorporateBookingRequestService) Reject(id, orgID uuid.UUID) error {

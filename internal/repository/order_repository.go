@@ -417,6 +417,43 @@ func (r *OrderRepository) GetItemsTotal(orderID uuid.UUID) (float64, error) {
 	return total, err
 }
 
+// ListItemsByBookingID returns every order item across all of a booking's orders,
+// regardless of order status. Used by invoicing to bill a meals booking. The
+// attendee name (when the order is tied to a guest) is returned in item.Notes-free
+// ItemName-adjacent field via the joined attendee_name for line descriptions.
+func (r *OrderRepository) ListItemsByBookingID(bookingID, orgID uuid.UUID) ([]models.OrderItem, []string, error) {
+	rows, err := r.db.Query(`
+		SELECT oi.id, oi.order_id, oi.menu_item_id, mi.name, oi.quantity, oi.unit_price, oi.subtotal, oi.notes, oi.created_at,
+		       COALESCE(att.full_name, '') AS attendee_name
+		FROM order_items oi
+		JOIN orders      o   ON o.id  = oi.order_id
+		JOIN menu_items  mi  ON mi.id = oi.menu_item_id
+		LEFT JOIN booking_attendees att ON att.id = o.attendee_id
+		WHERE o.booking_id = $1 AND o.org_id = $2
+		ORDER BY oi.created_at ASC`, bookingID, orgID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	var items []models.OrderItem
+	var attendeeNames []string
+	for rows.Next() {
+		var item models.OrderItem
+		var notes sql.NullString
+		var attendeeName string
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.MenuItemID, &item.ItemName, &item.Quantity, &item.UnitPrice, &item.Subtotal, &notes, &item.CreatedAt, &attendeeName); err != nil {
+			return nil, nil, err
+		}
+		if notes.Valid {
+			item.Notes = notes.String
+		}
+		items = append(items, item)
+		attendeeNames = append(attendeeNames, attendeeName)
+	}
+	return items, attendeeNames, rows.Err()
+}
+
 func (r *OrderRepository) fetchItems(orderID uuid.UUID) ([]models.OrderItem, error) {
 	rows, err := r.db.Query(`
 		SELECT oi.id, oi.order_id, oi.menu_item_id, mi.name, oi.quantity, oi.unit_price, oi.subtotal, oi.notes, oi.created_at

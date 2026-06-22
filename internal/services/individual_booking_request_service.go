@@ -123,6 +123,19 @@ func (s *IndividualBookingRequestService) List(orgID uuid.UUID, status string, p
 	return s.requestRepo.List(orgID, status, page, pageSize)
 }
 
+// ApproveFromWorkflow adapts Approve to the workflow's BookingRequestApprover
+// interface — it materialises the booking but discards the returned record, since
+// the workflow only needs the success/failure signal.
+func (s *IndividualBookingRequestService) ApproveFromWorkflow(id, orgID uuid.UUID) error {
+	_, err := s.Approve(id, orgID)
+	return err
+}
+
+// RejectFromWorkflow adapts Reject to the workflow's BookingRequestApprover interface.
+func (s *IndividualBookingRequestService) RejectFromWorkflow(id, orgID uuid.UUID) error {
+	return s.Reject(id, orgID)
+}
+
 func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.Booking, error) {
 	req, err := s.requestRepo.GetByID(id, orgID)
 	if err != nil {

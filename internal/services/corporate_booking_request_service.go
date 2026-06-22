@@ -342,6 +342,17 @@ func (s *CorporateBookingRequestService) List(orgID uuid.UUID, bookingType, stat
 	return s.requestRepo.List(orgID, bookingType, status, page, pageSize)
 }
 
+// ApproveFromWorkflow / RejectFromWorkflow satisfy the workflow's
+// BookingRequestApprover interface, delegating to the same Approve/Reject the
+// request endpoints use.
+func (s *CorporateBookingRequestService) ApproveFromWorkflow(id, orgID uuid.UUID) error {
+	return s.Approve(id, orgID)
+}
+
+func (s *CorporateBookingRequestService) RejectFromWorkflow(id, orgID uuid.UUID) error {
+	return s.Reject(id, orgID)
+}
+
 func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
 	req, err := s.requestRepo.GetByID(id, orgID)
 	if err != nil {

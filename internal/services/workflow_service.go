@@ -11,6 +11,16 @@ import (
 	"lodge-system/internal/utils/email"
 )
 
+// BookingRequestApprover is satisfied by the individual and corporate booking
+// request services. The workflow holds these as callbacks (keyed by TaskType) so a
+// terminal workflow outcome can drive the same Approve/Reject path the request
+// endpoints use — without WorkflowService importing those services (which would be
+// a circular import, since they already depend on WorkflowService for InitiateWorkflow).
+type BookingRequestApprover interface {
+	ApproveFromWorkflow(id, orgID uuid.UUID) error
+	RejectFromWorkflow(id, orgID uuid.UUID) error
+}
+
 type WorkflowService struct {
 	workflowRepo *repository.WorkflowRepository
 	instanceRepo *repository.WorkflowInstanceRepository
@@ -20,6 +30,10 @@ type WorkflowService struct {
 	clientRepo   *repository.ClientRepository
 	guestRepo    *repository.GuestRepository
 	emailService *email.EmailService
+
+	// approvers maps a TaskType (e.g. "individual_booking", "corporate_booking") to
+	// the service that materialises that request on a terminal workflow outcome.
+	approvers map[string]BookingRequestApprover
 }
 
 func NewWorkflowService(
@@ -41,7 +55,15 @@ func NewWorkflowService(
 		clientRepo:   clientRepo,
 		guestRepo:    guestRepo,
 		emailService: emailService,
+		approvers:    make(map[string]BookingRequestApprover),
 	}
+}
+
+// RegisterApprover wires a request service to a TaskType so that a terminal
+// workflow outcome (final-step approve / reject) drives that service's
+// Approve/Reject — materialising or rejecting the underlying booking request.
+func (s *WorkflowService) RegisterApprover(taskType string, approver BookingRequestApprover) {
+	s.approvers[taskType] = approver
 }
 
 // InitiateWorkflow starts a new workflow instance using workflow type.
@@ -228,24 +250,14 @@ func (s *WorkflowService) ProcessAction(
 			return fmt.Errorf("failed to complete instance: %w", err)
 		}
 
-		// Update the real entity status based on workflow outcome
-		if instance.TaskDetails.TaskType != "" && instance.TaskDetails.TaskID != "" {
-			var entityStatus string
-			switch instance.TaskDetails.TaskType {
-			case "booking":
-				if isCompletingFinalStep {
-					entityStatus = models.BookingStatusConfirmed
-				} else {
-					entityStatus = models.BookingStatusCancelled
-				}
-			}
-			if entityStatus != "" {
-				if err := s.workflowRepo.UpdateEntityStatus(instance.TaskDetails.TaskType, instance.TaskDetails.TaskID, entityStatus, instance.OrgID); err != nil {
-					fmt.Printf("warning: failed to update %s status after workflow outcome: %v\n", instance.TaskDetails.TaskType, err)
-				} else {
-					go s.notifyGuestBookingOutcome(instance.OrgID, instance.TaskDetails, entityStatus)
-				}
-			}
+		// Drive the underlying booking request to its terminal state via the
+		// registered approver for this TaskType. Approve materialises the booking;
+		// reject marks the request rejected — the same paths the request endpoints use.
+		if err := s.applyOutcomeToRequest(instance, isCompletingFinalStep); err != nil {
+			// Non-fatal: the workflow itself has completed. Surface the failure but
+			// don't roll back the task/instance transition.
+			fmt.Printf("warning: failed to apply workflow outcome to %s %s: %v\n",
+				instance.TaskDetails.TaskType, instance.TaskDetails.TaskID, err)
 		}
 	} else {
 		assigneeID, err := s.determineAssignee(instance.OrgID, transition.AllowedRoles, instance.TaskDetails)
@@ -299,6 +311,46 @@ func (s *WorkflowService) ProcessAction(
 		return fmt.Errorf("failed to create history: %w", err)
 	}
 
+	return nil
+}
+
+// applyOutcomeToRequest drives the underlying booking request to its terminal state
+// when a workflow instance closes. It delegates to the approver registered for the
+// instance's TaskType: final-step approval calls Approve (which materialises the
+// booking), any rejection calls Reject. A no-op when no approver is registered or the
+// task details are incomplete.
+func (s *WorkflowService) applyOutcomeToRequest(instance *models.WorkflowInstance, approved bool) error {
+	td := instance.TaskDetails
+	if td.TaskType == "" || td.TaskID == "" {
+		return nil
+	}
+
+	approver, ok := s.approvers[td.TaskType]
+	if !ok {
+		// No approver registered for this TaskType — workflow is audit-only here.
+		return nil
+	}
+
+	requestID, err := uuid.Parse(td.TaskID)
+	if err != nil {
+		return fmt.Errorf("invalid task id %q: %w", td.TaskID, err)
+	}
+	orgID, err := uuid.Parse(instance.OrgID)
+	if err != nil {
+		return fmt.Errorf("invalid org id %q: %w", instance.OrgID, err)
+	}
+
+	if approved {
+		if err := approver.ApproveFromWorkflow(requestID, orgID); err != nil {
+			return err
+		}
+		go s.notifyGuestBookingOutcome(instance.OrgID, td, models.BookingStatusConfirmed)
+		return nil
+	}
+	if err := approver.RejectFromWorkflow(requestID, orgID); err != nil {
+		return err
+	}
+	go s.notifyGuestBookingOutcome(instance.OrgID, td, models.BookingStatusCancelled)
 	return nil
 }
 

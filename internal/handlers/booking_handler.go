@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"encoding/csv"
+	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
@@ -69,15 +73,24 @@ func (h *BookingHandler) CreateFromRequest(w http.ResponseWriter, r *http.Reques
 
 // ─── List & get ───────────────────────────────────────────────────────────────
 
-// List handles GET /api/v1/bookings
+// List handles GET /api/v1/bookings.
+// Supports filters booker_type, booking_type, status and an optional
+// from/to (YYYY-MM-DD) created_at window. Pass format=csv to download all
+// matching rows as a CSV with columns tailored to the booker/booking type.
 func (h *BookingHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	p := utils.ParsePagination(r)
 	bookerType := r.URL.Query().Get("booker_type")
 	bookingType := r.URL.Query().Get("booking_type")
 	status := r.URL.Query().Get("status")
+	from, to := parseDateRange(r)
 
-	bookings, total, err := h.service.List(orgID, bookerType, bookingType, status, p.Page, p.PageSize)
+	if r.URL.Query().Get("format") == "csv" {
+		h.exportCSV(w, orgID, bookerType, bookingType, status, from, to)
+		return
+	}
+
+	bookings, total, err := h.service.List(orgID, bookerType, bookingType, status, from, to, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -89,6 +102,97 @@ func (h *BookingHandler) List(w http.ResponseWriter, r *http.Request) {
 		PageSize: p.PageSize,
 		Total:    total,
 	})
+}
+
+// parseDateRange reads optional from/to (YYYY-MM-DD) query params. "to" is
+// pushed to the end of its day so the range is inclusive.
+func parseDateRange(r *http.Request) (from, to *time.Time) {
+	if v := r.URL.Query().Get("from"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			from = &t
+		}
+	}
+	if v := r.URL.Query().Get("to"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			end := t.Add(24*time.Hour - time.Nanosecond)
+			to = &end
+		}
+	}
+	return from, to
+}
+
+// exportCSV streams all matching bookings as a CSV. Columns follow the
+// back-office tables, which differ per booker/booking type: events have a
+// venue column, individual stays have room + dates + nights, and corporate
+// (non-event) bookings show the booking sub-type and who booked.
+func (h *BookingHandler) exportCSV(w http.ResponseWriter, orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) {
+	// pageSize 0 → fetch every matching row (no pagination cap).
+	bookings, _, err := h.service.List(orgID, bookerType, bookingType, status, from, to, 1, 0)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Decide which shape to export. booking_type=event wins; otherwise the
+	// booker_type (individual vs corporate) selects the layout.
+	kind := "corporate"
+	switch {
+	case bookingType == models.BookingTypeEvent:
+		kind = "event"
+	case bookerType == models.BookerTypeIndividual:
+		kind = "individual"
+	}
+
+	filename := fmt.Sprintf("bookings-%s-%s.csv", kind, time.Now().Format("2006-01-02"))
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+
+	cw := csv.NewWriter(w)
+	defer cw.Flush()
+
+	money := func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) }
+	date := func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return t.Format("2006-01-02")
+	}
+	leadAssignment := func(b models.Booking) *models.BookingRoomAssignment {
+		if len(b.Assignments) > 0 {
+			return &b.Assignments[0]
+		}
+		return nil
+	}
+
+	switch kind {
+	case "individual":
+		_ = cw.Write([]string{"Booking #", "Guest", "Email", "Room", "Check-In", "Check-Out", "Nights", "Total (ZMW)", "Status", "Branch"})
+		for _, b := range bookings {
+			room, checkIn, checkOut, nights := "", "", "", ""
+			if a := leadAssignment(b); a != nil {
+				room, checkIn, checkOut, nights = a.RoomName, date(a.CheckIn), date(a.CheckOut), strconv.Itoa(a.Nights)
+			}
+			_ = cw.Write([]string{b.BookingNumber, b.BookerName, b.BookerEmail, room, checkIn, checkOut, nights, money(b.TotalAmount), b.Status, b.BranchName})
+		}
+	case "event":
+		_ = cw.Write([]string{"Booking #", "Company", "Venue", "Type", "Total (ZMW)", "Status", "Branch"})
+		for _, b := range bookings {
+			company := b.CompanyName
+			if company == "" {
+				company = b.BookerName
+			}
+			_ = cw.Write([]string{b.BookingNumber, company, b.VenueName, b.BookingType, money(b.TotalAmount), b.Status, b.BranchName})
+		}
+	default: // corporate
+		_ = cw.Write([]string{"Booking #", "Company", "Booked By", "Type", "Total (ZMW)", "Status", "Branch"})
+		for _, b := range bookings {
+			bookedBy := b.BookerName
+			if bookedBy == "" {
+				bookedBy = b.ProfileName
+			}
+			_ = cw.Write([]string{b.BookingNumber, b.CompanyName, bookedBy, b.BookingType, money(b.TotalAmount), b.Status, b.BranchName})
+		}
+	}
 }
 
 // GetByID handles GET /api/v1/bookings/{id}

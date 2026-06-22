@@ -991,7 +991,34 @@
           "name": "List",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{base_url}}/api/v1/bookings?page=1&page_size=20&status=confirmed&booker_type=individual", "query": [{ "key": "page", "value": "1" }, { "key": "page_size", "value": "20" }, { "key": "status", "value": "confirmed" }, { "key": "booker_type", "value": "individual" }] },
+            "url": { "raw": "{{base_url}}/api/v1/bookings?page=1&page_size=20&status=confirmed&booker_type=individual&from=2026-06-01&to=2026-06-30", "query": [{ "key": "page", "value": "1" }, { "key": "page_size", "value": "20" }, { "key": "status", "value": "confirmed" }, { "key": "booker_type", "value": "individual" }, { "key": "booking_type", "value": "", "disabled": true }, { "key": "from", "value": "2026-06-01", "description": "created_at >= (YYYY-MM-DD)" }, { "key": "to", "value": "2026-06-30", "description": "created_at <= (YYYY-MM-DD), inclusive" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Export CSV — Individual",
+          "request": {
+            "method": "GET",
+            "description": "Streams all matching individual stays as CSV (Booking #, Guest, Email, Room, Check-In, Check-Out, Nights, Total, Status, Branch). Filters: status + from/to (created_at, YYYY-MM-DD). Org/branch scoped by the JWT.",
+            "url": { "raw": "{{base_url}}/api/v1/bookings?format=csv&booker_type=individual&status=confirmed&from=2026-06-01&to=2026-06-30", "query": [{ "key": "format", "value": "csv" }, { "key": "booker_type", "value": "individual" }, { "key": "status", "value": "confirmed", "disabled": true }, { "key": "from", "value": "2026-06-01" }, { "key": "to", "value": "2026-06-30" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Export CSV — Corporate",
+          "request": {
+            "method": "GET",
+            "description": "Streams all matching corporate (non-event) bookings as CSV (Booking #, Company, Booked By, Type, Total, Status, Branch). Filters: status + from/to (created_at). Org/branch scoped by the JWT.",
+            "url": { "raw": "{{base_url}}/api/v1/bookings?format=csv&booker_type=corporate&from=2026-06-01&to=2026-06-30", "query": [{ "key": "format", "value": "csv" }, { "key": "booker_type", "value": "corporate" }, { "key": "status", "value": "", "disabled": true }, { "key": "from", "value": "2026-06-01" }, { "key": "to", "value": "2026-06-30" }] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "Export CSV — Events",
+          "request": {
+            "method": "GET",
+            "description": "Streams all matching event bookings as CSV (Booking #, Company, Venue, Type, Total, Status, Branch). Filters: status + from/to (created_at). Org/branch scoped by the JWT.",
+            "url": { "raw": "{{base_url}}/api/v1/bookings?format=csv&booking_type=event&from=2026-06-01&to=2026-06-30", "query": [{ "key": "format", "value": "csv" }, { "key": "booking_type", "value": "event" }, { "key": "status", "value": "", "disabled": true }, { "key": "from", "value": "2026-06-01" }, { "key": "to", "value": "2026-06-30" }] },
             "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
           }
         },
@@ -1094,32 +1121,6 @@
         {
           "name": "Remove",
           "request": { "method": "DELETE", "url": "{{base_url}}/api/v1/bookings/:id/attendees/:attendee_id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] }
-        }
-      ]
-    },
-
-    {
-      "name": "Guest Bookings (App)",
-      "item": [
-        {
-          "name": "Create",
-          "request": {
-            "method": "POST", "url": "{{base_url}}/api/v1/guest/bookings",
-            "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"booker_name\": \"John Banda\",\n  \"booker_email\": \"john@gmail.com\",\n  \"booker_phone\": \"0977111222\",\n  \"identification_card\": \"NRC123456/78/1\",\n  \"room_id\": \"ROOM_UUID\",\n  \"check_in\": \"2026-07-01\",\n  \"check_out\": \"2026-07-04\",\n  \"special_requests\": \"Late check-in expected\"\n}" }
-          }
-        },
-        {
-          "name": "List My Bookings",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/bookings", "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }] }
-        },
-        {
-          "name": "Get",
-          "request": { "method": "GET", "url": "{{base_url}}/api/v1/guest/bookings/:id", "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }] }
-        },
-        {
-          "name": "Cancel",
-          "request": { "method": "PATCH", "url": "{{base_url}}/api/v1/guest/bookings/:id/cancel", "header": [{ "key": "Authorization", "value": "Bearer {{guest_token}}" }] }
         }
       ]
     },

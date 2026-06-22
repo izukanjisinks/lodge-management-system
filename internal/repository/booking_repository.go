@@ -69,7 +69,10 @@ func (r *BookingRepository) GetByID(id, orgID uuid.UUID) (*models.Booking, error
 	return scanBooking(row)
 }
 
-func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, status string, page, pageSize int) ([]models.Booking, int, error) {
+// List returns bookings filtered by org, booker/booking type, status and an
+// optional [from, to] created_at window. A non-positive pageSize fetches all
+// matching rows (used by CSV export); otherwise results are paginated.
+func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time, page, pageSize int) ([]models.Booking, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"b.org_id = $1"}
 	i := 2
@@ -89,6 +92,16 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		args = append(args, status)
 		i++
 	}
+	if from != nil {
+		where = append(where, fmt.Sprintf("b.created_at >= $%d", i))
+		args = append(args, *from)
+		i++
+	}
+	if to != nil {
+		where = append(where, fmt.Sprintf("b.created_at <= $%d", i))
+		args = append(args, *to)
+		i++
+	}
 
 	whereStr := strings.Join(where, " AND ")
 
@@ -97,7 +110,14 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		return nil, 0, err
 	}
 
-	args = append(args, pageSize, (page-1)*pageSize)
+	// pageSize <= 0 means "all rows" (export). Build the LIMIT/OFFSET clause only
+	// when paginating so the export isn't capped to one page.
+	limitClause := ""
+	if pageSize > 0 {
+		args = append(args, pageSize, (page-1)*pageSize)
+		limitClause = fmt.Sprintf("LIMIT $%d OFFSET $%d", i, i+1)
+	}
+
 	rows, err := r.db.Query(fmt.Sprintf(`
 		SELECT b.id, b.booking_number, b.org_id, b.branch_id,
 		       b.booking_type, b.booker_type,
@@ -106,6 +126,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		       COALESCE(cd.company_name, '')      AS company_name,
 		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
 		       COALESCE(v.name, '')               AS venue_name,
+		       COALESCE(br.name, '')              AS branch_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
 		       b.created_at, b.updated_at,
 		       asg.id, asg.room_id, asg.check_in, asg.check_out, asg.status, COALESCE(r.name, '')
@@ -113,6 +134,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
 		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
 		LEFT JOIN venues              v  ON v.id  = b.venue_id
+		LEFT JOIN branches            br ON br.id = b.branch_id
 		LEFT JOIN LATERAL (
 		    SELECT bra.id, bra.room_id, bra.check_in, bra.check_out, bra.status
 		    FROM booking_room_assignments bra
@@ -122,7 +144,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		LEFT JOIN rooms r ON r.id = asg.room_id
 		WHERE %s
 		ORDER BY b.created_at DESC
-		LIMIT $%d OFFSET $%d`, whereStr, i, i+1), args...)
+		%s`, whereStr, limitClause), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -133,7 +155,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		var b models.Booking
 		var branchID, webUserID, corProfileID, companyID, requestID, venueID uuid.NullUUID
 		var bookerEmail, bookerPhone, specialRequests sql.NullString
-		var companyName, profileName, venueName sql.NullString
+		var companyName, profileName, venueName, branchName sql.NullString
 		// lead assignment columns (nullable — individual only)
 		var asgID uuid.NullUUID
 		var asgRoomID uuid.NullUUID
@@ -145,7 +167,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 			&b.BookingType, &b.BookerType,
 			&b.BookerName, &bookerEmail, &bookerPhone,
 			&webUserID, &corProfileID, &companyID, &requestID, &venueID,
-			&companyName, &profileName, &venueName,
+			&companyName, &profileName, &venueName, &branchName,
 			&b.TotalAmount, &b.Status, &specialRequests, &b.Overstayed,
 			&b.CreatedAt, &b.UpdatedAt,
 			&asgID, &asgRoomID, &asgCheckIn, &asgCheckOut, &asgStatus, &asgRoomName,
@@ -164,6 +186,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		if companyName.Valid { b.CompanyName = companyName.String }
 		if profileName.Valid { b.ProfileName = profileName.String }
 		if venueName.Valid { b.VenueName = venueName.String }
+		if branchName.Valid { b.BranchName = branchName.String }
 
 		if asgID.Valid {
 			nights := 0

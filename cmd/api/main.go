@@ -165,6 +165,12 @@ func main() {
 	indvBookingReqSvc.SetWorkflowService(workflowService)
 	indvBookingReqHandler := handlers.NewIndividualBookingRequestHandler(indvBookingReqSvc)
 
+	// Wire the booking-request services back into the workflow so a terminal workflow
+	// outcome (final approve / reject) materialises or rejects the underlying request.
+	// Keys must match the TaskType set in each service's startWorkflow.
+	workflowService.RegisterApprover("individual_booking", indvBookingReqSvc)
+	workflowService.RegisterApprover("corporate_booking", corpBookingReqSvc)
+
 	// Background jobs
 	jobs.NewOverdueCheckoutJob(bookingRepo, invoiceRepo, auditLogRepo, orgSettingsRepo).Start()
 	log.Println("Overdue checkout job scheduled")

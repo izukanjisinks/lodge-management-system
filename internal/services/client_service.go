@@ -195,7 +195,7 @@ func (s *ClientService) GetCorporateWithBookings(id, orgID uuid.UUID) (*models.C
 	var documents []string
 
 	if s.bookingRepo != nil {
-		bookings, _, err := s.bookingRepo.List(orgID, models.BookerTypeCorporate, "", "", 1, 100)
+		bookings, _, err := s.bookingRepo.List(orgID, models.BookerTypeCorporate, "", "", nil, nil, 1, 100)
 		if err == nil {
 			for _, b := range bookings {
 				if b.CompanyID == nil || *b.CompanyID != id {

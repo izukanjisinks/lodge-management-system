@@ -89,6 +89,7 @@ type Booking struct {
 	CompanyName  string `json:"company_name,omitempty"`
 	ProfileName  string `json:"profile_name,omitempty"`
 	VenueName    string `json:"venue_name,omitempty"`
+	BranchName   string `json:"branch_name,omitempty"`
 
 	// Child data (populated on GetByID)
 	Attendees   []BookingAttendee      `json:"attendees,omitempty"`

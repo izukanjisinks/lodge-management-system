@@ -623,8 +623,8 @@ func (s *BookingService) GetByID(id, orgID uuid.UUID) (*models.Booking, error) {
 	return b, nil
 }
 
-func (s *BookingService) List(orgID uuid.UUID, bookerType, bookingType, status string, page, pageSize int) ([]models.Booking, int, error) {
-	return s.bookingRepo.List(orgID, bookerType, bookingType, status, page, pageSize)
+func (s *BookingService) List(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time, page, pageSize int) ([]models.Booking, int, error) {
+	return s.bookingRepo.List(orgID, bookerType, bookingType, status, from, to, page, pageSize)
 }
 
 // ─── Status transitions ───────────────────────────────────────────────────────

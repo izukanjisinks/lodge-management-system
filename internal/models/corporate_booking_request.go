@@ -284,3 +284,55 @@ type SubmitEventRequest struct {
 	Guests           []CorConferenceGuestInput  `json:"guests,omitempty"`
 	Documents        []string                  `json:"documents,omitempty"`
 }
+
+// ── Standalone event booking (Flow B) ────────────────────────────────────────
+// SubmitEventBookingRequest is the unified envelope from eventBooking.js. Both
+// individual and corporate events use this shape; corporate adds company/approver.
+type SubmitEventBookingRequest struct {
+	OrgID    uuid.UUID  `json:"org_id"`
+	BranchID *uuid.UUID `json:"branch_id,omitempty"`
+
+	BookingType    string `json:"booking_type,omitempty"`    // "event"
+	Source         string `json:"source,omitempty"`
+	Currency       string `json:"currency,omitempty"`
+	BookingContext string `json:"booking_context,omitempty"` // "individual" | "corporate"
+
+	ParticipantMode  string `json:"participant_mode,omitempty"`
+	ParticipantCount *int   `json:"participant_count,omitempty"`
+
+	BookedBy   CorSubmitBookedBy     `json:"booked_by"`
+	Attendants []CorBookingAttendant `json:"attendants,omitempty"`
+
+	Company  *CorSubmitCompany  `json:"company,omitempty"`  // corporate only
+	Approver *CorSubmitApprover `json:"approver,omitempty"` // corporate only
+
+	Event *EventBlock `json:"event,omitempty"`
+
+	Documents []string `json:"documents,omitempty"`
+}
+
+// EventBlock is the schedule + sessions for a standalone event booking.
+type EventBlock struct {
+	ReasonForBooking string         `json:"reason_for_booking,omitempty"`
+	StartDate        string         `json:"start_date,omitempty"`
+	EndDate          string         `json:"end_date,omitempty"`
+	ScheduleMode     string         `json:"schedule_mode,omitempty"` // "uniform" | "per_day"
+	Notes            string         `json:"notes,omitempty"`
+	Sessions         []EventSession `json:"sessions,omitempty"`
+}
+
+// EventSession maps one-to-one onto a booking_events row at materialise time.
+type EventSession struct {
+	EventName           string `json:"event_name,omitempty"`
+	EventType           string `json:"event_type,omitempty"`
+	EventDate           string `json:"event_date,omitempty"`
+	StartTime           string `json:"start_time,omitempty"`
+	EndTime             string `json:"end_time,omitempty"`
+	ExpectedAttendees   int    `json:"expected_attendees,omitempty"`
+	SetupType           string `json:"setup_type,omitempty"`
+	VenueID             string `json:"venue_id,omitempty"`
+	VenueName           string `json:"venue_name,omitempty"`
+	VenueCapacity       *int   `json:"venue_capacity,omitempty"`
+	PricingBasis        string `json:"pricing_basis,omitempty"`
+	SpecialRequirements string `json:"special_requirements,omitempty"`
+}

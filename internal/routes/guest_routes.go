@@ -23,6 +23,7 @@ func RegisterGuestRoutes(
 	http.HandleFunc("GET /api/v1/guest/rooms/{id}", withPublic(roomHandler.GuestGetByID))
 	http.HandleFunc("GET /api/v1/guest/menu", withPublic(menuHandler.GuestGetMenu))
 	http.HandleFunc("GET /api/v1/guest/venues", withPublic(venueHandler.GuestList))
+	http.HandleFunc("GET /api/v1/guest/venues/{id}", withPublic(venueHandler.GuestGetByID))
 
 	// Authenticated guest — profile
 	http.HandleFunc("GET /api/v1/guest/me", withGuestAuth(guestAuthHandler.Me))

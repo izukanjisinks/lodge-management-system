@@ -50,6 +50,10 @@ func (s *VenueService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Venue, er
 	return s.repo.GetByID(id, orgID)
 }
 
+func (s *VenueService) GetByIDUnscoped(id uuid.UUID) (*models.Venue, error) {
+	return s.repo.GetByIDUnscoped(id)
+}
+
 func (s *VenueService) GuestList(orgID uuid.UUID, branchID *uuid.UUID, venueType string) ([]models.Venue, error) {
 	if venueType != "" && !models.ValidVenueTypes[venueType] {
 		return nil, errors.New("invalid venue type filter")

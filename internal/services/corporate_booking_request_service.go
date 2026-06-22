@@ -277,6 +277,88 @@ func (s *CorporateBookingRequestService) SubmitEvent(orgID uuid.UUID, req *model
 	return r, nil
 }
 
+// SubmitEventBooking handles the standalone event envelope (Flow B) from
+// eventBooking.js for corporate bookers. It maps the nested company/approver/
+// booked_by into the ResolveChain inputs, stores the whole envelope as JSONB, and
+// starts the approval workflow.
+func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.CorporateBookingRequest, error) {
+	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
+		return nil, errors.New("booked_by name and email are required")
+	}
+	if req.Company == nil || req.Company.Name == "" {
+		return nil, errors.New("company name is required")
+	}
+	if req.Event == nil || len(req.Event.Sessions) == 0 {
+		return nil, errors.New("at least one event session is required")
+	}
+	for i, sess := range req.Event.Sessions {
+		if sess.VenueID == "" {
+			return nil, fmt.Errorf("session %d is missing a venue", i+1)
+		}
+		venueID, err := uuid.Parse(sess.VenueID)
+		if err != nil {
+			return nil, fmt.Errorf("session %d has an invalid venue", i+1)
+		}
+		if err := s.validateVenue(orgID, venueID); err != nil {
+			return nil, err
+		}
+	}
+
+	company := models.CorBookingCompanyInput{
+		CompanyName: req.Company.Name,
+		TPIN:        req.Company.TPIN,
+		Industry:    req.Company.Industry,
+	}
+	var branch *models.CorBookingBranchInput
+	if req.Company.BranchName != "" {
+		branch = &models.CorBookingBranchInput{Name: req.Company.BranchName}
+	}
+	firstName, lastName := splitName(req.BookedBy.Name)
+	profile := models.CorBookingProfileInput{
+		FirstName:  firstName,
+		LastName:   lastName,
+		Email:      req.BookedBy.Email,
+		Phone:      req.BookedBy.Phone,
+		JobTitle:   req.BookedBy.JobTitle,
+		Department: req.Company.DepartmentName,
+	}
+
+	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	if err != nil {
+		return nil, err
+	}
+
+	payloadBytes, _ := json.Marshal(req)
+
+	r := &models.CorporateBookingRequest{
+		OrgID:            orgID,
+		BranchID:         branchID,
+		CorProfileID:     &profileID,
+		CompanyID:        &companyID,
+		BookingType:      models.CorporateBookingTypeEvent,
+		Status:           models.CorporateBookingStatusPending,
+		ReasonForBooking: req.Event.ReasonForBooking,
+		Notes:            req.Event.Notes,
+		Documents:        req.Documents,
+		Payload:          json.RawMessage(payloadBytes),
+		ProfileName:      req.BookedBy.Name,
+		CompanyName:      req.Company.Name,
+	}
+	if req.Approver != nil {
+		r.AuthoriserName = req.Approver.Name
+		r.AuthoriserEmail = req.Approver.Email
+		r.AuthoriserPhone = req.Approver.Phone
+		r.AuthoriserTitle = req.Approver.Title
+	}
+
+	if err := s.requestRepo.Create(r); err != nil {
+		return nil, err
+	}
+
+	s.startWorflow(r, orgID)
+	return r, nil
+}
+
 // ─── Backoffice ───────────────────────────────────────────────────────────────
 
 func (s *CorporateBookingRequestService) GetByID(id, orgID uuid.UUID) (*models.CorporateBookingRequest, error) {
@@ -392,9 +474,19 @@ func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
 		// The booking belongs to the lodge branch the venue physically sits at —
 		// NOT req.BranchID, which references the corporate client's branch
 		// (cor_branch_details) and would violate bookings_branch_id_fkey.
-		var payload models.SubmitEventRequest
-		_ = json.Unmarshal(req.Payload, &payload)
-		lodgeBranchID := s.venueBranchID(orgID, payload.VenueID)
+		// The venue comes from the new envelope's first session, falling back to the
+		// legacy single-venue shape for older requests.
+		var lodgeBranchID *uuid.UUID
+		var envelope models.SubmitEventBookingRequest
+		if json.Unmarshal(req.Payload, &envelope) == nil && envelope.Event != nil && len(envelope.Event.Sessions) > 0 {
+			if vID, err := uuid.Parse(envelope.Event.Sessions[0].VenueID); err == nil {
+				lodgeBranchID = s.venueBranchID(orgID, vID)
+			}
+		} else {
+			var legacy models.SubmitEventRequest
+			_ = json.Unmarshal(req.Payload, &legacy)
+			lodgeBranchID = s.venueBranchID(orgID, legacy.VenueID)
+		}
 
 		if _, err := s.booking.CreateFromRequest(orgID, lodgeBranchID, id, nil); err != nil {
 			return fmt.Errorf("request approved but booking creation failed: %w", err)

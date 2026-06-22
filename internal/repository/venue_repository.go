@@ -44,6 +44,15 @@ func (r *VenueRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Venue,
 	return scanVenue(row)
 }
 
+// GetByIDUnscoped looks up a venue by its (globally unique) ID without org scoping.
+// Used by the public guest venue-detail endpoint, mirroring RoomRepository.
+func (r *VenueRepository) GetByIDUnscoped(id uuid.UUID) (*models.Venue, error) {
+	row := r.db.QueryRow(`
+		SELECT id, org_id, branch_id, name, venue_type, capacity, area_sqm, floor, base_rate, rate_type, amenities, images, is_available, notes, created_at, updated_at
+		FROM venues WHERE id = $1`, id)
+	return scanVenue(row)
+}
+
 func (r *VenueRepository) List(orgID uuid.UUID, branchID *uuid.UUID, venueType string, isAvailable *bool, page, pageSize int) ([]models.Venue, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"org_id = $1"}

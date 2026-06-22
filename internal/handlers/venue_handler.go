@@ -84,6 +84,25 @@ func (h *VenueHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, venues)
 }
 
+// GuestGetByID handles the public GET /api/v1/guest/venues/{id}. Venue IDs are
+// globally unique, so the lookup is unscoped (no auth, no org_id) — mirroring the
+// public room-detail endpoint.
+func (h *VenueHandler) GuestGetByID(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid venue ID")
+		return
+	}
+
+	venue, err := h.service.GetByIDUnscoped(id)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, "Venue not found")
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, venue)
+}
+
 func (h *VenueHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

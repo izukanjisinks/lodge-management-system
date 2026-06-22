@@ -92,6 +92,56 @@ func (s *IndividualBookingRequestService) Submit(guestID uuid.UUID, req *models.
 	return r, nil
 }
 
+// SubmitEvent stores a standalone individual event request (Flow B). It reuses the
+// shared event envelope (no company/approver for individuals), persists the whole
+// payload as JSONB with booking_type='event', and starts the approval workflow.
+func (s *IndividualBookingRequestService) SubmitEvent(guestID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.IndividualBookingRequest, error) {
+	if req.BookedBy.Name == "" || req.BookedBy.Email == "" {
+		return nil, errors.New("booked_by name and email are required")
+	}
+	if req.Event == nil || len(req.Event.Sessions) == 0 {
+		return nil, errors.New("at least one event session is required")
+	}
+	for i, sess := range req.Event.Sessions {
+		if sess.VenueID == "" {
+			return nil, fmt.Errorf("session %d is missing a venue", i+1)
+		}
+		if _, err := uuid.Parse(sess.VenueID); err != nil {
+			return nil, fmt.Errorf("session %d has an invalid venue", i+1)
+		}
+	}
+
+	orgID := req.OrgID
+	if orgID == uuid.Nil {
+		return nil, errors.New("org_id is required")
+	}
+
+	payloadBytes, _ := json.Marshal(req)
+
+	r := &models.IndividualBookingRequest{
+		OrgID:       orgID,
+		WebUserID:   &guestID,
+		BookerName:  req.BookedBy.Name,
+		BookerEmail: req.BookedBy.Email,
+		BookerPhone: req.BookedBy.Phone,
+		BookingType: models.BookingTypeEvent,
+		Status:      models.IndividualBookingStatusPending,
+		Notes:       req.Event.Notes,
+		Documents:   req.Documents,
+		Payload:     json.RawMessage(payloadBytes),
+	}
+	if r.Documents == nil {
+		r.Documents = []string{}
+	}
+
+	if err := s.requestRepo.Create(r); err != nil {
+		return nil, err
+	}
+
+	s.startWorkflow(r, orgID)
+	return r, nil
+}
+
 // ─── Web user ─────────────────────────────────────────────────────────────────
 
 func (s *IndividualBookingRequestService) GetForWebUser(id, webUserID uuid.UUID) (*models.IndividualBookingRequest, error) {
@@ -143,6 +193,23 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 	}
 	if req.Status != models.IndividualBookingStatusPending {
 		return nil, errors.New("only pending requests can be approved")
+	}
+
+	// Event requests materialise via the shared multi-session engine (one
+	// booking_events row per session), not the room-assignment path below.
+	if req.BookingType == models.BookingTypeEvent {
+		var envelope models.SubmitEventBookingRequest
+		if jsonErr := json.Unmarshal(req.Payload, &envelope); jsonErr != nil || envelope.Event == nil {
+			return nil, errors.New("invalid event request payload")
+		}
+		booking, err := s.bookingService.CreateIndividualEvent(orgID, req.WebUserID, &envelope)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.requestRepo.UpdateStatus(id, orgID, models.IndividualBookingStatusApproved); err != nil {
+			return nil, err
+		}
+		return booking, nil
 	}
 
 	// Decode the stored payload — try the new unified envelope first,

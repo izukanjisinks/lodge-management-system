@@ -11,6 +11,8 @@ func RegisterIndividualBookingRequestRoutes(h *handlers.IndividualBookingRequest
 	// Web user — submit accommodation booking request (unified envelope from frontend).
 	// URL path uses "guest" to match the frontend, but auth validates against web_users.
 	http.HandleFunc("POST /api/v1/guest/bookings/accommodation", withWebUserAuth(h.SubmitAccommodation))
+	// Web user — submit standalone event booking request (Flow B)
+	http.HandleFunc("POST /api/v1/guest/bookings/event", withWebUserAuth(h.SubmitEvent))
 
 	// Web user — submit and manage their own requests
 	http.HandleFunc("POST /api/v1/web/bookings", withWebUserAuth(h.Submit))

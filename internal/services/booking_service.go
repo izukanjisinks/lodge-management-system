@@ -163,6 +163,64 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, 
 	return b, nil
 }
 
+// CreateIndividualEvent materialises an approved individual event request into a
+// booking: it creates the bookings spine (booker_type individual) then delegates
+// to the shared multi-session engine to create the booking_events + attendees.
+// branchID is the lodge branch the first session's venue sits at.
+func (s *BookingService) CreateIndividualEvent(
+	orgID uuid.UUID,
+	webUserID *uuid.UUID,
+	envelope *models.SubmitEventBookingRequest,
+) (*models.Booking, error) {
+	if envelope.Event == nil || len(envelope.Event.Sessions) == 0 {
+		return nil, errors.New("at least one event session is required")
+	}
+
+	// The booking lives on the lodge branch the first session's venue sits at.
+	var branchID *uuid.UUID
+	if vID, perr := uuid.Parse(envelope.Event.Sessions[0].VenueID); perr == nil {
+		if venue, verr := s.venueRepo.GetByID(vID, orgID); verr == nil {
+			branchID = venue.BranchID
+		}
+	}
+
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	b := &models.Booking{
+		OrgID:       orgID,
+		BranchID:    branchID,
+		BookingType: models.BookingTypeEvent,
+		BookerType:  models.BookerTypeIndividual,
+		BookerName:  envelope.BookedBy.Name,
+		BookerEmail: envelope.BookedBy.Email,
+		BookerPhone: envelope.BookedBy.Phone,
+		WebUserID:   webUserID,
+		Status:      models.BookingStatusConfirmed,
+	}
+	if err = s.bookingRepo.Create(tx, b); err != nil {
+		return nil, fmt.Errorf("failed to create booking: %w", err)
+	}
+
+	if _, err = s.materialiseEventSessions(tx, orgID, b, envelope.Event, envelope.Attendants); err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	s.generateInvoice(b.ID, orgID)
+	return b, nil
+}
+
 // ─── Corporate booking (materialise from approved request) ────────────────────
 
 func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID, requestID uuid.UUID, matReq *models.MaterialiseRequest) (*models.Booking, error) {
@@ -303,10 +361,16 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 		}
 	}
 
-	// For events: register the named roster (if any) and create the single venue
-	// reservation (booking_events) priced from the guest's chosen venue.
+	// For events: new envelope (Flow B) carries multiple sessions, each its own
+	// venue → one booking_events row per session via the shared engine. Older
+	// single-venue requests fall back to materialiseEvent.
 	if req.BookingType == models.CorporateBookingTypeEvent {
-		if err = s.materialiseEvent(tx, orgID, b, req, matReq); err != nil {
+		var envelope models.SubmitEventBookingRequest
+		if json.Unmarshal(req.Payload, &envelope) == nil && envelope.Event != nil && len(envelope.Event.Sessions) > 0 {
+			if _, err = s.materialiseEventSessions(tx, orgID, b, envelope.Event, envelope.Attendants); err != nil {
+				return nil, err
+			}
+		} else if err = s.materialiseEvent(tx, orgID, b, req, matReq); err != nil {
 			return nil, err
 		}
 	}
@@ -530,6 +594,103 @@ func (s *BookingService) materialiseEvent(
 
 	b.Events = []models.BookingEvent{*bookingEvent}
 	return nil
+}
+
+// materialiseEventSessions is the shared engine for standalone event bookings
+// (Flow B), used by both corporate and individual materialise. For an already-
+// created booking spine `b`, it:
+//   - creates one booking_events row per session (each with its own venue/date/time)
+//   - creates a booking_attendees row per named attendant (headcount-only = none)
+//   - rolls each session's hire charge into the booking total
+//
+// A session's venue is required; pricing falls back to the venue's base_rate when
+// the session doesn't carry an explicit price (pricing_basis is advisory metadata
+// kept in the payload — staff confirm final pricing). Returns the total amount.
+func (s *BookingService) materialiseEventSessions(
+	tx *sql.Tx,
+	orgID uuid.UUID,
+	b *models.Booking,
+	event *models.EventBlock,
+	attendants []models.CorBookingAttendant,
+) (float64, error) {
+	if event == nil || len(event.Sessions) == 0 {
+		return 0, errors.New("at least one event session is required")
+	}
+
+	// Named roster → real attendees. Headcount-only bookings name no one and rely
+	// on each session's pax_count.
+	for i, a := range attendants {
+		attendee := &models.BookingAttendee{
+			BookingID:          b.ID,
+			FullName:           a.FullName,
+			Email:              a.Email,
+			Phone:              a.Phone,
+			IdentificationCard: a.IDNumber,
+			DietaryNotes:       a.DietaryNotes,
+			IsLeadContact:      a.IsLeadContact || i == 0,
+		}
+		if err := s.attendeeRepo.CreateInTx(tx, attendee); err != nil {
+			return 0, fmt.Errorf("failed to create attendee: %w", err)
+		}
+	}
+
+	var total float64
+	var created []models.BookingEvent
+	var firstVenueID *uuid.UUID
+
+	for idx, sess := range event.Sessions {
+		venueID, err := uuid.Parse(sess.VenueID)
+		if err != nil || venueID == uuid.Nil {
+			return 0, fmt.Errorf("session %d is missing a valid venue", idx+1)
+		}
+		venue, err := s.venueRepo.GetByID(venueID, orgID)
+		if err != nil {
+			return 0, fmt.Errorf("venue for session %d not found", idx+1)
+		}
+
+		// Sessions are single-day: event_date is both start and end.
+		day := parseEventDate("", sess.EventDate)
+
+		eventType := sess.EventType
+		if eventType == "" {
+			eventType = "event"
+		}
+
+		price := venue.BaseRate
+		total += price
+
+		be := &models.BookingEvent{
+			BookingID: b.ID,
+			VenueID:   &venueID,
+			EventType: eventType,
+			StartDate: day,
+			EndDate:   day,
+			StartTime: sess.StartTime,
+			EndTime:   sess.EndTime,
+			PaxCount:  sess.ExpectedAttendees,
+			Price:     price,
+			Notes:     sess.SpecialRequirements,
+		}
+		if err := s.eventRepo.CreateInTx(tx, be); err != nil {
+			return 0, fmt.Errorf("failed to create booking event for session %d: %w", idx+1, err)
+		}
+		created = append(created, *be)
+		if firstVenueID == nil {
+			firstVenueID = &venueID
+		}
+	}
+
+	// Pin the first session's venue on the booking (the headline venue) and roll the
+	// summed hire charges into total_amount.
+	if firstVenueID != nil {
+		if err := s.bookingRepo.UpdateVenueAndTotal(tx, b.ID, orgID, *firstVenueID, total); err != nil {
+			return 0, fmt.Errorf("failed to pin venue on booking: %w", err)
+		}
+		b.VenueID = firstVenueID
+	}
+	b.TotalAmount = total
+	b.Events = created
+	return total, nil
 }
 
 // eventPayloadDetails holds everything materialiseEvent needs out of a stored event

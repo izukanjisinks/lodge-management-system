@@ -21,67 +21,27 @@ func NewCorporateBookingRequestHandler(service *services.CorporateBookingRequest
 
 // ─── Guest submission ─────────────────────────────────────────────────────────
 
-// Submit handles POST /api/v1/web/bookings/corporate?type=accommodation|meals|event
-func (h *CorporateBookingRequestHandler) Submit(w http.ResponseWriter, r *http.Request) {
-	orgIDStr := r.URL.Query().Get("org_id")
-	if orgIDStr == "" {
+// SubmitAccommodation handles POST /api/v1/guest/bookings/corporate-event
+// The org_id is expected in the request body (from frontend), not as a query param.
+func (h *CorporateBookingRequestHandler) SubmitAccommodation(w http.ResponseWriter, r *http.Request) {
+	var req models.SubmitAccommodationRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate org_id from body
+	if req.OrgID == uuid.Nil {
 		utils.RespondError(w, http.StatusBadRequest, "org_id is required")
 		return
 	}
-	orgID, err := uuid.Parse(orgIDStr)
+
+	result, err := h.service.SubmitAccommodation(req.OrgID, &req)
 	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid org_id")
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	bookingType := r.URL.Query().Get("type")
-
-	switch bookingType {
-	case models.CorporateBookingTypeAccommodation, "":
-		var req models.SubmitAccommodationRequest
-		if err := utils.DecodeJson(r, &req); err != nil {
-			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-		req.OrgID = orgID
-		result, err := h.service.SubmitAccommodation(orgID, &req)
-		if err != nil {
-			utils.RespondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		utils.RespondJSON(w, http.StatusCreated, result)
-
-	case models.CorporateBookingTypeMeals:
-		var req models.SubmitMealsRequest
-		if err := utils.DecodeJson(r, &req); err != nil {
-			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-		req.OrgID = orgID
-		result, err := h.service.SubmitMeals(orgID, &req)
-		if err != nil {
-			utils.RespondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		utils.RespondJSON(w, http.StatusCreated, result)
-
-	case models.CorporateBookingTypeEvent:
-		var req models.SubmitEventRequest
-		if err := utils.DecodeJson(r, &req); err != nil {
-			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
-			return
-		}
-		req.OrgID = orgID
-		result, err := h.service.SubmitEvent(orgID, &req)
-		if err != nil {
-			utils.RespondError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		utils.RespondJSON(w, http.StatusCreated, result)
-
-	default:
-		utils.RespondError(w, http.StatusBadRequest, "type must be accommodation, meals, or event")
-	}
+	utils.RespondJSON(w, http.StatusCreated, result)
 }
 
 // ─── Backoffice ───────────────────────────────────────────────────────────────

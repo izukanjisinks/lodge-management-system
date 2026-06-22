@@ -122,17 +122,68 @@ type CorBookingGuestInput struct {
 	RoomType           string `json:"room_type,omitempty"`
 }
 
+// SubmitAccommodationRequest is the flattened envelope from the frontend.
+// All company metadata, approver, and booker details are top-level fields.
 type SubmitAccommodationRequest struct {
-	OrgID            uuid.UUID              `json:"org_id"`
-	BranchID         *uuid.UUID             `json:"branch_id,omitempty"`
-	Company          CorBookingCompanyInput  `json:"company"`
-	Branch           *CorBookingBranchInput  `json:"branch,omitempty"`
-	Profile          CorBookingProfileInput  `json:"booked_by"`
-	ReasonForBooking string                 `json:"reason_for_booking,omitempty"`
-	Notes            string                 `json:"notes,omitempty"`
-	Authoriser       *CorBookingAuthoriser  `json:"authoriser,omitempty"`
-	Guests           []CorBookingGuestInput  `json:"guests"`
-	Documents        []string               `json:"documents,omitempty"`
+	OrgID    uuid.UUID  `json:"org_id"`
+	BranchID *uuid.UUID `json:"branch_id,omitempty"`
+
+	// Company snapshot — flattened
+	CompanyName    string `json:"company_name,omitempty"`
+	TPIN           string `json:"tpin,omitempty"`
+	Industry       string `json:"industry,omitempty"`
+	CompanyEmail   string `json:"company_email,omitempty"`
+	CompanyPhone   string `json:"company_phone,omitempty"`
+	City           string `json:"city,omitempty"`
+	StreetAddress  string `json:"street_address,omitempty"`
+	BranchName     string `json:"branch_name,omitempty"`
+	DepartmentName string `json:"department_name,omitempty"`
+	CostCenter     string `json:"cost_center,omitempty"`
+	GLCode         string `json:"gl_code,omitempty"`
+
+	// Approver — flattened
+	ApproverName  string `json:"approver_name,omitempty"`
+	ApproverEmail string `json:"approver_email,omitempty"`
+	ApproverPhone string `json:"approver_phone,omitempty"`
+	ApproverTitle string `json:"approver_title,omitempty"`
+
+	// Corporate profile ID (optional — for linking to existing profile)
+	CorporateProfileID *uuid.UUID `json:"corporate_profile_id,omitempty"`
+
+	// Booker — flattened
+	BookedByName   string `json:"booked_by.name"`
+	BookedByEmail  string `json:"booked_by.email"`
+	BookedByPhone  string `json:"booked_by.phone,omitempty"`
+	BookedByJobTitle string `json:"booked_by.job_title,omitempty"`
+
+	// Attendants — shared roster
+	Attendants []CorBookingAttendant `json:"attendants,omitempty"`
+
+	// Participant mode (headcount | detailed)
+	ParticipantMode  string `json:"participant_mode,omitempty"`
+	ParticipantCount *int   `json:"participant_count,omitempty"`
+
+	// Accommodation details
+	ReasonForBooking string `json:"reason_for_booking,omitempty"`
+	RoomType         string `json:"room_type,omitempty"`
+	RoomCount        int    `json:"room_count"`
+	CheckIn          string `json:"check_in,omitempty"`
+	CheckOut         string `json:"check_out,omitempty"`
+	Notes            string `json:"notes,omitempty"`
+
+	Documents []string `json:"documents,omitempty"`
+}
+
+// CorBookingAttendant is a shared attendee in the corporate booking
+// (used for both accommodation and events/meals).
+type CorBookingAttendant struct {
+	FullName       string `json:"full_name"`
+	Email          string `json:"email,omitempty"`
+	Phone          string `json:"phone,omitempty"`
+	IDNumber       string `json:"id_number,omitempty"`
+	DietaryNotes   string `json:"dietary_notes,omitempty"`
+	Company        string `json:"company,omitempty"`
+	IsLeadContact  bool   `json:"is_lead_contact"`
 }
 
 // CorMealItemInput is a menu-item selection on a meals request. Only the item id

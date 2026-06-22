@@ -181,36 +181,53 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 		}
 	}
 
-	// Decode payload guests
+	// Decode payload for accommodation validation
 	var payload models.SubmitAccommodationRequest
-	var guests []models.CorBookingGuestInput
+	var attendants []models.CorBookingAttendant
+	var checkIn, checkOut time.Time
 	if req.BookingType == models.CorporateBookingTypeAccommodation && req.Payload != nil {
 		if jsonErr := json.Unmarshal(req.Payload, &payload); jsonErr == nil {
-			guests = payload.Guests
+			attendants = payload.Attendants
+			// Parse shared check-in/check-out from accommodation block
+			layouts := []string{"2006-01-02", time.RFC3339}
+			for _, l := range layouts {
+				if t, e := time.Parse(l, payload.CheckIn); e == nil {
+					checkIn = t
+					break
+				}
+			}
+			for _, l := range layouts {
+				if t, e := time.Parse(l, payload.CheckOut); e == nil {
+					checkOut = t
+					break
+				}
+			}
 		}
 	}
 
-	// Validate all guests have an assignment
+	// Validate all attendants have an assignment (accommodation only)
 	if req.BookingType == models.CorporateBookingTypeAccommodation {
-		if len(matReq.Assignments) != len(guests) {
-			return nil, fmt.Errorf("expected %d room assignments, got %d", len(guests), len(matReq.Assignments))
+		if len(matReq.Assignments) != len(attendants) {
+			return nil, fmt.Errorf("expected %d room assignments, got %d", len(attendants), len(matReq.Assignments))
+		}
+		if checkIn.IsZero() || checkOut.IsZero() {
+			return nil, errors.New("invalid check_in/check_out dates in accommodation block")
 		}
 		// Build index → room map and validate rooms are available
 		for _, a := range matReq.Assignments {
-			if a.GuestIndex < 0 || a.GuestIndex >= len(guests) {
+			if a.GuestIndex < 0 || a.GuestIndex >= len(attendants) {
 				return nil, fmt.Errorf("guest_index %d is out of range", a.GuestIndex)
-			}
-			g := guests[a.GuestIndex]
-			checkIn, checkOut, parseErr := parseGuestDates(g)
-			if parseErr != nil {
-				return nil, parseErr
 			}
 			available, avErr := s.assignmentRepo.IsRoomAvailable(a.RoomID, checkIn, checkOut, nil)
 			if avErr != nil {
 				return nil, avErr
 			}
 			if !available {
-				return nil, fmt.Errorf("room %s is not available for guest %s %s", a.RoomID, g.FirstName, g.LastName)
+				attName := attendants[a.GuestIndex].FullName
+				if attName == "" {
+					attName = fmt.Sprintf("attendant %d", a.GuestIndex)
+				}
+				return nil, fmt.Errorf("room %s is not available for %s", a.RoomID, attName)
 			}
 		}
 	}
@@ -242,41 +259,28 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 		return nil, fmt.Errorf("failed to create booking: %w", err)
 	}
 
-	// For accommodation: upsert corporate_guests, create attendees + assignments
+	// For accommodation: create attendees + assignments from the shared attendant list
 	if req.BookingType == models.CorporateBookingTypeAccommodation && req.CorProfileID != nil {
 		assignmentMap := make(map[int]uuid.UUID, len(matReq.Assignments))
 		for _, a := range matReq.Assignments {
 			assignmentMap[a.GuestIndex] = a.RoomID
 		}
 
-		for i, g := range guests {
-			// Upsert into corporate_guests roster
-			corpGuest, upsertErr := s.guestRepo.Upsert(*req.CorProfileID, g)
-			if upsertErr != nil {
-				err = fmt.Errorf("failed to upsert corporate guest: %w", upsertErr)
-				return nil, err
-			}
-
-			corpGuestID := corpGuest.ID
+		for i, att := range attendants {
+			// Create attendee from the shared attendant
 			attendee := &models.BookingAttendee{
 				BookingID:          b.ID,
-				CorporateGuestID:   &corpGuestID,
-				FullName:           g.FirstName + " " + g.LastName,
-				Email:              g.Email,
-				Phone:              g.Phone,
-				IdentificationCard: g.IdentificationCard,
-				IsLeadContact:      i == 0,
+				FullName:           att.FullName,
+				Email:              att.Email,
+				Phone:              att.Phone,
+				IdentificationCard: att.IDNumber,
+				IsLeadContact:      att.IsLeadContact,
 			}
 			if err = s.attendeeRepo.CreateInTx(tx, attendee); err != nil {
 				return nil, fmt.Errorf("failed to create attendee: %w", err)
 			}
 
 			roomID := assignmentMap[i]
-			checkIn, checkOut, parseErr := parseGuestDates(g)
-			if parseErr != nil {
-				err = parseErr
-				return nil, err
-			}
 			attendeeID := attendee.ID
 			assignment := &models.BookingRoomAssignment{
 				BookingID:  b.ID,

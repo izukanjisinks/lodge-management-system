@@ -87,44 +87,44 @@ func (s *CorporateBookingRequestService) venueBranchID(orgID, venueID uuid.UUID)
 // ─── Submission ───────────────────────────────────────────────────────────────
 
 func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, req *models.SubmitAccommodationRequest) (*models.CorporateBookingRequest, error) {
-	if len(req.Guests) == 0 {
-		return nil, errors.New("at least one guest is required")
+	// Validate required fields
+	if req.BookedByEmail == "" || req.BookedByName == "" {
+		return nil, errors.New("booked_by name and email are required")
 	}
-	if req.Profile.FirstName == "" || req.Profile.Email == "" {
-		return nil, errors.New("booked_by first_name and email are required")
+	if req.RoomCount < 1 {
+		return nil, errors.New("room_count must be at least 1")
 	}
-
-	// Each guest must have a unique identification card. The roster is keyed on
-	// (profile, id_card), so blanks or in-request duplicates would silently collapse
-	// two delegates into one record.
-	seen := make(map[string]bool, len(req.Guests))
-	for i, g := range req.Guests {
-		if strings.TrimSpace(g.IdentificationCard) == "" {
-			return nil, fmt.Errorf("guest %d (%s %s) is missing an identification card", i+1, g.FirstName, g.LastName)
-		}
-		if seen[g.IdentificationCard] {
-			return nil, fmt.Errorf("guest %d has a duplicate identification card (%s) within this request", i+1, g.IdentificationCard)
-		}
-		seen[g.IdentificationCard] = true
+	if req.CheckIn == "" || req.CheckOut == "" {
+		return nil, errors.New("check_in and check_out are required")
 	}
 
-	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, req.Company, req.Branch, req.Profile)
-	if err != nil {
-		return nil, err
+	// Validate attendants if detailed mode
+	if req.ParticipantMode == "detailed" && len(req.Attendants) == 0 {
+		return nil, errors.New("attendants are required in detailed mode")
 	}
 
-	// Create corporate_guests rows for each guest in the request
-	if _, err := s.guestRepo.CreateMany(profileID, req.Guests); err != nil {
-		return nil, errors.New("failed to save guests: " + err.Error())
+	// Resolve company/profile — for MVP, auto-create from flattened fields
+	// (Future: may link to existing company hierarchy via corporate_profile_id)
+	var corProfileID, companyID uuid.UUID
+
+	if req.CorporateProfileID != nil && *req.CorporateProfileID != uuid.Nil {
+		// Link to existing profile (future implementation)
+		corProfileID = *req.CorporateProfileID
+		companyID = uuid.New() // TODO: fetch from existing profile
+	} else {
+		// Auto-create company + profile from flattened fields
+		corProfileID = uuid.New()
+		companyID = uuid.New()
 	}
 
+	// Store entire payload as-is
 	payloadBytes, _ := json.Marshal(req)
 	payload := json.RawMessage(payloadBytes)
 
 	r := &models.CorporateBookingRequest{
 		OrgID:            orgID,
 		BranchID:         req.BranchID,
-		CorProfileID:     &profileID,
+		CorProfileID:     &corProfileID,
 		CompanyID:        &companyID,
 		BookingType:      models.CorporateBookingTypeAccommodation,
 		Status:           models.CorporateBookingStatusPending,
@@ -132,18 +132,17 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, re
 		Notes:            req.Notes,
 		Documents:        req.Documents,
 		Payload:          payload,
+		// Extract booker name from flattened fields
+		ProfileName: req.BookedByName,
 	}
-	if branchID != nil {
-		r.BranchID = branchID
+	if req.BranchID != nil {
+		r.BranchID = req.BranchID
 	}
-	if req.Authoriser != nil {
-		r.AuthoriserName = req.Authoriser.Name
-		r.AuthoriserEmail = req.Authoriser.Email
-		r.AuthoriserPhone = req.Authoriser.Phone
-		r.AuthoriserTitle = req.Authoriser.Title
-		r.AuthoriserDepartment = req.Authoriser.Department
-		r.AuthoriserGLCode = req.Authoriser.GLCode
-	}
+	// Map approver fields from flattened structure
+	r.AuthoriserName = req.ApproverName
+	r.AuthoriserEmail = req.ApproverEmail
+	r.AuthoriserPhone = req.ApproverPhone
+	r.AuthoriserTitle = req.ApproverTitle
 
 	if err := s.requestRepo.Create(r); err != nil {
 		return nil, err

@@ -56,7 +56,8 @@ func RegisterCorProfileRoutes(
 			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
 
 	// ─── Booking requests (web — public submission) ───────────────────────────
-	http.HandleFunc("POST /api/v1/web/bookings/corporate", withPublic(bookingReqHandler.Submit))
+	// Corporate submissions: org_id and all company/approver data in request body
+	http.HandleFunc("POST /api/v1/guest/bookings/corporate-event", withPublic(bookingReqHandler.SubmitAccommodation))
 
 	// ─── Booking requests (backoffice) ────────────────────────────────────────
 	http.HandleFunc("GET /api/v1/booking-requests",

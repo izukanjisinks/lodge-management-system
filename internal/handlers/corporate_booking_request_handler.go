@@ -21,7 +21,7 @@ func NewCorporateBookingRequestHandler(service *services.CorporateBookingRequest
 
 // ─── Guest submission ─────────────────────────────────────────────────────────
 
-// SubmitAccommodation handles POST /api/v1/guest/bookings/corporate-event
+// SubmitAccommodation handles POST /api/v1/guest/bookings/corporate
 // The org_id is expected in the request body (from frontend), not as a query param.
 func (h *CorporateBookingRequestHandler) SubmitAccommodation(w http.ResponseWriter, r *http.Request) {
 	var req models.SubmitAccommodationRequest

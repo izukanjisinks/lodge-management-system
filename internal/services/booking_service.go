@@ -186,18 +186,18 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 	var attendants []models.CorBookingAttendant
 	var checkIn, checkOut time.Time
 	if req.BookingType == models.CorporateBookingTypeAccommodation && req.Payload != nil {
-		if jsonErr := json.Unmarshal(req.Payload, &payload); jsonErr == nil {
+		if jsonErr := json.Unmarshal(req.Payload, &payload); jsonErr == nil && payload.Accommodation != nil {
 			attendants = payload.Attendants
-			// Parse shared check-in/check-out from accommodation block
+			// Parse shared check-in/check-out from the accommodation block
 			layouts := []string{"2006-01-02", time.RFC3339}
 			for _, l := range layouts {
-				if t, e := time.Parse(l, payload.CheckIn); e == nil {
+				if t, e := time.Parse(l, payload.Accommodation.CheckIn); e == nil {
 					checkIn = t
 					break
 				}
 			}
 			for _, l := range layouts {
-				if t, e := time.Parse(l, payload.CheckOut); e == nil {
+				if t, e := time.Parse(l, payload.Accommodation.CheckOut); e == nil {
 					checkOut = t
 					break
 				}

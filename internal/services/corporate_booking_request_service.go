@@ -88,13 +88,19 @@ func (s *CorporateBookingRequestService) venueBranchID(orgID, venueID uuid.UUID)
 
 func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, req *models.SubmitAccommodationRequest) (*models.CorporateBookingRequest, error) {
 	// Validate required fields
-	if req.BookedByEmail == "" || req.BookedByName == "" {
+	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
-	if req.RoomCount < 1 {
+	if req.Company == nil || req.Company.Name == "" {
+		return nil, errors.New("company name is required")
+	}
+	if req.Accommodation == nil {
+		return nil, errors.New("accommodation block is required")
+	}
+	if req.Accommodation.RoomCount < 1 {
 		return nil, errors.New("room_count must be at least 1")
 	}
-	if req.CheckIn == "" || req.CheckOut == "" {
+	if req.Accommodation.CheckIn == "" || req.Accommodation.CheckOut == "" {
 		return nil, errors.New("check_in and check_out are required")
 	}
 
@@ -103,18 +109,35 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, re
 		return nil, errors.New("attendants are required in detailed mode")
 	}
 
-	// Resolve company/profile — for MVP, auto-create from flattened fields
-	// (Future: may link to existing company hierarchy via corporate_profile_id)
-	var corProfileID, companyID uuid.UUID
+	// Map the nested company/branch/profile into the inputs ResolveChain expects,
+	// then get-or-create the company → branch → profile chain.
+	company := models.CorBookingCompanyInput{
+		CompanyName: req.Company.Name,
+		TPIN:        req.Company.TPIN,
+		Industry:    req.Company.Industry,
+	}
 
-	if req.CorporateProfileID != nil && *req.CorporateProfileID != uuid.Nil {
-		// Link to existing profile (future implementation)
-		corProfileID = *req.CorporateProfileID
-		companyID = uuid.New() // TODO: fetch from existing profile
-	} else {
-		// Auto-create company + profile from flattened fields
-		corProfileID = uuid.New()
-		companyID = uuid.New()
+	var branch *models.CorBookingBranchInput
+	if req.Company.BranchName != "" {
+		branch = &models.CorBookingBranchInput{
+			Name: req.Company.BranchName,
+		}
+	}
+
+	// Split full name into first/last for profile lookup.
+	firstName, lastName := splitName(req.BookedBy.Name)
+	profile := models.CorBookingProfileInput{
+		FirstName:  firstName,
+		LastName:   lastName,
+		Email:      req.BookedBy.Email,
+		Phone:      req.BookedBy.Phone,
+		JobTitle:   req.BookedBy.JobTitle,
+		Department: req.Company.DepartmentName,
+	}
+
+	companyID, branchIDPtr, corProfileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	if err != nil {
+		return nil, err
 	}
 
 	// Store entire payload as-is
@@ -123,26 +146,24 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, re
 
 	r := &models.CorporateBookingRequest{
 		OrgID:            orgID,
-		BranchID:         req.BranchID,
+		BranchID:         branchIDPtr,
 		CorProfileID:     &corProfileID,
 		CompanyID:        &companyID,
 		BookingType:      models.CorporateBookingTypeAccommodation,
 		Status:           models.CorporateBookingStatusPending,
-		ReasonForBooking: req.ReasonForBooking,
-		Notes:            req.Notes,
+		Notes:            req.Accommodation.Notes,
 		Documents:        req.Documents,
 		Payload:          payload,
-		// Extract booker name from flattened fields
-		ProfileName: req.BookedByName,
+		ProfileName:      req.BookedBy.Name,
+		CompanyName:      req.Company.Name,
 	}
-	if req.BranchID != nil {
-		r.BranchID = req.BranchID
+	// Map approver fields from the nested approver object
+	if req.Approver != nil {
+		r.AuthoriserName = req.Approver.Name
+		r.AuthoriserEmail = req.Approver.Email
+		r.AuthoriserPhone = req.Approver.Phone
+		r.AuthoriserTitle = req.Approver.Title
 	}
-	// Map approver fields from flattened structure
-	r.AuthoriserName = req.ApproverName
-	r.AuthoriserEmail = req.ApproverEmail
-	r.AuthoriserPhone = req.ApproverPhone
-	r.AuthoriserTitle = req.ApproverTitle
 
 	if err := s.requestRepo.Create(r); err != nil {
 		return nil, err
@@ -440,4 +461,16 @@ func (s *CorporateBookingRequestService) startWorflow(r *models.CorporateBooking
 			_ = err
 		}
 	}()
+}
+
+// splitName splits a full name string into first and last name.
+// Everything after the first space is treated as the last name.
+// If there is no space, the whole string is the first name.
+func splitName(full string) (first, last string) {
+	full = strings.TrimSpace(full)
+	i := strings.Index(full, " ")
+	if i < 0 {
+		return full, ""
+	}
+	return strings.TrimSpace(full[:i]), strings.TrimSpace(full[i+1:])
 }

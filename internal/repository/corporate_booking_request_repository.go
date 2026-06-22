@@ -26,6 +26,11 @@ func (r *CorporateBookingRequestRepository) Create(req *models.CorporateBookingR
 	if req.Payload != nil {
 		payloadBytes = []byte(req.Payload)
 	}
+	// documents is NOT NULL in the DB; a nil slice would marshal to SQL NULL.
+	documents := req.Documents
+	if documents == nil {
+		documents = []string{}
+	}
 	return r.db.QueryRow(`
 		INSERT INTO corporate_booking_requests
 			(org_id, branch_id, cor_profile_id, company_id, booking_type, status,
@@ -40,7 +45,7 @@ func (r *CorporateBookingRequestRepository) Create(req *models.CorporateBookingR
 		req.ReasonForBooking, req.Notes,
 		req.AuthoriserName, req.AuthoriserEmail, req.AuthoriserPhone,
 		req.AuthoriserTitle, req.AuthoriserDepartment, req.AuthoriserGLCode,
-		pq.Array(req.Documents), payloadBytes,
+		pq.Array(documents), payloadBytes,
 	).Scan(&req.ID, &req.CreatedAt, &req.UpdatedAt)
 }
 

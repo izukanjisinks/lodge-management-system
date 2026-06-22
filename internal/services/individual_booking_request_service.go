@@ -36,47 +36,47 @@ func (s *IndividualBookingRequestService) SetWorkflowService(svc *WorkflowServic
 
 // ─── Submission ───────────────────────────────────────────────────────────────
 
-func (s *IndividualBookingRequestService) Submit(webUserID uuid.UUID, req *models.SubmitIndividualBookingRequest) (*models.IndividualBookingRequest, error) {
-	if req.BookerName == "" {
-		return nil, errors.New("booker_name is required")
+func (s *IndividualBookingRequestService) Submit(guestID uuid.UUID, req *models.SubmitIndividualBookingRequest) (*models.IndividualBookingRequest, error) {
+	if req.BookedBy.Name == "" || req.BookedBy.Email == "" {
+		return nil, errors.New("booked_by name and email are required")
 	}
-	if req.RoomID == uuid.Nil {
-		return nil, errors.New("room_id is required")
+	if req.Accommodation == nil {
+		return nil, errors.New("accommodation block is required")
 	}
-	if req.CheckIn.IsZero() || req.CheckOut.IsZero() {
+	if req.Accommodation.CheckIn == "" || req.Accommodation.CheckOut == "" {
 		return nil, errors.New("check_in and check_out are required")
 	}
-	if !req.CheckOut.After(req.CheckIn.Time) {
-		return nil, errors.New("check_out must be after check_in")
+	if len(req.Accommodation.Rooms) == 0 {
+		return nil, errors.New("at least one room must be selected")
 	}
 
-	// Resolve org from the room
-	room, err := s.roomRepo.GetByIDUnscoped(req.RoomID)
-	if err != nil {
-		return nil, errors.New("room not found")
+	// Resolve org: use org_id from body, or fall back to the first room's org
+	orgID := req.OrgID
+	if orgID == uuid.Nil {
+		firstRoom, err := s.roomRepo.GetByIDUnscoped(req.Accommodation.Rooms[0].RoomID)
+		if err != nil {
+			return nil, errors.New("room not found")
+		}
+		if firstRoom.OrgID != nil {
+			orgID = *firstRoom.OrgID
+		}
 	}
-	orgID := uuid.Nil
-	if room.OrgID != nil {
-		orgID = *room.OrgID
+	if orgID == uuid.Nil {
+		return nil, errors.New("could not resolve org_id")
 	}
 
-	payload := models.IndividualBookingPayload{
-		RoomID:          req.RoomID,
-		CheckIn:         req.CheckIn.Time.Format("2006-01-02"),
-		CheckOut:        req.CheckOut.Time.Format("2006-01-02"),
-		SpecialRequests: req.SpecialRequests,
-	}
-	payloadBytes, _ := json.Marshal(payload)
+	// Store the entire envelope as-is in JSONB
+	payloadBytes, _ := json.Marshal(req)
 
 	r := &models.IndividualBookingRequest{
 		OrgID:       orgID,
-		WebUserID:   &webUserID,
-		BookerName:  req.BookerName,
-		BookerEmail: req.BookerEmail,
-		BookerPhone: req.BookerPhone,
+		WebUserID:   &guestID,
+		BookerName:  req.BookedBy.Name,
+		BookerEmail: req.BookedBy.Email,
+		BookerPhone: req.BookedBy.Phone,
 		BookingType: models.BookingTypeRoom,
 		Status:      models.IndividualBookingStatusPending,
-		Notes:       req.Notes,
+		Notes:       req.Accommodation.Notes,
 		Documents:   req.Documents,
 		Payload:     json.RawMessage(payloadBytes),
 	}
@@ -145,36 +145,53 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		return nil, errors.New("only pending requests can be approved")
 	}
 
-	// Decode the stored payload
-	var p models.IndividualBookingPayload
-	if err := json.Unmarshal(req.Payload, &p); err != nil {
-		return nil, errors.New("invalid request payload")
+	// Decode the stored payload — try the new unified envelope first,
+	// fall back to the old flat shape for requests submitted before this refactor.
+	var roomID uuid.UUID
+	var checkInStr, checkOutStr string
+
+	var newPayload models.SubmitIndividualBookingRequest
+	if jsonErr := json.Unmarshal(req.Payload, &newPayload); jsonErr == nil && newPayload.Accommodation != nil {
+		// New envelope shape
+		if len(newPayload.Accommodation.Rooms) == 0 {
+			return nil, errors.New("no rooms in accommodation block")
+		}
+		roomID = newPayload.Accommodation.Rooms[0].RoomID
+		checkInStr = newPayload.Accommodation.CheckIn
+		checkOutStr = newPayload.Accommodation.CheckOut
+	} else {
+		// Legacy flat shape
+		var legacy models.IndividualBookingPayload
+		if jsonErr := json.Unmarshal(req.Payload, &legacy); jsonErr != nil {
+			return nil, errors.New("invalid request payload")
+		}
+		roomID = legacy.RoomID
+		checkInStr = legacy.CheckIn
+		checkOutStr = legacy.CheckOut
 	}
 
 	checkIn := models.DateOnly{}
-	if err := checkIn.UnmarshalJSON([]byte(`"` + p.CheckIn + `"`)); err != nil {
+	if err := checkIn.UnmarshalJSON([]byte(`"` + checkInStr + `"`)); err != nil {
 		return nil, fmt.Errorf("invalid check_in date: %w", err)
 	}
 	checkOut := models.DateOnly{}
-	if err := checkOut.UnmarshalJSON([]byte(`"` + p.CheckOut + `"`)); err != nil {
+	if err := checkOut.UnmarshalJSON([]byte(`"` + checkOutStr + `"`)); err != nil {
 		return nil, fmt.Errorf("invalid check_out date: %w", err)
 	}
 
-	// Resolve branch from room
-	room, err := s.roomRepo.GetByIDUnscoped(p.RoomID)
+	room, err := s.roomRepo.GetByIDUnscoped(roomID)
 	if err != nil {
 		return nil, errors.New("room not found")
 	}
 
 	bookingReq := &models.CreateIndividualBookingRequest{
-		WebUserID:       req.WebUserID,
-		BookerName:      req.BookerName,
-		BookerEmail:     req.BookerEmail,
-		BookerPhone:     req.BookerPhone,
-		RoomID:          p.RoomID,
-		CheckIn:         checkIn,
-		CheckOut:        checkOut,
-		SpecialRequests: p.SpecialRequests,
+		WebUserID:   req.WebUserID,
+		BookerName:  req.BookerName,
+		BookerEmail: req.BookerEmail,
+		BookerPhone: req.BookerPhone,
+		RoomID:      roomID,
+		CheckIn:     checkIn,
+		CheckOut:    checkOut,
 	}
 
 	booking, err := s.bookingService.CreateIndividual(orgID, room.BranchID, bookingReq)

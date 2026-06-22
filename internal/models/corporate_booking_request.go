@@ -122,56 +122,65 @@ type CorBookingGuestInput struct {
 	RoomType           string `json:"room_type,omitempty"`
 }
 
-// SubmitAccommodationRequest is the flattened envelope from the frontend.
-// All company metadata, approver, and booker details are top-level fields.
+// SubmitAccommodationRequest matches the unified envelope from accommodationBooking.js.
+// company, approver, booked_by, and accommodation all arrive as nested objects.
 type SubmitAccommodationRequest struct {
 	OrgID    uuid.UUID  `json:"org_id"`
 	BranchID *uuid.UUID `json:"branch_id,omitempty"`
 
-	// Company snapshot — flattened
-	CompanyName    string `json:"company_name,omitempty"`
+	BookingType    string `json:"booking_type,omitempty"`
+	Source         string `json:"source,omitempty"`
+	Currency       string `json:"currency,omitempty"`
+	BookingContext string `json:"booking_context,omitempty"`
+
+	ParticipantMode  string `json:"participant_mode,omitempty"`
+	ParticipantCount *int   `json:"participant_count,omitempty"`
+
+	BookedBy   CorSubmitBookedBy     `json:"booked_by"`
+	Attendants []CorBookingAttendant `json:"attendants,omitempty"`
+
+	Company  *CorSubmitCompany  `json:"company,omitempty"`
+	Approver *CorSubmitApprover `json:"approver,omitempty"`
+
+	Accommodation *CorSubmitAccommodation `json:"accommodation,omitempty"`
+
+	Documents []string `json:"documents,omitempty"`
+}
+
+type CorSubmitBookedBy struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone,omitempty"`
+	JobTitle string `json:"job_title,omitempty"`
+}
+
+type CorSubmitCompany struct {
+	Name           string `json:"name"`
 	TPIN           string `json:"tpin,omitempty"`
 	Industry       string `json:"industry,omitempty"`
-	CompanyEmail   string `json:"company_email,omitempty"`
-	CompanyPhone   string `json:"company_phone,omitempty"`
+	Email          string `json:"email,omitempty"`
+	Phone          string `json:"phone,omitempty"`
 	City           string `json:"city,omitempty"`
 	StreetAddress  string `json:"street_address,omitempty"`
 	BranchName     string `json:"branch_name,omitempty"`
 	DepartmentName string `json:"department_name,omitempty"`
 	CostCenter     string `json:"cost_center,omitempty"`
 	GLCode         string `json:"gl_code,omitempty"`
+}
 
-	// Approver — flattened
-	ApproverName  string `json:"approver_name,omitempty"`
-	ApproverEmail string `json:"approver_email,omitempty"`
-	ApproverPhone string `json:"approver_phone,omitempty"`
-	ApproverTitle string `json:"approver_title,omitempty"`
+type CorSubmitApprover struct {
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+	Phone string `json:"phone,omitempty"`
+	Title string `json:"title,omitempty"`
+}
 
-	// Corporate profile ID (optional — for linking to existing profile)
-	CorporateProfileID *uuid.UUID `json:"corporate_profile_id,omitempty"`
-
-	// Booker — flattened
-	BookedByName   string `json:"booked_by.name"`
-	BookedByEmail  string `json:"booked_by.email"`
-	BookedByPhone  string `json:"booked_by.phone,omitempty"`
-	BookedByJobTitle string `json:"booked_by.job_title,omitempty"`
-
-	// Attendants — shared roster
-	Attendants []CorBookingAttendant `json:"attendants,omitempty"`
-
-	// Participant mode (headcount | detailed)
-	ParticipantMode  string `json:"participant_mode,omitempty"`
-	ParticipantCount *int   `json:"participant_count,omitempty"`
-
-	// Accommodation details
-	ReasonForBooking string `json:"reason_for_booking,omitempty"`
-	RoomType         string `json:"room_type,omitempty"`
-	RoomCount        int    `json:"room_count"`
-	CheckIn          string `json:"check_in,omitempty"`
-	CheckOut         string `json:"check_out,omitempty"`
-	Notes            string `json:"notes,omitempty"`
-
-	Documents []string `json:"documents,omitempty"`
+type CorSubmitAccommodation struct {
+	CheckIn            string `json:"check_in,omitempty"`
+	CheckOut           string `json:"check_out,omitempty"`
+	Notes              string `json:"notes,omitempty"`
+	RoomCount          int    `json:"room_count,omitempty"`
+	RoomTypePreference string `json:"room_type_preference,omitempty"`
 }
 
 // CorBookingAttendant is a shared attendee in the corporate booking

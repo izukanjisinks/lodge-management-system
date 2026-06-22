@@ -19,6 +19,38 @@ func NewIndividualBookingRequestHandler(service *services.IndividualBookingReque
 	return &IndividualBookingRequestHandler{service: service}
 }
 
+// ─── Web user / guest submission ──────────────────────────────────────────────
+
+// SubmitAccommodation handles POST /api/v1/guest/bookings/accommodation.
+// Accepts the unified envelope from the frontend (booking_context=individual).
+// Auth is web_users (withWebUserAuth) — URL path says "guest" to match the frontend.
+func (h *IndividualBookingRequestHandler) SubmitAccommodation(w http.ResponseWriter, r *http.Request) {
+	guestID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	var req models.SubmitIndividualBookingRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.OrgID == uuid.Nil {
+		utils.RespondError(w, http.StatusBadRequest, "org_id is required")
+		return
+	}
+
+	result, err := h.service.Submit(guestID, &req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, result)
+}
+
 // ─── Web user submission ──────────────────────────────────────────────────────
 
 // Submit handles POST /api/v1/web/bookings

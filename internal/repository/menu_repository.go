@@ -310,7 +310,7 @@ func (r *MenuRepository) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
 }
 
 // GuestGetMenu returns the active menu for an org with only available items — for public display.
-// Falls back to the system default menu if the org has no custom menu.
+// Returns sql.ErrNoRows when the org (or branch) has no active menu of its own.
 func (r *MenuRepository) GuestGetMenu(orgID uuid.UUID, branchID *uuid.UUID) (*models.Menu, error) {
 	var m models.Menu
 	var oid uuid.NullUUID
@@ -345,8 +345,7 @@ func (r *MenuRepository) GuestGetMenu(orgID uuid.UUID, branchID *uuid.UUID) (*mo
 	err := r.db.QueryRow(`
 		SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
 		FROM menus
-		WHERE (org_id = $1 OR org_id IS NULL) AND branch_id IS NULL AND is_active = TRUE
-		ORDER BY org_id NULLS LAST
+		WHERE org_id = $1 AND branch_id IS NULL AND is_active = TRUE
 		LIMIT 1`, orgID).
 		Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {

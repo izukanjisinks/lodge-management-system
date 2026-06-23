@@ -141,9 +141,9 @@ func (r *MenuRepository) CreateMenuItem(item *models.MenuItem, menuID uuid.UUID,
 	item.BranchID = branchID
 
 	_, err := r.db.Exec(`
-		INSERT INTO menu_items (id, menu_id, org_id, branch_id, name, description, category, price, is_available, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		item.ID, menuID, orgID, branchID, item.Name, item.Description, item.Category, item.Price, item.IsAvailable,
+		INSERT INTO menu_items (id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		item.ID, menuID, orgID, branchID, item.Name, item.Description, item.Category, item.ImageURL, item.Price, item.IsAvailable,
 		item.CreatedAt, item.UpdatedAt,
 	)
 	return err
@@ -151,12 +151,12 @@ func (r *MenuRepository) CreateMenuItem(item *models.MenuItem, menuID uuid.UUID,
 
 func (r *MenuRepository) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models.MenuItem, error) {
 	var item models.MenuItem
-	var description, category sql.NullString
+	var description, category, imageURL sql.NullString
 	var branchID uuid.NullUUID
 	err := r.db.QueryRow(`
-		SELECT id, menu_id, org_id, branch_id, name, description, category, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, created_at, updated_at
 		FROM menu_items WHERE id=$1 AND org_id=$2`, id, orgID).
-		Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt)
+		Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &imageURL, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +168,9 @@ func (r *MenuRepository) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models
 	}
 	if category.Valid {
 		item.Category = category.String
+	}
+	if imageURL.Valid {
+		item.ImageURL = &imageURL.String
 	}
 	return &item, nil
 }
@@ -188,7 +191,7 @@ func (r *MenuRepository) ListAvailableMenuItems(menuID uuid.UUID, category strin
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, menu_id, org_id, branch_id, name, description, category, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, created_at, updated_at
 		FROM menu_items WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
@@ -216,7 +219,7 @@ func (r *MenuRepository) ListMenuItems(menuID uuid.UUID, orgID uuid.UUID, catego
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, menu_id, org_id, branch_id, name, description, category, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, created_at, updated_at
 		FROM menu_items WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
@@ -243,6 +246,9 @@ func (r *MenuRepository) UpdateMenuItem(id uuid.UUID, orgID uuid.UUID, req *mode
 	if req.Category != nil {
 		item.Category = *req.Category
 	}
+	if req.ImageURL != nil {
+		item.ImageURL = req.ImageURL
+	}
 	if req.Price != nil {
 		item.Price = *req.Price
 	}
@@ -252,9 +258,9 @@ func (r *MenuRepository) UpdateMenuItem(id uuid.UUID, orgID uuid.UUID, req *mode
 	item.UpdatedAt = time.Now()
 
 	_, err = r.db.Exec(`
-		UPDATE menu_items SET name=$1, description=$2, category=$3, price=$4, is_available=$5, updated_at=$6
-		WHERE id=$7 AND org_id=$8`,
-		item.Name, item.Description, item.Category, item.Price, item.IsAvailable, item.UpdatedAt, id, orgID,
+		UPDATE menu_items SET name=$1, description=$2, category=$3, image_url=$4, price=$5, is_available=$6, updated_at=$7
+		WHERE id=$8 AND org_id=$9`,
+		item.Name, item.Description, item.Category, item.ImageURL, item.Price, item.IsAvailable, item.UpdatedAt, id, orgID,
 	)
 	if err != nil {
 		return nil, err
@@ -266,9 +272,9 @@ func scanMenuItems(rows *sql.Rows) ([]models.MenuItem, error) {
 	var items []models.MenuItem
 	for rows.Next() {
 		var item models.MenuItem
-		var description, category sql.NullString
+		var description, category, imageURL sql.NullString
 		var branchID uuid.NullUUID
-		if err := rows.Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &imageURL, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if branchID.Valid {
@@ -279,6 +285,9 @@ func scanMenuItems(rows *sql.Rows) ([]models.MenuItem, error) {
 		}
 		if category.Valid {
 			item.Category = category.String
+		}
+		if imageURL.Valid {
+			item.ImageURL = &imageURL.String
 		}
 		items = append(items, item)
 	}

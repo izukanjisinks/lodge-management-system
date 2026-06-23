@@ -68,6 +68,7 @@ func (s *MenuService) CreateMenuItem(orgID uuid.UUID, branchID *uuid.UUID, req *
 		Name:        req.Name,
 		Description: req.Description,
 		Category:    req.Category,
+		ImageURL:    req.ImageURL,
 		Price:       req.Price,
 		IsAvailable: true,
 	}

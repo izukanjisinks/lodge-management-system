@@ -39,6 +39,7 @@ type MenuItem struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description,omitempty"`
 	Category    string     `json:"category,omitempty"`
+	ImageURL    *string    `json:"image_url,omitempty"`
 	Price       float64    `json:"price"`
 	IsAvailable bool       `json:"is_available"`
 	CreatedAt   time.Time  `json:"created_at"`
@@ -55,6 +56,7 @@ type CreateMenuItemRequest struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description,omitempty"`
 	Category    string  `json:"category,omitempty"`
+	ImageURL    *string `json:"image_url,omitempty"`
 	Price       float64 `json:"price"`
 }
 
@@ -62,6 +64,7 @@ type UpdateMenuItemRequest struct {
 	Name        *string  `json:"name,omitempty"`
 	Description *string  `json:"description,omitempty"`
 	Category    *string  `json:"category,omitempty"`
+	ImageURL    *string  `json:"image_url,omitempty"`
 	Price       *float64 `json:"price,omitempty"`
 	IsAvailable *bool    `json:"is_available,omitempty"`
 }

@@ -80,6 +80,35 @@ func (h *IndividualBookingRequestHandler) SubmitEvent(w http.ResponseWriter, r *
 	utils.RespondJSON(w, http.StatusCreated, result)
 }
 
+// SubmitMeal handles POST /api/v1/guest/bookings/meal.
+// Accepts the standalone meal envelope (Flow B, booking_context=individual).
+func (h *IndividualBookingRequestHandler) SubmitMeal(w http.ResponseWriter, r *http.Request) {
+	guestID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	var req models.SubmitMealBookingRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.OrgID == uuid.Nil {
+		utils.RespondError(w, http.StatusBadRequest, "org_id is required")
+		return
+	}
+
+	result, err := h.service.SubmitMeal(guestID, &req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, result)
+}
+
 // ─── Web user submission ──────────────────────────────────────────────────────
 
 // Submit handles POST /api/v1/web/bookings

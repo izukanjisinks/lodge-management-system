@@ -65,6 +65,27 @@ func (h *CorporateBookingRequestHandler) SubmitEvent(w http.ResponseWriter, r *h
 	utils.RespondJSON(w, http.StatusCreated, result)
 }
 
+// SubmitMeal handles POST /api/v1/guest/bookings/corporate-meal.
+// Accepts the standalone meal envelope (Flow B) for corporate bookers.
+func (h *CorporateBookingRequestHandler) SubmitMeal(w http.ResponseWriter, r *http.Request) {
+	var req models.SubmitMealBookingRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.OrgID == uuid.Nil {
+		utils.RespondError(w, http.StatusBadRequest, "org_id is required")
+		return
+	}
+
+	result, err := h.service.SubmitMealBooking(req.OrgID, &req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusCreated, result)
+}
+
 // ─── Backoffice ───────────────────────────────────────────────────────────────
 
 // List handles GET /api/v1/bookings/requests

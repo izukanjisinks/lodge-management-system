@@ -693,6 +693,207 @@ func (s *BookingService) materialiseEventSessions(
 	return total, nil
 }
 
+// ─── Flow B: standalone meals materialise ────────────────────────────────────
+
+// CreateIndividualMeal materialises an approved individual meal request into a
+// bookings record + one order per session (per-attendant for detailed mode,
+// per-session for headcount/buffet mode).
+func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	b := &models.Booking{
+		OrgID:       orgID,
+		BookingType: models.BookingTypeMeals,
+		BookerType:  models.BookerTypeIndividual,
+		BookerName:  envelope.BookedBy.Name,
+		BookerEmail: envelope.BookedBy.Email,
+		BookerPhone: envelope.BookedBy.Phone,
+		WebUserID:   webUserID,
+		Status:      models.BookingStatusConfirmed,
+	}
+	if err = s.bookingRepo.Create(tx, b); err != nil {
+		return nil, fmt.Errorf("failed to create meals booking: %w", err)
+	}
+
+	// Create attendees from the envelope's attendants list.
+	attendeeIDs, err := s.materialiseFlowBAttendees(tx, b, envelope.Attendants)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = s.materialiseMealSessions(orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs); err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	go s.generateInvoice(b.ID, orgID)
+	return s.bookingRepo.GetByID(b.ID, orgID)
+}
+
+// CreateCorporateMeal materialises an approved corporate meal request (Flow B)
+// into a bookings record + orders using the same session engine.
+func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, companyID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	b := &models.Booking{
+		OrgID:        orgID,
+		BookingType:  models.BookingTypeMeals,
+		BookerType:   models.BookerTypeCorporate,
+		BookerName:   envelope.BookedBy.Name,
+		BookerEmail:  envelope.BookedBy.Email,
+		BookerPhone:  envelope.BookedBy.Phone,
+		CorProfileID: corProfileID,
+		CompanyID:    companyID,
+		Status:       models.BookingStatusConfirmed,
+	}
+	if envelope.BranchID != nil {
+		b.BranchID = envelope.BranchID
+	}
+	if err = s.bookingRepo.Create(tx, b); err != nil {
+		return nil, fmt.Errorf("failed to create meals booking: %w", err)
+	}
+
+	attendeeIDs, err := s.materialiseFlowBAttendees(tx, b, envelope.Attendants)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = s.materialiseMealSessions(orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs); err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	go s.generateInvoice(b.ID, orgID)
+	return s.bookingRepo.GetByID(b.ID, orgID)
+}
+
+// materialiseFlowBAttendees creates booking_attendees rows from the shared
+// attendants slice (used by both event and meal Flow B paths).
+func (s *BookingService) materialiseFlowBAttendees(tx *sql.Tx, b *models.Booking, attendants []models.CorBookingAttendant) ([]uuid.UUID, error) {
+	ids := make([]uuid.UUID, len(attendants))
+	for i, a := range attendants {
+		att := &models.BookingAttendee{
+			BookingID:     b.ID,
+			FullName:      a.FullName,
+			Email:         a.Email,
+			Phone:         a.Phone,
+			DietaryNotes:  a.DietaryNotes,
+			IsLeadContact: a.IsLeadContact,
+		}
+		if err := s.attendeeRepo.CreateInTx(tx, att); err != nil {
+			return nil, fmt.Errorf("failed to create attendee: %w", err)
+		}
+		ids[i] = att.ID
+	}
+	return ids, nil
+}
+
+// materialiseMealSessions turns a MealBlock's sessions into orders. For each session:
+//   - Detailed mode (individual_orders present): one Order per attendant per session.
+//   - Headcount/buffet mode (menu_item_id present): one Order for the whole session,
+//     quantity = pax_count, attributed to the booking (no attendee_id).
+func (s *BookingService) materialiseMealSessions(
+	orgID, bookingID uuid.UUID,
+	meal *models.MealBlock,
+	attendants []models.CorBookingAttendant,
+	attendeeIDs []uuid.UUID,
+) error {
+	if s.orderRepo == nil {
+		return errors.New("order repository not configured")
+	}
+	if meal == nil {
+		return errors.New("meal block is required")
+	}
+
+	for _, sess := range meal.Sessions {
+		scheduledFor, err := time.Parse("2006-01-02", sess.MealDate)
+		if err != nil {
+			return fmt.Errorf("invalid meal_date %q: %w", sess.MealDate, err)
+		}
+
+		if len(sess.IndividualOrders) > 0 {
+			// Detailed mode — one order per attendant who has selections in this session.
+			byAttendant := map[int][]models.PlaceOrderItemRequest{}
+			for _, io := range sess.IndividualOrders {
+				menuItemID, parseErr := uuid.Parse(io.MenuItemID)
+				if parseErr != nil || io.Quantity <= 0 {
+					continue
+				}
+				byAttendant[io.AttendantIdx] = append(byAttendant[io.AttendantIdx], models.PlaceOrderItemRequest{
+					MenuItemID: menuItemID,
+					Quantity:   io.Quantity,
+					Notes:      io.Notes,
+				})
+			}
+			for idx, items := range byAttendant {
+				if len(items) == 0 {
+					continue
+				}
+				var attendeeID *uuid.UUID
+				if idx >= 0 && idx < len(attendeeIDs) {
+					aid := attendeeIDs[idx]
+					attendeeID = &aid
+				}
+				order := &models.Order{
+					BookingID:    &bookingID,
+					AttendeeID:   attendeeID,
+					Type:         models.OrderTypeInHouse,
+					ScheduledFor: &scheduledFor,
+					MealPeriod:   sess.MealPeriod,
+				}
+				if _, err := s.orderRepo.Create(order, items, orgID); err != nil {
+					return fmt.Errorf("failed to create detailed order for session %s: %w", sess.MealDate, err)
+				}
+			}
+		} else if sess.MenuItemID != "" {
+			// Headcount/buffet mode — one order for the whole session.
+			menuItemID, parseErr := uuid.Parse(sess.MenuItemID)
+			if parseErr != nil {
+				return fmt.Errorf("invalid menu_item_id for session %s: %w", sess.MealDate, parseErr)
+			}
+			pax := sess.PaxCount
+			if pax <= 0 {
+				pax = 1
+			}
+			order := &models.Order{
+				BookingID:    &bookingID,
+				Type:         models.OrderTypeInHouse,
+				ScheduledFor: &scheduledFor,
+				MealPeriod:   sess.MealPeriod,
+				Notes:        sess.DietaryNotes,
+			}
+			items := []models.PlaceOrderItemRequest{{MenuItemID: menuItemID, Quantity: pax}}
+			if _, err := s.orderRepo.Create(order, items, orgID); err != nil {
+				return fmt.Errorf("failed to create buffet order for session %s: %w", sess.MealDate, err)
+			}
+		}
+		// If neither detailed nor a menu_item_id, the session is noted-only — no order.
+	}
+	return nil
+}
+
 // eventPayloadDetails holds everything materialiseEvent needs out of a stored event
 // request payload.
 type eventPayloadDetails struct {

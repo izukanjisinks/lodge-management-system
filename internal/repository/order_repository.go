@@ -40,10 +40,10 @@ func (r *OrderRepository) Create(o *models.Order, items []models.PlaceOrderItemR
 	}()
 
 	err = tx.QueryRow(`
-		INSERT INTO orders (id, org_id, booking_id, attendee_id, type, status, notes, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		INSERT INTO orders (id, org_id, booking_id, attendee_id, type, status, notes, scheduled_for, meal_period, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING order_number`,
-		o.ID, orgID, o.BookingID, o.AttendeeID, o.Type, models.OrderStatusOpen, o.Notes, now, now,
+		o.ID, orgID, o.BookingID, o.AttendeeID, o.Type, models.OrderStatusOpen, o.Notes, o.ScheduledFor, o.MealPeriod, now, now,
 	).Scan(&o.OrderNumber)
 	if err != nil {
 		return nil, err
@@ -77,6 +77,8 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	var bookingID, attendeeID uuid.NullUUID
 	var notes, bookingNumber, roomName, clientName, companyName, attendeeName sql.NullString
 
+	var scheduledFor models.NullDate
+	var mealPeriod sql.NullString
 	err := r.db.QueryRow(`
 		SELECT o.id, o.org_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
@@ -85,6 +87,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		       COALESCE(NULLIF(att.full_name, ''), NULLIF(cd.company_name, ''), b.booker_name) AS client_name,
 		       cd.company_name,
 		       att.full_name AS attendee_name,
+		       o.scheduled_for, o.meal_period,
 		       o.created_at, o.updated_at
 		FROM orders o
 		LEFT JOIN bookings            b   ON b.id = o.booking_id
@@ -99,7 +102,15 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		) asg ON TRUE
 		WHERE o.id=$1 AND o.org_id=$2`, id, orgID).
 		Scan(&o.ID, &o.OrgID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
-			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName, &o.CreatedAt, &o.UpdatedAt)
+			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
+			&scheduledFor, &mealPeriod,
+			&o.CreatedAt, &o.UpdatedAt)
+	if scheduledFor.Valid {
+		o.ScheduledFor = &scheduledFor.Time
+	}
+	if mealPeriod.Valid {
+		o.MealPeriod = mealPeriod.String
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +200,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		       COALESCE(NULLIF(att.full_name, ''), NULLIF(cd.company_name, ''), b.booker_name) AS client_name,
 		       cd.company_name,
 		       att.full_name AS attendee_name,
+		       o.scheduled_for, o.meal_period,
 		       o.created_at, o.updated_at
 		FROM orders o
 		LEFT JOIN bookings            b   ON b.id = o.booking_id
@@ -202,7 +214,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		    ORDER BY bra.check_in ASC LIMIT 1
 		) asg ON TRUE
 		WHERE o.org_id = $1%s
-		ORDER BY o.created_at DESC
+		ORDER BY o.scheduled_for ASC NULLS LAST, o.created_at DESC
 		LIMIT $%d OFFSET $%d`, extraWhere, i, i+1), append(args, pageSize, (page-1)*pageSize)...)
 
 	if err != nil {
@@ -214,9 +226,12 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 	for rows.Next() {
 		var o models.Order
 		var bid, aid uuid.NullUUID
-		var notes, bookingNumber, roomName, clientName, companyName, attendeeName sql.NullString
+		var notes, bookingNumber, roomName, clientName, companyName, attendeeName, mealPeriod sql.NullString
+		var scheduledFor models.NullDate
 		if err := rows.Scan(&o.ID, &o.OrgID, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
-			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
+			&scheduledFor, &mealPeriod,
+			&o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		if bid.Valid {
@@ -242,6 +257,12 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		}
 		if attendeeName.Valid {
 			o.AttendeeName = attendeeName.String
+		}
+		if scheduledFor.Valid {
+			o.ScheduledFor = &scheduledFor.Time
+		}
+		if mealPeriod.Valid {
+			o.MealPeriod = mealPeriod.String
 		}
 		orders = append(orders, o)
 	}

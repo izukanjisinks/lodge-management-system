@@ -311,6 +311,66 @@ type SubmitEventBookingRequest struct {
 	Documents []string `json:"documents,omitempty"`
 }
 
+// ── Standalone meal booking (Flow B) ─────────────────────────────────────────
+// SubmitMealBookingRequest is the unified envelope from mealBooking.js. Both
+// individual and corporate meals use this shape; corporate adds company/approver.
+type SubmitMealBookingRequest struct {
+	OrgID    uuid.UUID  `json:"org_id"`
+	BranchID *uuid.UUID `json:"branch_id,omitempty"`
+
+	BookingType    string `json:"booking_type,omitempty"`    // "meal"
+	Source         string `json:"source,omitempty"`
+	Currency       string `json:"currency,omitempty"`
+	BookingContext string `json:"booking_context,omitempty"` // "individual" | "corporate"
+
+	ParticipantMode  string `json:"participant_mode,omitempty"`
+	ParticipantCount *int   `json:"participant_count,omitempty"`
+
+	BookedBy   CorSubmitBookedBy     `json:"booked_by"`
+	Attendants []CorBookingAttendant `json:"attendants,omitempty"`
+
+	Company  *CorSubmitCompany  `json:"company,omitempty"`
+	Approver *CorSubmitApprover `json:"approver,omitempty"`
+
+	Meal *MealBlock `json:"meal,omitempty"`
+
+	Documents []string `json:"documents,omitempty"`
+}
+
+// MealBlock is the schedule + sessions for a standalone meal booking.
+type MealBlock struct {
+	ReasonForBooking string        `json:"reason_for_booking,omitempty"`
+	MealMode         string        `json:"meal_mode,omitempty"`    // "standalone"
+	StartDate        string        `json:"start_date,omitempty"`
+	EndDate          string        `json:"end_date,omitempty"`
+	ScheduleMode     string        `json:"schedule_mode,omitempty"` // "uniform" | "per_day"
+	Notes            string        `json:"notes,omitempty"`
+	Sessions         []MealSession `json:"sessions,omitempty"`
+}
+
+// MealSession maps onto one Order row at materialise time.
+type MealSession struct {
+	SessionName       string `json:"session_name,omitempty"`
+	MealDate          string `json:"meal_date,omitempty"`   // YYYY-MM-DD
+	MealPeriod        string `json:"meal_period,omitempty"` // "breakfast"|"lunch"|"dinner"
+	ServiceType       string `json:"service_type,omitempty"` // "buffet"|"a_la_carte"|...
+	PaxCount          int    `json:"pax_count,omitempty"`
+	MenuItemID        string `json:"menu_item_id,omitempty"` // headcount/buffet mode: the buffet item
+	DietaryNotes      string `json:"dietary_notes,omitempty"`
+	ArrangementsNotes string `json:"arrangements_notes,omitempty"`
+
+	// Detailed mode only — one entry per attendant.
+	IndividualOrders []MealIndividualOrder `json:"individual_orders,omitempty"`
+}
+
+// MealIndividualOrder is a single attendant's item selection within a session.
+type MealIndividualOrder struct {
+	AttendantIdx int    `json:"attendant_idx"`
+	MenuItemID   string `json:"menu_item_id"`
+	Quantity     int    `json:"quantity"`
+	Notes        string `json:"notes,omitempty"`
+}
+
 // EventBlock is the schedule + sessions for a standalone event booking.
 type EventBlock struct {
 	ReasonForBooking string         `json:"reason_for_booking,omitempty"`

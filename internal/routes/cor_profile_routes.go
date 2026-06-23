@@ -59,6 +59,7 @@ func RegisterCorProfileRoutes(
 	// Corporate accommodation submission: org_id and all company/approver data in request body
 	http.HandleFunc("POST /api/v1/guest/bookings/corporate", withPublic(bookingReqHandler.SubmitAccommodation))
 	http.HandleFunc("POST /api/v1/guest/bookings/corporate-event", withPublic(bookingReqHandler.SubmitEvent))
+	http.HandleFunc("POST /api/v1/guest/bookings/corporate-meal", withPublic(bookingReqHandler.SubmitMeal))
 
 	// ─── Booking requests (backoffice) ────────────────────────────────────────
 	http.HandleFunc("GET /api/v1/booking-requests",

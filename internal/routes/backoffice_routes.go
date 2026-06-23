@@ -33,5 +33,6 @@ func RegisterBackofficeRoutes(
 	http.HandleFunc("POST /api/v1/backoffice/organizations/provision", withBackofficeAuth(orgHandler.Provision))
 	http.HandleFunc("GET /api/v1/backoffice/organizations/{id}", withBackofficeAuth(orgHandler.GetByID))
 	http.HandleFunc("PUT /api/v1/backoffice/organizations/{id}", withBackofficeAuth(orgHandler.Update))
+	http.HandleFunc("PATCH /api/v1/backoffice/organizations/{id}/status", withBackofficeAuth(orgHandler.ToggleStatus))
 	http.HandleFunc("DELETE /api/v1/backoffice/organizations/{id}", withBackofficeAuth(orgHandler.Delete))
 }

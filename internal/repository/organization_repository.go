@@ -158,6 +158,18 @@ func (r *OrganizationRepository) ListPublic(page, pageSize int) ([]models.Organi
 	return orgs, total, rows.Err()
 }
 
+// extractTime normalises a PostgreSQL time value to "HH:MM".
+// lib/pq returns time columns as "0000-01-01T15:00:00Z"; we only want the time part.
+func extractTime(s string) string {
+	if len(s) >= 19 && s[10] == 'T' {
+		return s[11:16]
+	}
+	if len(s) >= 5 {
+		return s[:5]
+	}
+	return s
+}
+
 func (r *OrganizationRepository) scanOrganization(row rowScanner) (*models.Organization, error) {
 	var org models.Organization
 	var logoURL, streetAddress, city, country, location, phone, email, checkInTime, checkOutTime sql.NullString
@@ -175,10 +187,12 @@ func (r *OrganizationRepository) scanOrganization(row rowScanner) (*models.Organ
 	org.Phone = phone.String
 	org.Email = email.String
 	if checkInTime.Valid {
-		org.CheckInTime = &checkInTime.String
+		t := extractTime(checkInTime.String)
+		org.CheckInTime = &t
 	}
 	if checkOutTime.Valid {
-		org.CheckOutTime = &checkOutTime.String
+		t := extractTime(checkOutTime.String)
+		org.CheckOutTime = &t
 	}
 	return &org, nil
 }

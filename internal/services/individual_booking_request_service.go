@@ -142,6 +142,46 @@ func (s *IndividualBookingRequestService) SubmitEvent(guestID uuid.UUID, req *mo
 	return r, nil
 }
 
+// SubmitMeal stores a standalone individual meal request (Flow B). The full
+// envelope is persisted as JSONB with booking_type='meals' and the approval
+// workflow is started immediately.
+func (s *IndividualBookingRequestService) SubmitMeal(guestID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.IndividualBookingRequest, error) {
+	if req.BookedBy.Name == "" || req.BookedBy.Email == "" {
+		return nil, errors.New("booked_by name and email are required")
+	}
+	if req.Meal == nil || len(req.Meal.Sessions) == 0 {
+		return nil, errors.New("at least one meal session is required")
+	}
+	if req.OrgID == uuid.Nil {
+		return nil, errors.New("org_id is required")
+	}
+
+	payloadBytes, _ := json.Marshal(req)
+
+	r := &models.IndividualBookingRequest{
+		OrgID:       req.OrgID,
+		WebUserID:   &guestID,
+		BookerName:  req.BookedBy.Name,
+		BookerEmail: req.BookedBy.Email,
+		BookerPhone: req.BookedBy.Phone,
+		BookingType: models.BookingTypeMeals,
+		Status:      models.IndividualBookingStatusPending,
+		Notes:       req.Meal.Notes,
+		Documents:   req.Documents,
+		Payload:     json.RawMessage(payloadBytes),
+	}
+	if r.Documents == nil {
+		r.Documents = []string{}
+	}
+
+	if err := s.requestRepo.Create(r); err != nil {
+		return nil, err
+	}
+
+	s.startWorkflow(r, req.OrgID)
+	return r, nil
+}
+
 // ─── Web user ─────────────────────────────────────────────────────────────────
 
 func (s *IndividualBookingRequestService) GetForWebUser(id, webUserID uuid.UUID) (*models.IndividualBookingRequest, error) {
@@ -193,6 +233,22 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 	}
 	if req.Status != models.IndividualBookingStatusPending {
 		return nil, errors.New("only pending requests can be approved")
+	}
+
+	// Meal requests materialise into a bookings record + orders (one per session).
+	if req.BookingType == models.BookingTypeMeals {
+		var envelope models.SubmitMealBookingRequest
+		if jsonErr := json.Unmarshal(req.Payload, &envelope); jsonErr != nil || envelope.Meal == nil {
+			return nil, errors.New("invalid meal request payload")
+		}
+		booking, err := s.bookingService.CreateIndividualMeal(orgID, req.WebUserID, &envelope)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.requestRepo.UpdateStatus(id, orgID, models.IndividualBookingStatusApproved); err != nil {
+			return nil, err
+		}
+		return booking, nil
 	}
 
 	// Event requests materialise via the shared multi-session engine (one
@@ -302,11 +358,20 @@ func (s *IndividualBookingRequestService) startWorkflow(r *models.IndividualBook
 		return
 	}
 	go func() {
+		typeLabel := map[string]string{
+			models.BookingTypeRoom:  "Room",
+			models.BookingTypeEvent: "Event",
+			models.BookingTypeMeals: "Meal",
+		}
+		label := typeLabel[r.BookingType]
+		if label == "" {
+			label = "Booking"
+		}
 		taskDetails := models.TaskDetails{
 			TaskID:          r.ID.String(),
 			TaskRef:         r.ID.String()[:8],
 			TaskType:        "individual_booking",
-			TaskDescription: fmt.Sprintf("Room booking request from %s", r.BookerName),
+			TaskDescription: fmt.Sprintf("%s booking request from %s", label, r.BookerName),
 			SenderDetails: models.SenderDetails{
 				SenderID:   r.ID.String(),
 				SenderName: r.BookerName,

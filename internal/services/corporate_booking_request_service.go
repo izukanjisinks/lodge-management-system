@@ -359,6 +359,75 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, req
 	return r, nil
 }
 
+// SubmitMealBooking handles the standalone meal envelope (Flow B) from
+// mealBooking.js for corporate bookers. Stores the whole envelope as JSONB and
+// starts the approval workflow.
+func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.CorporateBookingRequest, error) {
+	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
+		return nil, errors.New("booked_by name and email are required")
+	}
+	if req.Company == nil || req.Company.Name == "" {
+		return nil, errors.New("company name is required")
+	}
+	if req.Meal == nil || len(req.Meal.Sessions) == 0 {
+		return nil, errors.New("at least one meal session is required")
+	}
+
+	company := models.CorBookingCompanyInput{
+		CompanyName: req.Company.Name,
+		TPIN:        req.Company.TPIN,
+		Industry:    req.Company.Industry,
+	}
+	var branch *models.CorBookingBranchInput
+	if req.Company.BranchName != "" {
+		branch = &models.CorBookingBranchInput{Name: req.Company.BranchName}
+	}
+	firstName, lastName := splitName(req.BookedBy.Name)
+	profile := models.CorBookingProfileInput{
+		FirstName:  firstName,
+		LastName:   lastName,
+		Email:      req.BookedBy.Email,
+		Phone:      req.BookedBy.Phone,
+		JobTitle:   req.BookedBy.JobTitle,
+		Department: req.Company.DepartmentName,
+	}
+
+	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	if err != nil {
+		return nil, err
+	}
+
+	payloadBytes, _ := json.Marshal(req)
+
+	r := &models.CorporateBookingRequest{
+		OrgID:            orgID,
+		BranchID:         branchID,
+		CorProfileID:     &profileID,
+		CompanyID:        &companyID,
+		BookingType:      models.CorporateBookingTypeMeals,
+		Status:           models.CorporateBookingStatusPending,
+		ReasonForBooking: req.Meal.ReasonForBooking,
+		Notes:            req.Meal.Notes,
+		Documents:        req.Documents,
+		Payload:          json.RawMessage(payloadBytes),
+		ProfileName:      req.BookedBy.Name,
+		CompanyName:      req.Company.Name,
+	}
+	if req.Approver != nil {
+		r.AuthoriserName = req.Approver.Name
+		r.AuthoriserEmail = req.Approver.Email
+		r.AuthoriserPhone = req.Approver.Phone
+		r.AuthoriserTitle = req.Approver.Title
+	}
+
+	if err := s.requestRepo.Create(r); err != nil {
+		return nil, err
+	}
+
+	s.startWorflow(r, orgID)
+	return r, nil
+}
+
 // ─── Backoffice ───────────────────────────────────────────────────────────────
 
 func (s *CorporateBookingRequestService) GetByID(id, orgID uuid.UUID) (*models.CorporateBookingRequest, error) {
@@ -493,9 +562,16 @@ func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
 		}
 	}
 	if s.booking != nil && req.BookingType == models.CorporateBookingTypeMeals {
-		// Meals are not tied to a physical venue; leave branch to org context (nil).
-		if _, err := s.booking.CreateFromRequest(orgID, nil, id, nil); err != nil {
-			return fmt.Errorf("request approved but booking creation failed: %w", err)
+		// Try the new Flow B envelope first; fall back to legacy CreateFromRequest.
+		var envelope models.SubmitMealBookingRequest
+		if json.Unmarshal(req.Payload, &envelope) == nil && envelope.Meal != nil && len(envelope.Meal.Sessions) > 0 {
+			if _, err := s.booking.CreateCorporateMeal(orgID, req.CorProfileID, req.CompanyID, &envelope); err != nil {
+				return fmt.Errorf("request approved but meals booking creation failed: %w", err)
+			}
+		} else {
+			if _, err := s.booking.CreateFromRequest(orgID, nil, id, nil); err != nil {
+				return fmt.Errorf("request approved but booking creation failed: %w", err)
+			}
 		}
 	}
 	return nil

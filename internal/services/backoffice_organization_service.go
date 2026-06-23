@@ -94,6 +94,18 @@ func (s *BackofficeOrganizationService) Update(id uuid.UUID, req models.OrgDetai
 	return s.orgRepo.GetByID(id)
 }
 
+func (s *BackofficeOrganizationService) ToggleStatus(id uuid.UUID, isActive bool) (*models.Organization, error) {
+	org, err := s.orgRepo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("organization not found")
+	}
+	org.IsActive = isActive
+	if err := s.orgRepo.Update(org); err != nil {
+		return nil, err
+	}
+	return s.orgRepo.GetByID(id)
+}
+
 func (s *BackofficeOrganizationService) Delete(id uuid.UUID) error {
 	return s.orgRepo.Delete(id)
 }

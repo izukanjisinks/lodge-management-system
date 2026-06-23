@@ -71,6 +71,30 @@ func (h *BackofficeOrganizationHandler) Update(w http.ResponseWriter, r *http.Re
 	utils.RespondJSON(w, http.StatusOK, org)
 }
 
+func (h *BackofficeOrganizationHandler) ToggleStatus(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid organization ID")
+		return
+	}
+
+	var req struct {
+		IsActive bool `json:"is_active"`
+	}
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	org, err := h.service.ToggleStatus(id, req.IsActive)
+	if err != nil {
+		utils.RespondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, org)
+}
+
 func (h *BackofficeOrganizationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

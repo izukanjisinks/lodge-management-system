@@ -89,7 +89,7 @@ func (r *AssignedTaskRepository) GetByAssignee(orgID, assigneeID string, statusF
 		       at.due_date, at.completed_at, at.created_at, at.updated_at,
 		       wi.task_details
 		FROM assigned_tasks at
-		JOIN workflow_instances wi ON at.instance_id = wi.id
+		JOIN workflow_instances wi ON at.instance_id = wi.id AND wi.status != 'cancelled'
 		WHERE %s
 		ORDER BY at.created_at DESC`, where)
 

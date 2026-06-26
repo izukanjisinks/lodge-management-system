@@ -38,7 +38,7 @@ const (
 	BookingStatusCheckedOut = "checked_out"
 	BookingStatusCancelled  = "cancelled"
 
-	BookingTypeRoom       = "room"
+	BookingTypeRoom       = "accommodation"
 	BookingTypeMeals      = "meals"
 	BookingTypeConference = "conference"
 	BookingTypeEvent      = "event"
@@ -78,12 +78,13 @@ type Booking struct {
 	CompanyID       *uuid.UUID `json:"company_id,omitempty"`
 	RequestID       *uuid.UUID `json:"request_id,omitempty"`
 	VenueID         *uuid.UUID `json:"venue_id,omitempty"`
-	TotalAmount     float64    `json:"total_amount"`
-	Status          string     `json:"status"`
-	SpecialRequests string     `json:"special_requests,omitempty"`
-	Overstayed      bool       `json:"overstayed"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	TotalAmount     float64         `json:"total_amount"`
+	Status          string          `json:"status"`
+	SpecialRequests string          `json:"special_requests,omitempty"`
+	Overstayed      bool            `json:"overstayed"`
+	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 
 	// Joined fields
 	CompanyName  string `json:"company_name,omitempty"`
@@ -159,17 +160,18 @@ type BookingRoomAssignment struct {
 
 type CreateIndividualBookingRequest struct {
 	// Booker — existing web_user or walk-in details
-	WebUserID       *uuid.UUID `json:"web_user_id,omitempty"`
-	BookerName      string     `json:"booker_name"`
-	BookerEmail     string     `json:"booker_email,omitempty"`
-	BookerPhone     string     `json:"booker_phone,omitempty"`
-	IdentificationCard string  `json:"identification_card,omitempty"`
+	WebUserID          *uuid.UUID `json:"web_user_id,omitempty"`
+	BookerName         string     `json:"booker_name"`
+	BookerEmail        string     `json:"booker_email,omitempty"`
+	BookerPhone        string     `json:"booker_phone,omitempty"`
+	IdentificationCard string     `json:"identification_card,omitempty"`
 
 	// Room stay
-	RoomID          uuid.UUID `json:"room_id"`
-	CheckIn         DateOnly  `json:"check_in"`
-	CheckOut        DateOnly  `json:"check_out"`
-	SpecialRequests string    `json:"special_requests,omitempty"`
+	RoomID          uuid.UUID       `json:"room_id"`
+	CheckIn         DateOnly        `json:"check_in"`
+	CheckOut        DateOnly        `json:"check_out"`
+	SpecialRequests string          `json:"special_requests,omitempty"`
+	Metadata        json.RawMessage `json:"metadata,omitempty"`
 }
 
 type CreateAttendeeRequest struct {

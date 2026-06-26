@@ -24,6 +24,7 @@ type CorporateBookingRequest struct {
 	BranchID             *uuid.UUID `json:"branch_id,omitempty"`
 	CorProfileID         *uuid.UUID `json:"cor_profile_id,omitempty"`
 	CompanyID            *uuid.UUID `json:"company_id,omitempty"`
+	WebUserID            *uuid.UUID `json:"web_user_id,omitempty"`
 	BookingType          string     `json:"booking_type"`
 	Status               string     `json:"status"`
 	ReasonForBooking     string     `json:"reason_for_booking,omitempty"`
@@ -245,6 +246,8 @@ type CorConferenceGuestInput struct {
 type MaterialiseGuestAssignment struct {
 	GuestIndex int       `json:"guest_index"`
 	RoomID     uuid.UUID `json:"room_id"`
+	RoomName   string    `json:"room_name,omitempty"`
+	RoomType   string    `json:"room_type,omitempty"`
 }
 
 // MaterialiseRequest is the body for POST /api/v1/booking-requests/:id/materialise.
@@ -308,7 +311,8 @@ type SubmitEventBookingRequest struct {
 
 	Event *EventBlock `json:"event,omitempty"`
 
-	Documents []string `json:"documents,omitempty"`
+	Documents []string        `json:"documents,omitempty"`
+	Metadata  json.RawMessage `json:"metadata,omitempty"`
 }
 
 // ── Standalone meal booking (Flow B) ─────────────────────────────────────────

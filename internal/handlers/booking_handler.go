@@ -36,7 +36,7 @@ func (h *BookingHandler) CreateIndividual(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	booking, err := h.service.CreateIndividual(orgID, branchID, &req)
+	booking, err := h.service.CreateIndividual(orgID, branchID, &req, nil)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -62,7 +62,7 @@ func (h *BookingHandler) CreateFromRequest(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	booking, err := h.service.CreateFromRequest(orgID, branchID, requestID, &matReq)
+	booking, err := h.service.CreateFromRequest(orgID, branchID, requestID, &matReq, nil)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -91,6 +91,29 @@ func (h *BookingHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bookings, total, err := h.service.List(orgID, bookerType, bookingType, status, from, to, p.Page, p.PageSize)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, utils.PaginatedResponse{
+		Data:     bookings,
+		Page:     p.Page,
+		PageSize: p.PageSize,
+		Total:    total,
+	})
+}
+
+// ListForWebUser handles GET /api/v1/web/confirmed-bookings
+func (h *BookingHandler) ListForWebUser(w http.ResponseWriter, r *http.Request) {
+	webUserID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	p := utils.ParsePagination(r)
+
+	bookings, total, err := h.service.ListForWebUser(webUserID, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return

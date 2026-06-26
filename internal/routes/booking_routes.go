@@ -8,6 +8,10 @@ import (
 )
 
 func RegisterBookingRoutes(h *handlers.BookingHandler) {
+	// ─── Web user confirmed bookings ───────────────────────────────────────────
+	http.HandleFunc("GET /api/v1/web/my-bookings",
+		withWebUserAuth(h.ListForWebUser))
+
 	// ─── Bookings ──────────────────────────────────────────────────────────────
 	http.HandleFunc("GET /api/v1/bookings",
 		withAuth(h.List))

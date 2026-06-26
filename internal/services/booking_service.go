@@ -71,7 +71,7 @@ func (s *BookingService) generateInvoice(bookingID, orgID uuid.UUID) {
 
 // ─── Individual booking ───────────────────────────────────────────────────────
 
-func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, req *models.CreateIndividualBookingRequest) (*models.Booking, error) {
+func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, req *models.CreateIndividualBookingRequest, metadata json.RawMessage) (*models.Booking, error) {
 	if req.BookerName == "" {
 		return nil, errors.New("booker_name is required")
 	}
@@ -114,6 +114,7 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, 
 		WebUserID:       req.WebUserID,
 		Status:          models.BookingStatusConfirmed,
 		SpecialRequests: req.SpecialRequests,
+		Metadata:        metadata,
 	}
 	if err = s.bookingRepo.Create(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create booking: %w", err)
@@ -171,6 +172,7 @@ func (s *BookingService) CreateIndividualEvent(
 	orgID uuid.UUID,
 	webUserID *uuid.UUID,
 	envelope *models.SubmitEventBookingRequest,
+	metadata json.RawMessage,
 ) (*models.Booking, error) {
 	if envelope.Event == nil || len(envelope.Event.Sessions) == 0 {
 		return nil, errors.New("at least one event session is required")
@@ -204,6 +206,7 @@ func (s *BookingService) CreateIndividualEvent(
 		BookerPhone: envelope.BookedBy.Phone,
 		WebUserID:   webUserID,
 		Status:      models.BookingStatusConfirmed,
+		Metadata:    metadata,
 	}
 	if err = s.bookingRepo.Create(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create booking: %w", err)
@@ -223,13 +226,19 @@ func (s *BookingService) CreateIndividualEvent(
 
 // ─── Corporate booking (materialise from approved request) ────────────────────
 
-func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID, requestID uuid.UUID, matReq *models.MaterialiseRequest) (*models.Booking, error) {
+func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID, requestID uuid.UUID, matReq *models.MaterialiseRequest, webUserID *uuid.UUID) (*models.Booking, error) {
 	req, err := s.requestRepo.GetByID(requestID, orgID)
 	if err != nil {
 		return nil, errors.New("corporate booking request not found")
 	}
 	if req.Status != models.CorporateBookingStatusApproved {
 		return nil, errors.New("only approved requests can be materialised into a booking")
+	}
+
+	// The materialise endpoint is called by staff (no web user JWT), so fall back
+	// to the web_user_id already stored on the request itself.
+	if webUserID == nil {
+		webUserID = req.WebUserID
 	}
 
 	// Only accommodation requests require room assignments
@@ -300,6 +309,41 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 		}
 	}()
 
+	// Metadata = the full request payload as-is, enriched with assigned_rooms
+	// for accommodation (which are only known at materialise time).
+	meta := req.Payload
+	if req.BookingType == models.CorporateBookingTypeAccommodation && payload.Accommodation != nil && len(matReq.Assignments) > 0 {
+		type assignedRoom struct {
+			GuestIndex int    `json:"guest_index"`
+			GuestName  string `json:"guest_name,omitempty"`
+			RoomID     string `json:"room_id"`
+			RoomName   string `json:"room_name,omitempty"`
+			RoomType   string `json:"room_type,omitempty"`
+		}
+		nights := int(checkOut.Sub(checkIn).Hours() / 24)
+		assignedRooms := make([]assignedRoom, 0, len(matReq.Assignments))
+		for _, a := range matReq.Assignments {
+			guestName := ""
+			if a.GuestIndex < len(attendants) {
+				guestName = attendants[a.GuestIndex].FullName
+			}
+			assignedRooms = append(assignedRooms, assignedRoom{
+				GuestIndex: a.GuestIndex,
+				GuestName:  guestName,
+				RoomID:     a.RoomID.String(),
+				RoomName:   a.RoomName,
+				RoomType:   a.RoomType,
+			})
+		}
+		// Merge assigned_rooms and nights into the existing payload map
+		var m map[string]interface{}
+		if json.Unmarshal(req.Payload, &m) == nil {
+			m["assigned_rooms"] = assignedRooms
+			m["nights"] = nights
+			meta, _ = json.Marshal(m)
+		}
+	}
+
 	b := &models.Booking{
 		OrgID:        orgID,
 		BranchID:     branchID,
@@ -310,8 +354,10 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 		BookerPhone:  req.AuthoriserPhone,
 		CorProfileID: req.CorProfileID,
 		CompanyID:    req.CompanyID,
+		WebUserID:    webUserID,
 		RequestID:    &requestID,
 		Status:       models.BookingStatusConfirmed,
+		Metadata:     meta,
 	}
 	if err = s.bookingRepo.Create(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create booking: %w", err)
@@ -698,7 +744,7 @@ func (s *BookingService) materialiseEventSessions(
 // CreateIndividualMeal materialises an approved individual meal request into a
 // bookings record + one order per session (per-attendant for detailed mode,
 // per-session for headcount/buffet mode).
-func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.UUID, envelope *models.SubmitMealBookingRequest, metadata json.RawMessage) (*models.Booking, error) {
 	tx, err := s.bookingRepo.Begin()
 	if err != nil {
 		return nil, err
@@ -718,6 +764,7 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 		BookerPhone: envelope.BookedBy.Phone,
 		WebUserID:   webUserID,
 		Status:      models.BookingStatusConfirmed,
+		Metadata:    metadata,
 	}
 	if err = s.bookingRepo.Create(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create meals booking: %w", err)
@@ -743,7 +790,7 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 
 // CreateCorporateMeal materialises an approved corporate meal request (Flow B)
 // into a bookings record + orders using the same session engine.
-func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, companyID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, companyID *uuid.UUID, webUserID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	tx, err := s.bookingRepo.Begin()
 	if err != nil {
 		return nil, err
@@ -763,7 +810,9 @@ func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, comp
 		BookerPhone:  envelope.BookedBy.Phone,
 		CorProfileID: corProfileID,
 		CompanyID:    companyID,
+		WebUserID:    webUserID,
 		Status:       models.BookingStatusConfirmed,
+		Metadata:     buildMealMetadata(envelope),
 	}
 	if envelope.BranchID != nil {
 		b.BranchID = envelope.BranchID
@@ -991,6 +1040,10 @@ func (s *BookingService) GetByID(id, orgID uuid.UUID) (*models.Booking, error) {
 
 func (s *BookingService) List(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time, page, pageSize int) ([]models.Booking, int, error) {
 	return s.bookingRepo.List(orgID, bookerType, bookingType, status, from, to, page, pageSize)
+}
+
+func (s *BookingService) ListForWebUser(webUserID uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+	return s.bookingRepo.ListByWebUserID(webUserID, page, pageSize)
 }
 
 // ─── Status transitions ───────────────────────────────────────────────────────

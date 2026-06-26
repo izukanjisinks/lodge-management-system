@@ -375,6 +375,21 @@ func (s *WorkflowService) GetInstanceByTaskID(taskID, orgID string) (*models.Wor
 	return s.instanceRepo.GetByTaskID(taskID, orgID)
 }
 
+// CancelInstance cancels the workflow instance associated with the given booking
+// request ID. It is a best-effort operation — if no instance is found (e.g. the
+// org has no workflow configured) the error is silently swallowed so the request
+// cancellation still succeeds.
+func (s *WorkflowService) CancelInstance(taskID, orgID string) error {
+	instance, err := s.instanceRepo.GetByTaskID(taskID, orgID)
+	if err != nil {
+		return nil // no instance found — nothing to cancel
+	}
+	if instance.Status == "cancelled" || instance.Status == "completed" || instance.Status == "rejected" {
+		return nil // already in a terminal state
+	}
+	return s.instanceRepo.Cancel(instance.ID, orgID)
+}
+
 // determineAssignee finds the user with the required role who has the fewest pending tasks,
 // scoped to the given org so tasks are never assigned cross-org.
 func (s *WorkflowService) determineAssignee(orgID string, allowedRoles []string, taskDetails models.TaskDetails) (string, error) {

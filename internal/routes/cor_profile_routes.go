@@ -55,11 +55,11 @@ func RegisterCorProfileRoutes(
 		withAuthAndRole(corHandler.DeleteGuest,
 			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
 
-	// ─── Booking requests (web — public submission) ───────────────────────────
+	// ─── Booking requests (web — authenticated submission) ───────────────────
 	// Corporate accommodation submission: org_id and all company/approver data in request body
-	http.HandleFunc("POST /api/v1/guest/bookings/corporate", withPublic(bookingReqHandler.SubmitAccommodation))
-	http.HandleFunc("POST /api/v1/guest/bookings/corporate-event", withPublic(bookingReqHandler.SubmitEvent))
-	http.HandleFunc("POST /api/v1/guest/bookings/corporate-meal", withPublic(bookingReqHandler.SubmitMeal))
+	http.HandleFunc("POST /api/v1/guest/bookings/corporate", withWebUserAuth(bookingReqHandler.SubmitAccommodation))
+	http.HandleFunc("POST /api/v1/guest/bookings/corporate-event", withWebUserAuth(bookingReqHandler.SubmitEvent))
+	http.HandleFunc("POST /api/v1/guest/bookings/corporate-meal", withWebUserAuth(bookingReqHandler.SubmitMeal))
 
 	// ─── Booking requests (backoffice) ────────────────────────────────────────
 	http.HandleFunc("GET /api/v1/booking-requests",

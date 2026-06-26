@@ -30,22 +30,27 @@ func (r *BookingRepository) Create(tx *sql.Tx, b *models.Booking) error {
 	b.CreatedAt = now
 	b.UpdatedAt = now
 
+	var metadata interface{}
+	if len(b.Metadata) > 0 {
+		metadata = []byte(b.Metadata)
+	}
+
 	return tx.QueryRow(`
 		INSERT INTO bookings (
 			id, org_id, branch_id,
 			booking_type, booker_type,
 			booker_name, booker_email, booker_phone,
 			web_user_id, cor_profile_id, company_id, request_id, venue_id,
-			total_amount, status, special_requests, overstayed,
+			total_amount, status, special_requests, overstayed, metadata,
 			created_at, updated_at
 		) VALUES (
-			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
+			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
 		) RETURNING booking_number`,
 		b.ID, b.OrgID, b.BranchID,
 		b.BookingType, b.BookerType,
 		b.BookerName, b.BookerEmail, b.BookerPhone,
 		b.WebUserID, b.CorProfileID, b.CompanyID, b.RequestID, b.VenueID,
-		b.TotalAmount, b.Status, b.SpecialRequests, b.Overstayed,
+		b.TotalAmount, b.Status, b.SpecialRequests, b.Overstayed, metadata,
 		now, now,
 	).Scan(&b.BookingNumber)
 }
@@ -60,7 +65,7 @@ func (r *BookingRepository) GetByID(id, orgID uuid.UUID) (*models.Booking, error
 		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
 		       COALESCE(v.name, '')               AS venue_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
-		       b.created_at, b.updated_at
+		       b.created_at, b.updated_at, b.metadata
 		FROM bookings b
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
 		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
@@ -128,7 +133,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		       COALESCE(v.name, '')               AS venue_name,
 		       COALESCE(br.name, '')              AS branch_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
-		       b.created_at, b.updated_at,
+		       b.created_at, b.updated_at, b.metadata,
 		       asg.id, asg.room_id, asg.check_in, asg.check_out, asg.status, COALESCE(r.name, '')
 		FROM bookings b
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
@@ -156,6 +161,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		var branchID, webUserID, corProfileID, companyID, requestID, venueID uuid.NullUUID
 		var bookerEmail, bookerPhone, specialRequests sql.NullString
 		var companyName, profileName, venueName, branchName sql.NullString
+		var metadata []byte
 		// lead assignment columns (nullable — individual only)
 		var asgID uuid.NullUUID
 		var asgRoomID uuid.NullUUID
@@ -169,7 +175,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 			&webUserID, &corProfileID, &companyID, &requestID, &venueID,
 			&companyName, &profileName, &venueName, &branchName,
 			&b.TotalAmount, &b.Status, &specialRequests, &b.Overstayed,
-			&b.CreatedAt, &b.UpdatedAt,
+			&b.CreatedAt, &b.UpdatedAt, &metadata,
 			&asgID, &asgRoomID, &asgCheckIn, &asgCheckOut, &asgStatus, &asgRoomName,
 		); err != nil {
 			return nil, 0, err
@@ -187,6 +193,7 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		if profileName.Valid { b.ProfileName = profileName.String }
 		if venueName.Valid { b.VenueName = venueName.String }
 		if branchName.Valid { b.BranchName = branchName.String }
+		if len(metadata) > 0 { b.Metadata = metadata }
 
 		if asgID.Valid {
 			nights := 0
@@ -221,7 +228,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
 		       COALESCE(v.name, '')                            AS venue_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
-		       b.created_at, b.updated_at
+		       b.created_at, b.updated_at, b.metadata
 		FROM bookings b
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
 		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
@@ -241,11 +248,11 @@ func (r *BookingRepository) ListByWebUserID(webUserID uuid.UUID, page, pageSize 
 		       b.booking_type, b.booker_type,
 		       b.booker_name, b.booker_email, b.booker_phone,
 		       b.web_user_id, b.cor_profile_id, b.company_id, b.request_id, b.venue_id,
-		       COALESCE(cd.company_name, '')                   AS company_name,
+		       COALESCE(cd.company_name, '')                      AS company_name,
 		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
-		       COALESCE(v.name, '')                            AS venue_name,
+		       COALESCE(v.name, '')                               AS venue_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
-		       b.created_at, b.updated_at
+		       b.created_at, b.updated_at, b.metadata
 		FROM bookings b
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
 		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
@@ -351,6 +358,7 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	var branchID, webUserID, corProfileID, companyID, requestID, venueID uuid.NullUUID
 	var bookerEmail, bookerPhone, specialRequests sql.NullString
 	var companyName, profileName, venueName sql.NullString
+	var metadata []byte
 
 	err := row.Scan(
 		&b.ID, &b.BookingNumber, &b.OrgID, &branchID,
@@ -360,6 +368,7 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 		&companyName, &profileName, &venueName,
 		&b.TotalAmount, &b.Status, &specialRequests, &b.Overstayed,
 		&b.CreatedAt, &b.UpdatedAt,
+		&metadata,
 	)
 	if err != nil {
 		return nil, err
@@ -399,6 +408,9 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 	}
 	if venueName.Valid {
 		b.VenueName = venueName.String
+	}
+	if len(metadata) > 0 {
+		b.Metadata = metadata
 	}
 	return &b, nil
 }

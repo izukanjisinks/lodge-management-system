@@ -200,7 +200,13 @@ func (s *IndividualBookingRequestService) CancelForWebUser(id, webUserID uuid.UU
 	if req.Status != models.IndividualBookingStatusPending {
 		return fmt.Errorf("only pending requests can be cancelled")
 	}
-	return s.requestRepo.UpdateStatus(id, req.OrgID, models.IndividualBookingStatusCancelled)
+	if err := s.requestRepo.UpdateStatus(id, req.OrgID, models.IndividualBookingStatusCancelled); err != nil {
+		return err
+	}
+	if s.workflow != nil {
+		_ = s.workflow.CancelInstance(id.String(), req.OrgID.String())
+	}
+	return nil
 }
 
 // ─── Backoffice ───────────────────────────────────────────────────────────────
@@ -241,7 +247,7 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		if jsonErr := json.Unmarshal(req.Payload, &envelope); jsonErr != nil || envelope.Meal == nil {
 			return nil, errors.New("invalid meal request payload")
 		}
-		booking, err := s.bookingService.CreateIndividualMeal(orgID, req.WebUserID, &envelope)
+		booking, err := s.bookingService.CreateIndividualMeal(orgID, req.WebUserID, &envelope, req.Payload)
 		if err != nil {
 			return nil, err
 		}
@@ -258,7 +264,7 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		if jsonErr := json.Unmarshal(req.Payload, &envelope); jsonErr != nil || envelope.Event == nil {
 			return nil, errors.New("invalid event request payload")
 		}
-		booking, err := s.bookingService.CreateIndividualEvent(orgID, req.WebUserID, &envelope)
+		booking, err := s.bookingService.CreateIndividualEvent(orgID, req.WebUserID, &envelope, req.Payload)
 		if err != nil {
 			return nil, err
 		}
@@ -307,6 +313,20 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		return nil, errors.New("room not found")
 	}
 
+	nights := int(checkOut.Sub(checkIn.Time).Hours() / 24)
+
+	// Metadata = full request payload enriched with resolved room details
+	meta := req.Payload
+	var mMap map[string]interface{}
+	if json.Unmarshal(req.Payload, &mMap) == nil {
+		mMap["room_name"] = room.Name
+		mMap["room_type"] = room.Type
+		mMap["nights"] = nights
+		if enriched, jsonErr := json.Marshal(mMap); jsonErr == nil {
+			meta = enriched
+		}
+	}
+
 	bookingReq := &models.CreateIndividualBookingRequest{
 		WebUserID:   req.WebUserID,
 		BookerName:  req.BookerName,
@@ -315,9 +335,10 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		RoomID:      roomID,
 		CheckIn:     checkIn,
 		CheckOut:    checkOut,
+		Metadata:    meta,
 	}
 
-	booking, err := s.bookingService.CreateIndividual(orgID, room.BranchID, bookingReq)
+	booking, err := s.bookingService.CreateIndividual(orgID, room.BranchID, bookingReq, bookingReq.Metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -350,6 +371,9 @@ func (s *IndividualBookingRequestService) Cancel(id, orgID uuid.UUID) error {
 	}
 	return s.requestRepo.UpdateStatus(id, orgID, models.IndividualBookingStatusCancelled)
 }
+
+// ─── Metadata builders ────────────────────────────────────────────────────────
+
 
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 

@@ -33,14 +33,14 @@ func (r *CorporateBookingRequestRepository) Create(req *models.CorporateBookingR
 	}
 	return r.db.QueryRow(`
 		INSERT INTO corporate_booking_requests
-			(org_id, branch_id, cor_profile_id, company_id, booking_type, status,
+			(org_id, branch_id, cor_profile_id, company_id, web_user_id, booking_type, status,
 			 reason_for_booking, notes,
 			 authoriser_name, authoriser_email, authoriser_phone,
 			 authoriser_title, authoriser_department, authoriser_gl_code,
 			 documents, payload)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 		RETURNING id, created_at, updated_at`,
-		req.OrgID, req.BranchID, req.CorProfileID, req.CompanyID,
+		req.OrgID, req.BranchID, req.CorProfileID, req.CompanyID, req.WebUserID,
 		req.BookingType, req.Status,
 		req.ReasonForBooking, req.Notes,
 		req.AuthoriserName, req.AuthoriserEmail, req.AuthoriserPhone,
@@ -56,7 +56,7 @@ func (r *CorporateBookingRequestRepository) GetByID(id, orgID uuid.UUID) (*model
 
 	err := r.db.QueryRow(`
 		SELECT
-			cbr.id, cbr.org_id, cbr.branch_id, cbr.cor_profile_id, cbr.company_id,
+			cbr.id, cbr.org_id, cbr.branch_id, cbr.cor_profile_id, cbr.company_id, cbr.web_user_id,
 			cbr.booking_type, cbr.status,
 			cbr.reason_for_booking, cbr.notes,
 			cbr.authoriser_name, cbr.authoriser_email, cbr.authoriser_phone,
@@ -69,7 +69,7 @@ func (r *CorporateBookingRequestRepository) GetByID(id, orgID uuid.UUID) (*model
 		LEFT JOIN cor_profiles p         ON p.id = cbr.cor_profile_id
 		WHERE cbr.id = $1 AND cbr.org_id = $2`, id, orgID,
 	).Scan(
-		&req.ID, &req.OrgID, &req.BranchID, &req.CorProfileID, &req.CompanyID,
+		&req.ID, &req.OrgID, &req.BranchID, &req.CorProfileID, &req.CompanyID, &req.WebUserID,
 		&req.BookingType, &req.Status,
 		&req.ReasonForBooking, &req.Notes,
 		&req.AuthoriserName, &req.AuthoriserEmail, &req.AuthoriserPhone,
@@ -118,7 +118,7 @@ func (r *CorporateBookingRequestRepository) List(orgID uuid.UUID, bookingType, s
 	args = append(args, pageSize, offset)
 	rows, err := r.db.Query(`
 		SELECT
-			cbr.id, cbr.org_id, cbr.branch_id, cbr.cor_profile_id, cbr.company_id,
+			cbr.id, cbr.org_id, cbr.branch_id, cbr.cor_profile_id, cbr.company_id, cbr.web_user_id,
 			cbr.booking_type, cbr.status,
 			cbr.reason_for_booking, cbr.notes,
 			cbr.authoriser_name, cbr.authoriser_email, cbr.authoriser_phone,
@@ -143,7 +143,7 @@ func (r *CorporateBookingRequestRepository) List(orgID uuid.UUID, bookingType, s
 		var req models.CorporateBookingRequest
 		var companyName, branchName, profileName sql.NullString
 		if err := rows.Scan(
-			&req.ID, &req.OrgID, &req.BranchID, &req.CorProfileID, &req.CompanyID,
+			&req.ID, &req.OrgID, &req.BranchID, &req.CorProfileID, &req.CompanyID, &req.WebUserID,
 			&req.BookingType, &req.Status,
 			&req.ReasonForBooking, &req.Notes,
 			&req.AuthoriserName, &req.AuthoriserEmail, &req.AuthoriserPhone,

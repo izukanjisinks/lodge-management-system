@@ -24,6 +24,8 @@ func NewCorporateBookingRequestHandler(service *services.CorporateBookingRequest
 // SubmitAccommodation handles POST /api/v1/guest/bookings/corporate
 // The org_id is expected in the request body (from frontend), not as a query param.
 func (h *CorporateBookingRequestHandler) SubmitAccommodation(w http.ResponseWriter, r *http.Request) {
+	webUserID, _ := middleware.GetUserIDFromContext(r.Context())
+
 	var req models.SubmitAccommodationRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -36,7 +38,7 @@ func (h *CorporateBookingRequestHandler) SubmitAccommodation(w http.ResponseWrit
 		return
 	}
 
-	result, err := h.service.SubmitAccommodation(req.OrgID, &req)
+	result, err := h.service.SubmitAccommodation(req.OrgID, webUserID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -47,6 +49,8 @@ func (h *CorporateBookingRequestHandler) SubmitAccommodation(w http.ResponseWrit
 // SubmitEvent handles POST /api/v1/guest/bookings/corporate-event.
 // Accepts the standalone event envelope (Flow B) for corporate bookers.
 func (h *CorporateBookingRequestHandler) SubmitEvent(w http.ResponseWriter, r *http.Request) {
+	webUserID, _ := middleware.GetUserIDFromContext(r.Context())
+
 	var req models.SubmitEventBookingRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -57,7 +61,7 @@ func (h *CorporateBookingRequestHandler) SubmitEvent(w http.ResponseWriter, r *h
 		return
 	}
 
-	result, err := h.service.SubmitEventBooking(req.OrgID, &req)
+	result, err := h.service.SubmitEventBooking(req.OrgID, webUserID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -68,6 +72,8 @@ func (h *CorporateBookingRequestHandler) SubmitEvent(w http.ResponseWriter, r *h
 // SubmitMeal handles POST /api/v1/guest/bookings/corporate-meal.
 // Accepts the standalone meal envelope (Flow B) for corporate bookers.
 func (h *CorporateBookingRequestHandler) SubmitMeal(w http.ResponseWriter, r *http.Request) {
+	webUserID, _ := middleware.GetUserIDFromContext(r.Context())
+
 	var req models.SubmitMealBookingRequest
 	if err := utils.DecodeJson(r, &req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -78,7 +84,7 @@ func (h *CorporateBookingRequestHandler) SubmitMeal(w http.ResponseWriter, r *ht
 		return
 	}
 
-	result, err := h.service.SubmitMealBooking(req.OrgID, &req)
+	result, err := h.service.SubmitMealBooking(req.OrgID, webUserID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

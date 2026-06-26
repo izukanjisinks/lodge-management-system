@@ -86,7 +86,7 @@ func (s *CorporateBookingRequestService) venueBranchID(orgID, venueID uuid.UUID)
 
 // ─── Submission ───────────────────────────────────────────────────────────────
 
-func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, req *models.SubmitAccommodationRequest) (*models.CorporateBookingRequest, error) {
+func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitAccommodationRequest) (*models.CorporateBookingRequest, error) {
 	// Validate required fields
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
@@ -144,11 +144,16 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, re
 	payloadBytes, _ := json.Marshal(req)
 	payload := json.RawMessage(payloadBytes)
 
+	var webUserIDPtr *uuid.UUID
+	if webUserID != uuid.Nil {
+		webUserIDPtr = &webUserID
+	}
 	r := &models.CorporateBookingRequest{
 		OrgID:            orgID,
 		BranchID:         branchIDPtr,
 		CorProfileID:     &corProfileID,
 		CompanyID:        &companyID,
+		WebUserID:        webUserIDPtr,
 		BookingType:      models.CorporateBookingTypeAccommodation,
 		Status:           models.CorporateBookingStatusPending,
 		Notes:            req.Accommodation.Notes,
@@ -281,7 +286,7 @@ func (s *CorporateBookingRequestService) SubmitEvent(orgID uuid.UUID, req *model
 // eventBooking.js for corporate bookers. It maps the nested company/approver/
 // booked_by into the ResolveChain inputs, stores the whole envelope as JSONB, and
 // starts the approval workflow.
-func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.CorporateBookingRequest, error) {
+func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.CorporateBookingRequest, error) {
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -330,11 +335,16 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, req
 
 	payloadBytes, _ := json.Marshal(req)
 
+	var webUserIDPtr *uuid.UUID
+	if webUserID != uuid.Nil {
+		webUserIDPtr = &webUserID
+	}
 	r := &models.CorporateBookingRequest{
 		OrgID:            orgID,
 		BranchID:         branchID,
 		CorProfileID:     &profileID,
 		CompanyID:        &companyID,
+		WebUserID:        webUserIDPtr,
 		BookingType:      models.CorporateBookingTypeEvent,
 		Status:           models.CorporateBookingStatusPending,
 		ReasonForBooking: req.Event.ReasonForBooking,
@@ -362,7 +372,7 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, req
 // SubmitMealBooking handles the standalone meal envelope (Flow B) from
 // mealBooking.js for corporate bookers. Stores the whole envelope as JSONB and
 // starts the approval workflow.
-func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.CorporateBookingRequest, error) {
+func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.CorporateBookingRequest, error) {
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -399,11 +409,16 @@ func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, req 
 
 	payloadBytes, _ := json.Marshal(req)
 
+	var webUserIDPtr *uuid.UUID
+	if webUserID != uuid.Nil {
+		webUserIDPtr = &webUserID
+	}
 	r := &models.CorporateBookingRequest{
 		OrgID:            orgID,
 		BranchID:         branchID,
 		CorProfileID:     &profileID,
 		CompanyID:        &companyID,
+		WebUserID:        webUserIDPtr,
 		BookingType:      models.CorporateBookingTypeMeals,
 		Status:           models.CorporateBookingStatusPending,
 		ReasonForBooking: req.Meal.ReasonForBooking,
@@ -540,11 +555,6 @@ func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
 	// so approval materialises the booking automatically — no separate staff step.
 	// Accommodation still needs staff to assign rooms, so it stays approved-only.
 	if s.booking != nil && req.BookingType == models.CorporateBookingTypeEvent {
-		// The booking belongs to the lodge branch the venue physically sits at —
-		// NOT req.BranchID, which references the corporate client's branch
-		// (cor_branch_details) and would violate bookings_branch_id_fkey.
-		// The venue comes from the new envelope's first session, falling back to the
-		// legacy single-venue shape for older requests.
 		var lodgeBranchID *uuid.UUID
 		var envelope models.SubmitEventBookingRequest
 		if json.Unmarshal(req.Payload, &envelope) == nil && envelope.Event != nil && len(envelope.Event.Sessions) > 0 {
@@ -557,19 +567,18 @@ func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
 			lodgeBranchID = s.venueBranchID(orgID, legacy.VenueID)
 		}
 
-		if _, err := s.booking.CreateFromRequest(orgID, lodgeBranchID, id, nil); err != nil {
+		if _, err := s.booking.CreateFromRequest(orgID, lodgeBranchID, id, nil, req.WebUserID); err != nil {
 			return fmt.Errorf("request approved but booking creation failed: %w", err)
 		}
 	}
 	if s.booking != nil && req.BookingType == models.CorporateBookingTypeMeals {
-		// Try the new Flow B envelope first; fall back to legacy CreateFromRequest.
 		var envelope models.SubmitMealBookingRequest
 		if json.Unmarshal(req.Payload, &envelope) == nil && envelope.Meal != nil && len(envelope.Meal.Sessions) > 0 {
-			if _, err := s.booking.CreateCorporateMeal(orgID, req.CorProfileID, req.CompanyID, &envelope); err != nil {
+			if _, err := s.booking.CreateCorporateMeal(orgID, req.CorProfileID, req.CompanyID, req.WebUserID, &envelope); err != nil {
 				return fmt.Errorf("request approved but meals booking creation failed: %w", err)
 			}
 		} else {
-			if _, err := s.booking.CreateFromRequest(orgID, nil, id, nil); err != nil {
+			if _, err := s.booking.CreateFromRequest(orgID, nil, id, nil, req.WebUserID); err != nil {
 				return fmt.Errorf("request approved but booking creation failed: %w", err)
 			}
 		}

@@ -12,13 +12,13 @@ func RegisterMenuRoutes(h *handlers.MenuHandler) {
 	http.HandleFunc("GET /api/v1/menu",
 		withAuth(h.GetMenu))
 	http.HandleFunc("PUT /api/v1/menu",
-		withAuthAndRole(h.UpsertMenu, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.UpsertMenu, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
 	// Menu items
 	http.HandleFunc("POST /api/v1/menu/items",
-		withAuthAndRole(h.CreateMenuItem, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.CreateMenuItem, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 	http.HandleFunc("PUT /api/v1/menu/items/{item_id}",
-		withAuthAndRole(h.UpdateMenuItem, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.UpdateMenuItem, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 	http.HandleFunc("DELETE /api/v1/menu/items/{item_id}",
-		withAuthAndRole(h.DeleteMenuItem, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.DeleteMenuItem, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 }

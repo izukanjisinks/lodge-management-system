@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"lodge-system/internal/models"
+	"lodge-system/pkg/utils"
 )
 
 func RequirePermission(permission string) func(http.Handler) http.Handler {
@@ -12,11 +13,11 @@ func RequirePermission(permission string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, ok := r.Context().Value(UserKey).(*models.User)
 			if !ok || user == nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
 			if !user.HasPermission(permission) {
-				http.Error(w, "Forbidden: insufficient permissions", http.StatusForbidden)
+				utils.RespondError(w, http.StatusForbidden, "You do not have permission to perform this action")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -29,7 +30,7 @@ func RequireAnyPermission(permissions ...string) func(http.Handler) http.Handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, ok := r.Context().Value(UserKey).(*models.User)
 			if !ok || user == nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
 			for _, perm := range permissions {
@@ -38,7 +39,7 @@ func RequireAnyPermission(permissions ...string) func(http.Handler) http.Handler
 					return
 				}
 			}
-			http.Error(w, "Forbidden: insufficient permissions", http.StatusForbidden)
+			utils.RespondError(w, http.StatusForbidden, "You do not have permission to perform this action")
 		})
 	}
 }
@@ -48,11 +49,11 @@ func RequireRole(roleName string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, ok := r.Context().Value(UserKey).(*models.User)
 			if !ok || user == nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
 			if user.Role == nil || user.Role.Name != roleName {
-				http.Error(w, "Forbidden: role required", http.StatusForbidden)
+				utils.RespondError(w, http.StatusForbidden, "This action requires a branch-level role")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -65,11 +66,11 @@ func RequireAnyRole(roleNames ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, ok := r.Context().Value(UserKey).(*models.User)
 			if !ok || user == nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				utils.RespondError(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
 			if user.Role == nil {
-				http.Error(w, "Forbidden: role required", http.StatusForbidden)
+				utils.RespondError(w, http.StatusForbidden, "This action requires a branch-level role")
 				return
 			}
 			for _, role := range roleNames {
@@ -78,7 +79,7 @@ func RequireAnyRole(roleNames ...string) func(http.Handler) http.Handler {
 					return
 				}
 			}
-			http.Error(w, "Forbidden: role required", http.StatusForbidden)
+			utils.RespondError(w, http.StatusForbidden, "This action requires a branch-level role")
 		})
 	}
 }

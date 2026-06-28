@@ -15,19 +15,19 @@ func RegisterVenueRoutes(h *handlers.VenueHandler) {
 	http.HandleFunc("GET /api/v1/venues/{id}",
 		withAuth(h.GetByID))
 
-	// Write — admin and manager only
+	// Write — branch admin and manager only (admin has no branch to scope creation to)
 	http.HandleFunc("POST /api/v1/venues",
-		withAuthAndRole(h.Create, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
+		withAuthAndRole(h.Create, models.RoleBranchAdmin, models.RoleManager))
 
 	http.HandleFunc("PUT /api/v1/venues/{id}",
-		withAuthAndRole(h.Update, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
+		withAuthAndRole(h.Update, models.RoleBranchAdmin, models.RoleManager))
 
 	http.HandleFunc("PUT /api/v1/venues/{id}/images",
-		withAuthAndRole(h.UpdateImages, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
+		withAuthAndRole(h.UpdateImages, models.RoleBranchAdmin, models.RoleManager))
 
 	http.HandleFunc("PATCH /api/v1/venues/{id}/availability",
-		withAuthAndRole(h.SetAvailability, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
+		withAuthAndRole(h.SetAvailability, models.RoleBranchAdmin, models.RoleManager))
 
 	http.HandleFunc("DELETE /api/v1/venues/{id}",
-		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
+		withAuthAndRole(h.Delete, models.RoleBranchAdmin, models.RoleManager))
 }

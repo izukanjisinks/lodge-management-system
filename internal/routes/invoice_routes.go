@@ -25,9 +25,9 @@ func RegisterInvoiceRoutes(h *handlers.InvoiceHandler) {
 
 	// Email the invoice PDF to the client's billing address
 	http.HandleFunc("POST /api/v1/invoices/{id}/send",
-		withAuthAndRole(h.SendEmail, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.SendEmail, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
 	// Email a plain payment-received confirmation (no PDF) after marking as paid
 	http.HandleFunc("POST /api/v1/invoices/{id}/send-payment-confirmation",
-		withAuthAndRole(h.SendPaymentConfirmation, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.SendPaymentConfirmation, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 }

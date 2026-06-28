@@ -22,4 +22,8 @@ func RegisterInvoiceRoutes(h *handlers.InvoiceHandler) {
 	// Status update — admin and manager only
 	http.HandleFunc("PATCH /api/v1/invoices/{id}/status",
 		withAuthAndRole(h.UpdateStatus, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+
+	// Email the invoice PDF to the client's billing address
+	http.HandleFunc("POST /api/v1/invoices/{id}/send",
+		withAuthAndRole(h.SendEmail, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 }

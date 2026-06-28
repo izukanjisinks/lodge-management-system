@@ -8,6 +8,7 @@ import (
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
+	"lodge-system/internal/utils/email"
 
 	"github.com/google/uuid"
 )
@@ -21,6 +22,19 @@ type InvoiceService struct {
 	assignmentRepo *repository.BookingRoomAssignmentRepository
 	eventRepo      *repository.BookingEventRepository
 	orderRepo      *repository.OrderRepository
+	emailService   *email.EmailService
+	orgRepo        *repository.OrganizationRepository
+}
+
+// SetEmailService injects the email service used for sending invoice emails.
+func (s *InvoiceService) SetEmailService(emailService *email.EmailService) {
+	s.emailService = emailService
+}
+
+// SetOrganizationRepository injects the org repo so invoice emails can be
+// branded with the issuing lodge's name.
+func (s *InvoiceService) SetOrganizationRepository(orgRepo *repository.OrganizationRepository) {
+	s.orgRepo = orgRepo
 }
 
 func NewInvoiceService(
@@ -217,6 +231,78 @@ func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*
 
 func (s *InvoiceService) List(orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, page, pageSize int) ([]models.Invoice, int, error) {
 	return s.repo.List(orgID, branchID, status, clientType, page, pageSize)
+}
+
+// SendInvoiceEmail emails the invoice (as a PDF attachment) to the client's
+// billing address. The PDF is rendered by the frontend and passed in as bytes.
+func (s *InvoiceService) SendInvoiceEmail(id, orgID uuid.UUID, pdf []byte) error {
+	if s.emailService == nil {
+		return errors.New("email service is not configured")
+	}
+
+	inv, err := s.repo.GetByID(id, orgID)
+	if err != nil {
+		return errors.New("invoice not found")
+	}
+
+	recipient := inv.ClientEmail
+	if recipient == "" {
+		return errors.New("this invoice has no billing email address")
+	}
+
+	clientName := inv.ClientName
+	if clientName == "" {
+		clientName = "Customer"
+	}
+
+	// Brand the email with the issuing lodge's name when available.
+	orgName := ""
+	if s.orgRepo != nil {
+		if org, err := s.orgRepo.GetByID(orgID); err == nil && org != nil {
+			orgName = org.Name
+		}
+	}
+
+	issueDate := "—"
+	if inv.IssuedDate != nil {
+		issueDate = inv.IssuedDate.Format("02 January 2006")
+	}
+	dueDate := "—"
+	if inv.DueDate != nil {
+		dueDate = inv.DueDate.Format("02 January 2006")
+	}
+	totalDue := fmt.Sprintf("ZMW %.2f", inv.Total)
+
+	// Corporate invoices include accounting references in the summary.
+	var accountingRows []string
+	if inv.ClientType == "corporate" {
+		if inv.GLCode != "" {
+			accountingRows = append(accountingRows, email.InvoiceInfoRow("GL Code:", inv.GLCode))
+		}
+		if inv.CostCenterType == "internal_order" && inv.InternalOrder != "" {
+			accountingRows = append(accountingRows, email.InvoiceInfoRow("Internal Order:", inv.InternalOrder))
+		} else if inv.CostCenter != "" {
+			accountingRows = append(accountingRows, email.InvoiceInfoRow("Cost Center:", inv.CostCenter))
+		}
+		if inv.ClientDepartment != "" {
+			accountingRows = append(accountingRows, email.InvoiceInfoRow("Department:", inv.ClientDepartment))
+		}
+	}
+
+	htmlBody := email.InvoiceEmailTemplate(orgName, clientName, inv.InvoiceNumber, issueDate, dueDate, totalDue, accountingRows...)
+	subjectOrg := orgName
+	if subjectOrg == "" {
+		subjectOrg = "Lodge Management"
+	}
+	subject := fmt.Sprintf("Invoice %s from %s", inv.InvoiceNumber, subjectOrg)
+
+	attachment := email.Attachment{
+		Filename:    fmt.Sprintf("Invoice-%s.pdf", inv.InvoiceNumber),
+		ContentType: "application/pdf",
+		Data:        pdf,
+	}
+
+	return s.emailService.SendEmailWithAttachment([]string{recipient}, subject, htmlBody, attachment)
 }
 
 func (s *InvoiceService) UpdateDueDate(bookingID uuid.UUID, orgID uuid.UUID, dueDate time.Time) error {

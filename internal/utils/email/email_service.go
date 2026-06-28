@@ -2,14 +2,24 @@ package email
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
 
 	"lodge-system/internal/config"
 )
+
+// Attachment represents a file to attach to an email.
+type Attachment struct {
+	Filename    string
+	ContentType string // e.g. "application/pdf"
+	Data        []byte
+}
 
 type EmailService struct {
 	config *config.EmailConfig
@@ -52,6 +62,78 @@ func (s *EmailService) SendEmail(to []string, subject, htmlBody string) error {
 		return s.sendWithTLS(addr, auth, s.config.FromEmail, to, []byte(message.String()))
 	}
 
+	return smtp.SendMail(addr, auth, s.config.FromEmail, to, []byte(message.String()))
+}
+
+// SendEmailWithAttachment sends an HTML email with one or more file attachments
+// using a multipart/mixed MIME message built entirely from the standard library.
+func (s *EmailService) SendEmailWithAttachment(to []string, subject, htmlBody string, attachments ...Attachment) error {
+	log.Printf("[EMAIL] Sending email with %d attachment(s) to %v with subject: %s", len(attachments), to, subject)
+
+	if len(attachments) == 0 {
+		return s.SendEmail(to, subject, htmlBody)
+	}
+
+	var message strings.Builder
+	writer := multipart.NewWriter(&message)
+
+	from := fmt.Sprintf("%s <%s>", s.config.FromName, s.config.FromEmail)
+	message.WriteString(fmt.Sprintf("From: %s\r\n", from))
+	message.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(to, ", ")))
+	message.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
+	message.WriteString("MIME-Version: 1.0\r\n")
+	message.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
+	message.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=%s\r\n", writer.Boundary()))
+	message.WriteString("\r\n")
+
+	// HTML body part
+	htmlHeader := textproto.MIMEHeader{}
+	htmlHeader.Set("Content-Type", "text/html; charset=UTF-8")
+	htmlHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	htmlPart, err := writer.CreatePart(htmlHeader)
+	if err != nil {
+		return fmt.Errorf("failed to create HTML part: %w", err)
+	}
+	if _, err := htmlPart.Write([]byte(htmlBody)); err != nil {
+		return fmt.Errorf("failed to write HTML part: %w", err)
+	}
+
+	// Attachment parts
+	for _, att := range attachments {
+		ct := att.ContentType
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		attHeader := textproto.MIMEHeader{}
+		attHeader.Set("Content-Type", fmt.Sprintf("%s; name=%q", ct, att.Filename))
+		attHeader.Set("Content-Transfer-Encoding", "base64")
+		attHeader.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", att.Filename))
+		attPart, err := writer.CreatePart(attHeader)
+		if err != nil {
+			return fmt.Errorf("failed to create attachment part: %w", err)
+		}
+		// base64-encode in 76-char lines per RFC 2045
+		encoded := base64.StdEncoding.EncodeToString(att.Data)
+		for i := 0; i < len(encoded); i += 76 {
+			end := i + 76
+			if end > len(encoded) {
+				end = len(encoded)
+			}
+			if _, err := attPart.Write([]byte(encoded[i:end] + "\r\n")); err != nil {
+				return fmt.Errorf("failed to write attachment part: %w", err)
+			}
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to finalize multipart message: %w", err)
+	}
+
+	auth := s.getAuth()
+	addr := s.config.Host + ":" + s.config.Port
+	if s.config.UseTLS {
+		return s.sendWithTLS(addr, auth, s.config.FromEmail, to, []byte(message.String()))
+	}
 	return smtp.SendMail(addr, auth, s.config.FromEmail, to, []byte(message.String()))
 }
 

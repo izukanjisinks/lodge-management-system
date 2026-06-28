@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"net/http"
 
 	"lodge-system/internal/middleware"
@@ -77,6 +78,62 @@ func (h *InvoiceHandler) GetByBookingID(w http.ResponseWriter, r *http.Request) 
 	}
 
 	utils.RespondJSON(w, http.StatusOK, inv)
+}
+
+// SendEmailRequest carries the frontend-rendered PDF as a base64 string.
+type SendEmailRequest struct {
+	PDFBase64 string `json:"pdf_base64"`
+}
+
+func (h *InvoiceHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid invoice ID")
+		return
+	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	var req SendEmailRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.PDFBase64 == "" {
+		utils.RespondError(w, http.StatusBadRequest, "Missing invoice PDF")
+		return
+	}
+
+	// Accept either a raw base64 string or a data URL ("data:application/pdf;base64,...").
+	payload := req.PDFBase64
+	if i := indexOfBase64Comma(payload); i >= 0 {
+		payload = payload[i+1:]
+	}
+	pdf, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid PDF encoding")
+		return
+	}
+
+	if err := h.service.SendInvoiceEmail(id, orgID, pdf); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Invoice sent successfully"})
+}
+
+// indexOfBase64Comma returns the index of the comma separating a data-URL
+// prefix from its base64 payload, or -1 if the string is not a data URL.
+func indexOfBase64Comma(s string) int {
+	if len(s) < 5 || s[:5] != "data:" {
+		return -1
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] == ',' {
+			return i
+		}
+	}
+	return -1
 }
 
 func (h *InvoiceHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {

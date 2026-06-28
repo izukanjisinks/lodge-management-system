@@ -370,3 +370,49 @@ func GuestWelcomeTemplate(fullName string) string {
 	)
 	return emailWrapper("Welcome to Mwakwanda", header, body)
 }
+
+// InvoiceInfoRow is an exported helper so callers can build extra summary rows
+// (e.g. accounting references) to pass into InvoiceEmailTemplate.
+func InvoiceInfoRow(label, value string) string {
+	return infoRow(label, value)
+}
+
+// InvoiceEmailTemplate notifies a client that their invoice is attached as a PDF.
+// The full breakdown lives in the attached document; the body shows a summary.
+// orgName is the lodge/organization that issued the invoice; it falls back to a
+// generic label when empty.
+func InvoiceEmailTemplate(orgName, clientName, invoiceNumber, issueDate, dueDate, totalDue string, accountingRows ...string) string {
+	header := headerGradient(colorPrimary, colorPrimaryLight)
+
+	if orgName == "" {
+		orgName = "Lodge Management"
+	}
+
+	rows := []string{
+		infoRow("Invoice No.:", invoiceNumber),
+		infoRow("Issue Date:", issueDate),
+		infoRow("Due Date:", dueDate),
+		infoRow("Total Due:", totalDue),
+	}
+	rows = append(rows, accountingRows...)
+
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Dear %s,</p>
+              <p>Please find attached your invoice from <strong>%s</strong>. A summary is shown below; the complete breakdown is in the attached PDF.</p>
+              %s
+              %s
+              <p>Kindly settle the amount due by the date indicated. If you have any questions about this invoice, please get in touch.</p>
+              <p style="margin-bottom:0; margin-top:28px;">
+                Warm regards,<br/>
+                <strong style="color:%s;">%s</strong>
+              </p>`,
+		clientName,
+		orgName,
+		infoTable(colorInfoBox, colorInfoBorder, rows...),
+		alertBox(colorWarningBox, colorWarningBorder, "#92400e",
+			"<strong>Note:</strong> The attached PDF is your official invoice document for your records."),
+		colorPrimary,
+		orgName,
+	)
+	return emailWrapper("Invoice "+invoiceNumber+" — "+orgName, header, body)
+}

@@ -31,9 +31,6 @@ func DecodeJson(r *http.Request, v interface{}) error {
 	}
 	defer r.Body.Close()
 
-	// Log the raw request body for debugging
-	fmt.Printf("DEBUG: Raw request body: %s\n", string(bodyBytes))
-
 	// Decode from the bytes
 	if err := json.Unmarshal(bodyBytes, v); err != nil {
 		fmt.Printf("ERROR: Failed to unmarshal JSON: %v\n", err)

@@ -91,7 +91,11 @@ func main() {
 	bookingEventRepo := repository.NewBookingEventRepository()
 	venueRepo := repository.NewVenueRepository()
 	orderRepo := repository.NewOrderRepository()
+	orgRepo := repository.NewOrganizationRepository()
+
 	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo, assignmentRepo, bookingEventRepo, orderRepo)
+	invoiceSvc.SetEmailService(emailService)         // email invoice PDFs to clients
+	invoiceSvc.SetOrganizationRepository(orgRepo)    // brand invoice emails with the issuing lodge's name
 	bookingSvc := services.NewBookingService(bookingRepo, attendeeRepo, assignmentRepo, corpBookingReqRepo, corpGuestRepo, bookingEventRepo, venueRepo)
 	bookingSvc.SetInvoiceService(invoiceSvc) // auto-generate draft invoice on booking confirm/materialise
 	bookingSvc.SetOrderRepository(orderRepo)  // approved meals requests materialise into orders
@@ -102,8 +106,6 @@ func main() {
 	workflowHandler := handlers.NewWorkflowHandler(workflowService)
 	workflowAdminHandler := handlers.NewWorkflowAdminHandler(workflowRepo)
 	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyService, userService)
-
-	orgRepo := repository.NewOrganizationRepository()
 
 	guestAuthSvc := services.NewGuestAuthService(guestRepo)
 	guestAuthSvc.SetEmailService(emailService)

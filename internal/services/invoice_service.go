@@ -305,6 +305,52 @@ func (s *InvoiceService) SendInvoiceEmail(id, orgID uuid.UUID, pdf []byte) error
 	return s.emailService.SendEmailWithAttachment([]string{recipient}, subject, htmlBody, attachment)
 }
 
+// SendPaymentConfirmationEmail emails the client a plain payment-received
+// confirmation (no PDF attachment) after an invoice is marked as paid.
+func (s *InvoiceService) SendPaymentConfirmationEmail(id, orgID uuid.UUID) error {
+	if s.emailService == nil {
+		return errors.New("email service is not configured")
+	}
+
+	inv, err := s.repo.GetByID(id, orgID)
+	if err != nil {
+		return errors.New("invoice not found")
+	}
+
+	recipient := inv.ClientEmail
+	if recipient == "" {
+		return errors.New("this invoice has no billing email address")
+	}
+
+	clientName := inv.ClientName
+	if clientName == "" {
+		clientName = "Customer"
+	}
+
+	orgName := ""
+	if s.orgRepo != nil {
+		if org, err := s.orgRepo.GetByID(orgID); err == nil && org != nil {
+			orgName = org.Name
+		}
+	}
+
+	paidDate := "—"
+	if inv.PaidDate != nil {
+		paidDate = inv.PaidDate.Format("02 January 2006")
+	}
+	totalPaid := fmt.Sprintf("ZMW %.2f", inv.Total)
+
+	htmlBody := email.PaymentConfirmationEmailTemplate(orgName, clientName, inv.InvoiceNumber, paidDate, totalPaid)
+
+	subjectOrg := orgName
+	if subjectOrg == "" {
+		subjectOrg = "Lodge Management"
+	}
+	subject := fmt.Sprintf("Payment Received — %s", inv.InvoiceNumber)
+
+	return s.emailService.SendEmail([]string{recipient}, subject, htmlBody)
+}
+
 func (s *InvoiceService) UpdateDueDate(bookingID uuid.UUID, orgID uuid.UUID, dueDate time.Time) error {
 	return s.repo.UpdateDueDate(bookingID, orgID, dueDate)
 }

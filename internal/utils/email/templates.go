@@ -371,6 +371,41 @@ func GuestWelcomeTemplate(fullName string) string {
 	return emailWrapper("Welcome to Mwakwanda", header, body)
 }
 
+// PaymentConfirmationEmailTemplate notifies a client that their payment has been
+// received and their invoice has been marked as paid.
+func PaymentConfirmationEmailTemplate(orgName, clientName, invoiceNumber, paidDate, totalPaid string) string {
+	header := headerGradient(colorAccent, colorAccentLight)
+
+	if orgName == "" {
+		orgName = "Lodge Management"
+	}
+
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Dear %s,</p>
+              <p>Thank you — we have received your payment and your invoice with <strong>%s</strong> has been marked as <strong>paid</strong>.</p>
+              %s
+              %s
+              <p>Please keep this email for your records. If you have any questions, feel free to reach out.</p>
+              <p style="margin-bottom:0; margin-top:28px;">
+                Warm regards,<br/>
+                <strong style="color:%s;">%s</strong>
+              </p>`,
+		clientName,
+		orgName,
+		infoTable(colorSuccessBox, colorSuccessBorder,
+			infoRow("Invoice No.:", invoiceNumber),
+			infoRow("Amount Paid:", totalPaid),
+			infoRow("Date Paid:", paidDate),
+			infoRow("Status:", "Paid"),
+		),
+		alertBox(colorSuccessBox, colorSuccessBorder, colorAccent,
+			"Your account is fully settled. No further action is required."),
+		colorPrimary,
+		orgName,
+	)
+	return emailWrapper("Payment Received — "+invoiceNumber, header, body)
+}
+
 // InvoiceInfoRow is an exported helper so callers can build extra summary rows
 // (e.g. accounting references) to pass into InvoiceEmailTemplate.
 func InvoiceInfoRow(label, value string) string {

@@ -136,6 +136,22 @@ func indexOfBase64Comma(s string) int {
 	return -1
 }
 
+func (h *InvoiceHandler) SendPaymentConfirmation(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid invoice ID")
+		return
+	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	if err := h.service.SendPaymentConfirmationEmail(id, orgID); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "Payment confirmation sent"})
+}
+
 func (h *InvoiceHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

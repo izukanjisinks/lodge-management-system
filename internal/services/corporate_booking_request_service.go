@@ -132,6 +132,7 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, we
 		Email:      req.BookedBy.Email,
 		Phone:      req.BookedBy.Phone,
 		JobTitle:   req.BookedBy.JobTitle,
+		ManNumber:  req.BookedBy.ManNumber,
 		Department: req.Company.DepartmentName,
 	}
 
@@ -168,110 +169,6 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, we
 		r.AuthoriserEmail = req.Approver.Email
 		r.AuthoriserPhone = req.Approver.Phone
 		r.AuthoriserTitle = req.Approver.Title
-	}
-
-	if err := s.requestRepo.Create(r); err != nil {
-		return nil, err
-	}
-
-	s.startWorflow(r, orgID)
-	return r, nil
-}
-
-func (s *CorporateBookingRequestService) SubmitMeals(orgID uuid.UUID, req *models.SubmitMealsRequest) (*models.CorporateBookingRequest, error) {
-	if req.Profile.FirstName == "" || req.Profile.Email == "" {
-		return nil, errors.New("booked_by first_name and email are required")
-	}
-	if req.From == "" || req.To == "" {
-		return nil, errors.New("from and to are required")
-	}
-	// Every meal selection is a menu item with a quantity. A request must carry at
-	// least one — either as a buffet (top-level items) or per-guest selections.
-	hasGuestItems := false
-	for _, g := range req.Guests {
-		if len(g.Items) > 0 {
-			hasGuestItems = true
-			break
-		}
-	}
-	if len(req.Items) == 0 && !hasGuestItems {
-		return nil, errors.New("at least one menu item is required (buffet items or per-guest items)")
-	}
-
-	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, req.Company, req.Branch, req.Profile)
-	if err != nil {
-		return nil, err
-	}
-
-	payloadBytes, _ := json.Marshal(req)
-	payload := json.RawMessage(payloadBytes)
-
-	r := &models.CorporateBookingRequest{
-		OrgID:            orgID,
-		BranchID:         branchID,
-		CorProfileID:     &profileID,
-		CompanyID:        &companyID,
-		BookingType:      models.CorporateBookingTypeMeals,
-		Status:           models.CorporateBookingStatusPending,
-		ReasonForBooking: req.ReasonForBooking,
-		Documents:        req.Documents,
-		Payload:          payload,
-	}
-	if req.Authoriser != nil {
-		r.AuthoriserName = req.Authoriser.Name
-		r.AuthoriserEmail = req.Authoriser.Email
-		r.AuthoriserPhone = req.Authoriser.Phone
-		r.AuthoriserTitle = req.Authoriser.Title
-		r.AuthoriserDepartment = req.Authoriser.Department
-		r.AuthoriserGLCode = req.Authoriser.GLCode
-	}
-
-	if err := s.requestRepo.Create(r); err != nil {
-		return nil, err
-	}
-
-	s.startWorflow(r, orgID)
-	return r, nil
-}
-
-func (s *CorporateBookingRequestService) SubmitEvent(orgID uuid.UUID, req *models.SubmitEventRequest) (*models.CorporateBookingRequest, error) {
-	if req.Profile.FirstName == "" || req.Profile.Email == "" {
-		return nil, errors.New("booked_by first_name and email are required")
-	}
-	if req.EventType == "" || req.StartDate == "" {
-		return nil, errors.New("event_type and start_date are required")
-	}
-	if err := s.validateVenue(orgID, req.VenueID); err != nil {
-		return nil, err
-	}
-
-	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, req.Company, req.Branch, req.Profile)
-	if err != nil {
-		return nil, err
-	}
-
-	payloadBytes, _ := json.Marshal(req)
-	payload := json.RawMessage(payloadBytes)
-
-	r := &models.CorporateBookingRequest{
-		OrgID:            orgID,
-		BranchID:         branchID,
-		CorProfileID:     &profileID,
-		CompanyID:        &companyID,
-		BookingType:      models.CorporateBookingTypeEvent,
-		Status:           models.CorporateBookingStatusPending,
-		ReasonForBooking: req.ReasonForBooking,
-		Notes:            req.Notes,
-		Documents:        req.Documents,
-		Payload:          payload,
-	}
-	if req.Authoriser != nil {
-		r.AuthoriserName = req.Authoriser.Name
-		r.AuthoriserEmail = req.Authoriser.Email
-		r.AuthoriserPhone = req.Authoriser.Phone
-		r.AuthoriserTitle = req.Authoriser.Title
-		r.AuthoriserDepartment = req.Authoriser.Department
-		r.AuthoriserGLCode = req.Authoriser.GLCode
 	}
 
 	if err := s.requestRepo.Create(r); err != nil {
@@ -325,6 +222,7 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, web
 		Email:      req.BookedBy.Email,
 		Phone:      req.BookedBy.Phone,
 		JobTitle:   req.BookedBy.JobTitle,
+		ManNumber:  req.BookedBy.ManNumber,
 		Department: req.Company.DepartmentName,
 	}
 
@@ -399,6 +297,7 @@ func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webU
 		Email:      req.BookedBy.Email,
 		Phone:      req.BookedBy.Phone,
 		JobTitle:   req.BookedBy.JobTitle,
+		ManNumber:  req.BookedBy.ManNumber,
 		Department: req.Company.DepartmentName,
 	}
 

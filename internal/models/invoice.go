@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +45,16 @@ type Invoice struct {
 	ClientName        string            `json:"client_name"`
 	ClientType        string            `json:"client_type"`
 	ClientEmail       string            `json:"client_email,omitempty"`
+	// Corporate billing fields extracted from metadata
+	ClientTPIN       string `json:"client_tpin,omitempty"`
+	ClientDepartment string `json:"client_department,omitempty"`
+	GLCode           string `json:"gl_code,omitempty"`
+	CostCenter       string `json:"cost_center,omitempty"`
+	CostCenterType   string `json:"cost_center_type,omitempty"`
+	InternalOrder    string `json:"internal_order,omitempty"`
+	// Approver fields extracted from metadata
+	ApproverName  string `json:"approver_name,omitempty"`
+	ApproverEmail string `json:"approver_email,omitempty"`
 	BranchID          *uuid.UUID        `json:"branch_id,omitempty"`
 	LineItems         []InvoiceLineItem `json:"line_items"`
 	Subtotal          float64           `json:"subtotal"`
@@ -55,8 +66,47 @@ type Invoice struct {
 	DueDate           *time.Time        `json:"due_date,omitempty"`
 	PaidDate          *time.Time        `json:"paid_date,omitempty"`
 	Notes             string            `json:"notes,omitempty"`
+	Metadata          json.RawMessage   `json:"metadata,omitempty"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
+}
+
+// invoiceMetadataShape mirrors the booking metadata payload for field extraction.
+type InvoiceMetadataShape struct {
+	Company struct {
+		TPIN           string `json:"tpin"`
+		DepartmentName string `json:"department_name"`
+		GLCode         string `json:"gl_code"`
+		CostCenter     string `json:"cost_center"`
+		CostCenterType string `json:"cost_center_type"`
+	} `json:"company"`
+	Approver struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	} `json:"approver"`
+}
+
+// HydrateFromMetadata extracts flat billing fields from the stored JSONB payload.
+func (inv *Invoice) HydrateFromMetadata() {
+	if len(inv.Metadata) == 0 {
+		return
+	}
+	var m InvoiceMetadataShape
+	if err := json.Unmarshal(inv.Metadata, &m); err != nil {
+		return
+	}
+	inv.ClientTPIN = m.Company.TPIN
+	inv.ClientDepartment = m.Company.DepartmentName
+	inv.GLCode = m.Company.GLCode
+	inv.CostCenter = m.Company.CostCenter
+	inv.CostCenterType = m.Company.CostCenterType
+	// cost_center_type drives which of CostCenter / InternalOrder is active
+	if m.Company.CostCenterType == "internal_order" {
+		inv.InternalOrder = m.Company.CostCenter
+		inv.CostCenter = ""
+	}
+	inv.ApproverName = m.Approver.Name
+	inv.ApproverEmail = m.Approver.Email
 }
 
 type UpdateInvoiceStatusRequest struct {

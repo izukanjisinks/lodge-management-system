@@ -100,6 +100,7 @@ type CorBookingProfileInput struct {
 	Email      string `json:"email"`
 	Phone      string `json:"phone,omitempty"`
 	JobTitle   string `json:"job_title,omitempty"`
+	ManNumber  string `json:"man_number,omitempty"`
 	Department string `json:"department,omitempty"`
 }
 
@@ -149,10 +150,11 @@ type SubmitAccommodationRequest struct {
 }
 
 type CorSubmitBookedBy struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone,omitempty"`
-	JobTitle string `json:"job_title,omitempty"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Phone     string `json:"phone,omitempty"`
+	JobTitle  string `json:"job_title,omitempty"`
+	ManNumber string `json:"man_number,omitempty"`
 }
 
 type CorSubmitCompany struct {
@@ -166,6 +168,7 @@ type CorSubmitCompany struct {
 	BranchName     string `json:"branch_name,omitempty"`
 	DepartmentName string `json:"department_name,omitempty"`
 	CostCenter     string `json:"cost_center,omitempty"`
+	CostCenterType string `json:"cost_center_type,omitempty"`
 	GLCode         string `json:"gl_code,omitempty"`
 }
 

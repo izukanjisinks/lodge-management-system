@@ -87,6 +87,7 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 		Status:        models.InvoiceStatusDraft,
 		IssuedDate:    &now,
 		DueDate:       &latestCheckOut,
+		Metadata:      b.Metadata,
 	}
 
 	return s.repo.Create(inv, orgID)

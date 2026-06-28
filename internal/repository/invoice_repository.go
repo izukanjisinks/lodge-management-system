@@ -39,12 +39,12 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 
 	_, err = tx.Exec(`
 		INSERT INTO invoices
-		    (id, invoice_number, booking_id, corporate_client_id, subtotal, tax_rate, tax, total, status, issued_at, due_date, notes, org_id, branch_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		    (id, invoice_number, booking_id, corporate_client_id, subtotal, tax_rate, tax, total, status, issued_at, due_date, notes, org_id, branch_id, metadata, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
 		inv.ID, inv.InvoiceNumber, inv.BookingID, inv.CorporateClientID,
 		inv.Subtotal, inv.TaxRate, inv.TaxAmount, inv.Total,
 		inv.Status, inv.IssuedDate, inv.DueDate, inv.Notes,
-		orgID, inv.BranchID, inv.CreatedAt, inv.UpdatedAt,
+		orgID, inv.BranchID, inv.Metadata, inv.CreatedAt, inv.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -220,7 +220,7 @@ const invoiceSelectColumns = `
 	COALESCE(b.booker_email, '')                   AS client_email,
 	i.subtotal, i.tax_rate, i.tax, i.total,
 	i.status, i.issued_at, i.due_date, i.paid_date, i.notes,
-	i.created_at, i.updated_at`
+	i.metadata, i.created_at, i.updated_at`
 
 // fetchOne is a shared helper used by GetByID and GetByBookingID.
 func (r *InvoiceRepository) fetchOne(whereClause string, args ...interface{}) (*models.Invoice, error) {
@@ -380,12 +380,13 @@ func scanInvoice(row invoiceScanner) (*models.Invoice, error) {
 	var bookingID, corporateClientID uuid.NullUUID
 	var clientEmail, notes sql.NullString
 	var issuedAt, dueDate, paidDate sql.NullTime
+	var metadata []byte
 	err := row.Scan(
 		&inv.ID, &inv.InvoiceNumber, &bookingID, &corporateClientID,
 		&inv.ClientID, &inv.ClientType, &inv.ClientName, &clientEmail,
 		&inv.Subtotal, &inv.TaxRate, &inv.TaxAmount, &inv.Total,
 		&inv.Status, &issuedAt, &dueDate, &paidDate, &notes,
-		&inv.CreatedAt, &inv.UpdatedAt,
+		&metadata, &inv.CreatedAt, &inv.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -410,6 +411,10 @@ func scanInvoice(row invoiceScanner) (*models.Invoice, error) {
 	}
 	if paidDate.Valid {
 		inv.PaidDate = &paidDate.Time
+	}
+	if len(metadata) > 0 {
+		inv.Metadata = metadata
+		inv.HydrateFromMetadata()
 	}
 	return &inv, nil
 }

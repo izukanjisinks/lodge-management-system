@@ -198,13 +198,14 @@ func (r *InvoiceRepository) UpdateRoomLineItem(bookingID uuid.UUID, orgID uuid.U
 	return tx.Commit()
 }
 
-func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, orgID uuid.UUID, status string, paidDate *time.Time, notes *string) error {
+func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, orgID uuid.UUID, status string, paidDate *time.Time, notes *string, proofURL *string) error {
 	now := time.Now()
 	_, err := r.db.Exec(`
 		UPDATE invoices
-		SET status=$1, paid_date=$2, notes=COALESCE($3, notes), updated_at=$4
-		WHERE id=$5 AND org_id=$6`,
-		status, paidDate, notes, now, id, orgID,
+		SET status=$1, paid_date=$2, notes=COALESCE($3, notes),
+		    proof_of_payment_url=COALESCE($4, proof_of_payment_url), updated_at=$5
+		WHERE id=$6 AND org_id=$7`,
+		status, paidDate, notes, proofURL, now, id, orgID,
 	)
 	return err
 }
@@ -219,7 +220,7 @@ const invoiceSelectColumns = `
 	COALESCE(NULLIF(cd.company_name, ''), b.booker_name, '') AS client_name,
 	COALESCE(b.booker_email, '')                   AS client_email,
 	i.subtotal, i.tax_rate, i.tax, i.total,
-	i.status, i.issued_at, i.due_date, i.paid_date, i.notes,
+	i.status, i.issued_at, i.due_date, i.paid_date, i.proof_of_payment_url, i.notes,
 	i.metadata, i.created_at, i.updated_at`
 
 // fetchOne is a shared helper used by GetByID and GetByBookingID.
@@ -378,14 +379,14 @@ type invoiceScanner interface {
 func scanInvoice(row invoiceScanner) (*models.Invoice, error) {
 	var inv models.Invoice
 	var bookingID, corporateClientID uuid.NullUUID
-	var clientEmail, notes sql.NullString
+	var clientEmail, notes, proofURL sql.NullString
 	var issuedAt, dueDate, paidDate sql.NullTime
 	var metadata []byte
 	err := row.Scan(
 		&inv.ID, &inv.InvoiceNumber, &bookingID, &corporateClientID,
 		&inv.ClientID, &inv.ClientType, &inv.ClientName, &clientEmail,
 		&inv.Subtotal, &inv.TaxRate, &inv.TaxAmount, &inv.Total,
-		&inv.Status, &issuedAt, &dueDate, &paidDate, &notes,
+		&inv.Status, &issuedAt, &dueDate, &paidDate, &proofURL, &notes,
 		&metadata, &inv.CreatedAt, &inv.UpdatedAt,
 	)
 	if err != nil {
@@ -399,6 +400,9 @@ func scanInvoice(row invoiceScanner) (*models.Invoice, error) {
 	}
 	if clientEmail.Valid {
 		inv.ClientEmail = clientEmail.String
+	}
+	if proofURL.Valid {
+		inv.ProofOfPaymentURL = proofURL.String
 	}
 	if notes.Valid {
 		inv.Notes = notes.String

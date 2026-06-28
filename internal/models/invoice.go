@@ -64,9 +64,10 @@ type Invoice struct {
 	Status            string            `json:"status"`
 	IssuedDate        *time.Time        `json:"issued_date,omitempty"`
 	DueDate           *time.Time        `json:"due_date,omitempty"`
-	PaidDate          *time.Time        `json:"paid_date,omitempty"`
-	Notes             string            `json:"notes,omitempty"`
-	Metadata          json.RawMessage   `json:"metadata,omitempty"`
+	PaidDate             *time.Time        `json:"paid_date,omitempty"`
+	ProofOfPaymentURL    string            `json:"proof_of_payment_url,omitempty"`
+	Notes                string            `json:"notes,omitempty"`
+	Metadata             json.RawMessage   `json:"metadata,omitempty"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
 }
@@ -110,7 +111,24 @@ func (inv *Invoice) HydrateFromMetadata() {
 }
 
 type UpdateInvoiceStatusRequest struct {
-	Status   string     `json:"status"`
-	PaidDate *time.Time `json:"paid_date,omitempty"`
-	Notes    *string    `json:"notes,omitempty"`
+	Status            string  `json:"status"`
+	PaidDateStr       string  `json:"paid_date,omitempty"`
+	Notes             *string `json:"notes,omitempty"`
+	ProofOfPaymentURL *string `json:"proof_of_payment_url,omitempty"`
+
+	// Resolved from PaidDateStr after JSON decode.
+	PaidDate *time.Time `json:"-"`
+}
+
+// ParsePaidDate parses PaidDateStr ("2006-01-02" or RFC 3339) into PaidDate.
+func (r *UpdateInvoiceStatusRequest) ParsePaidDate() {
+	if r.PaidDateStr == "" {
+		return
+	}
+	for _, layout := range []string{"2006-01-02", time.RFC3339} {
+		if t, err := time.Parse(layout, r.PaidDateStr); err == nil {
+			r.PaidDate = &t
+			return
+		}
+	}
 }

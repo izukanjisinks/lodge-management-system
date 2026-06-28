@@ -149,6 +149,7 @@ func (h *InvoiceHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	req.ParsePaidDate()
 
 	inv, err := h.service.UpdateStatus(id, orgID, &req)
 	if err != nil {

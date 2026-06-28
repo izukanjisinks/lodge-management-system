@@ -332,7 +332,7 @@ func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models
 		return nil, fmt.Errorf("cannot transition invoice from '%s' to '%s'", inv.Status, req.Status)
 	}
 
-	if err := s.repo.UpdateStatus(id, orgID, req.Status, req.PaidDate, req.Notes); err != nil {
+	if err := s.repo.UpdateStatus(id, orgID, req.Status, req.PaidDate, req.Notes, req.ProofOfPaymentURL); err != nil {
 		return nil, err
 	}
 	return s.repo.GetByID(id, orgID)

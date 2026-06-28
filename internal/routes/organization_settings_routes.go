@@ -9,7 +9,7 @@ import (
 
 func RegisterOrganizationSettingsRoutes(h *handlers.OrganizationSettingsHandler) {
 	http.HandleFunc("GET /api/v1/settings",
-		withAuthAndRole(h.Get, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
+		withAuthAndRole(h.Get, models.RoleAdmin))
 
 	http.HandleFunc("PUT /api/v1/settings",
 		withAuthAndRole(h.Upsert, models.RoleAdmin, models.RoleBranchAdmin))

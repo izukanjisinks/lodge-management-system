@@ -11,49 +11,41 @@ func RegisterCorProfileRoutes(
 	corHandler *handlers.CorProfileHandler,
 	bookingReqHandler *handlers.CorporateBookingRequestHandler,
 ) {
-	// ─── Companies (backoffice) ────────────────────────────────────────────────
+	// ─── Companies (backoffice) — admin only for mutations ────────────────────
 	http.HandleFunc("GET /api/v1/clients/companies",
 		withAuth(corHandler.ListCompanies))
 	http.HandleFunc("GET /api/v1/clients/companies/{id}",
 		withAuth(corHandler.GetCompany))
 	http.HandleFunc("PUT /api/v1/clients/companies/{id}",
-		withAuthAndRole(corHandler.UpdateCompany,
-			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(corHandler.UpdateCompany, models.RoleAdmin))
 
-	// ─── Branches (backoffice) ─────────────────────────────────────────────────
+	// ─── Branches (backoffice) — admin only for mutations ─────────────────────
 	http.HandleFunc("GET /api/v1/clients/companies/{id}/branches",
 		withAuth(corHandler.ListBranches))
 	http.HandleFunc("POST /api/v1/clients/companies/{id}/branches",
-		withAuthAndRole(corHandler.CreateBranch,
-			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(corHandler.CreateBranch, models.RoleAdmin))
 	http.HandleFunc("PUT /api/v1/clients/companies/{id}/branches/{branch_id}",
-		withAuthAndRole(corHandler.UpdateBranch,
-			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(corHandler.UpdateBranch, models.RoleAdmin))
 
-	// ─── Profiles (backoffice) ─────────────────────────────────────────────────
+	// ─── Profiles (backoffice) — admin only for mutations ─────────────────────
 	http.HandleFunc("GET /api/v1/clients/companies/{id}/profiles",
 		withAuth(corHandler.ListProfiles))
 	http.HandleFunc("POST /api/v1/clients/companies/{id}/profiles",
-		withAuthAndRole(corHandler.CreateProfile,
-			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(corHandler.CreateProfile, models.RoleAdmin))
 	http.HandleFunc("GET /api/v1/clients/profiles/{id}",
 		withAuth(corHandler.GetProfile))
 	http.HandleFunc("PUT /api/v1/clients/profiles/{id}",
-		withAuthAndRole(corHandler.UpdateProfile,
-			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(corHandler.UpdateProfile, models.RoleAdmin))
 
-	// ─── Corporate guests (backoffice) ────────────────────────────────────────
+	// ─── Corporate guests (backoffice) — admin only for mutations ────────────
 	http.HandleFunc("GET /api/v1/clients/profiles/{id}/guests",
 		withAuth(corHandler.ListGuests))
 	http.HandleFunc("POST /api/v1/clients/profiles/{id}/guests",
-		withAuthAndRole(corHandler.AddGuest,
-			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(corHandler.AddGuest, models.RoleAdmin))
 	http.HandleFunc("PUT /api/v1/clients/profiles/{id}/guests/{guest_id}",
-		withAuthAndRole(corHandler.UpdateGuest,
-			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(corHandler.UpdateGuest, models.RoleAdmin))
 	http.HandleFunc("DELETE /api/v1/clients/profiles/{id}/guests/{guest_id}",
-		withAuthAndRole(corHandler.DeleteGuest,
-			models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
+		withAuthAndRole(corHandler.DeleteGuest, models.RoleAdmin))
 
 	// ─── Booking requests (web — authenticated submission) ───────────────────
 	// Corporate accommodation submission: org_id and all company/approver data in request body

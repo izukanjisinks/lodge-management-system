@@ -9,10 +9,10 @@ import (
 
 func RegisterBranchRoutes(h *handlers.BranchHandler) {
 	http.HandleFunc("GET /api/v1/branches",
-		withAuthAndRole(h.List, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.List, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
 	http.HandleFunc("GET /api/v1/branches/{id}",
-		withAuthAndRole(h.GetByID, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.GetByID, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
 	http.HandleFunc("POST /api/v1/branches",
 		withAuthAndRole(h.Create, models.RoleAdmin))

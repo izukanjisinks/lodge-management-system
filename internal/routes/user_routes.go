@@ -8,15 +8,15 @@ import (
 )
 
 func RegisterUserRoutes(h *handlers.UserHandler) {
-	// User management — frontend calls /api/v1/users (no /admin prefix)
+	// User management — admin only (org-wide, not branch-scoped)
 	http.HandleFunc("POST /api/v1/users",
-		withAuthAndRole(h.Create, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.Create, models.RoleAdmin))
 
 	http.HandleFunc("GET /api/v1/users",
-		withAuthAndRole(h.GetAll, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.GetAll, models.RoleAdmin))
 
 	http.HandleFunc("GET /api/v1/users/{id}",
-		withAuthAndRole(h.GetByID, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.GetByID, models.RoleAdmin))
 
 	http.HandleFunc("PUT /api/v1/users/{id}",
 		withAuthAndRole(h.Update, models.RoleAdmin, models.RoleBranchAdmin))
@@ -32,13 +32,13 @@ func RegisterUserRoutes(h *handlers.UserHandler) {
 
 	// Keep /admin aliases for backward compatibility with Postman/other clients
 	http.HandleFunc("GET /api/v1/admin/users",
-		withAuthAndRole(h.GetAll, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.GetAll, models.RoleAdmin))
 
 	http.HandleFunc("GET /api/v1/admin/users/{id}",
-		withAuthAndRole(h.GetByID, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.GetByID, models.RoleAdmin))
 
 	http.HandleFunc("POST /api/v1/admin/users/{id}/role",
-		withAuthAndRole(h.ChangeRole, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.ChangeRole, models.RoleAdmin))
 
 	http.HandleFunc("DELETE /api/v1/admin/users/{id}",
 		withAuthAndRole(h.Delete, models.RoleAdmin, models.RoleBranchAdmin))
@@ -50,7 +50,7 @@ func RegisterUserRoutes(h *handlers.UserHandler) {
 		withAuthAndRole(h.Unlock, models.RoleAdmin, models.RoleBranchAdmin))
 
 	http.HandleFunc("GET /api/v1/roles",
-		withAuthAndRole(h.ListRoles, models.RoleAdmin, models.RoleBranchAdmin))
+		withAuthAndRole(h.ListRoles, models.RoleAdmin))
 
 	http.HandleFunc("GET /api/v1/profile",
 		withAuth(h.GetProfile))

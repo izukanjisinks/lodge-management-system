@@ -114,6 +114,9 @@ func (s *WorkflowService) InitiateWorkflow(
 		AssignedBy: initiatorID,
 		Status:     "pending",
 	}
+	if taskDetails.BranchID != "" {
+		task.BranchID = &taskDetails.BranchID
+	}
 
 	if err := s.taskRepo.Create(task); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
@@ -275,6 +278,9 @@ func (s *WorkflowService) ProcessAction(
 			Status:     "pending",
 			DueDate:    instance.DueDate,
 		}
+		if instance.TaskDetails.BranchID != "" {
+			newTask.BranchID = &instance.TaskDetails.BranchID
+		}
 
 		if err := s.taskRepo.Create(newTask); err != nil {
 			return fmt.Errorf("failed to create new task: %w", err)
@@ -354,12 +360,19 @@ func (s *WorkflowService) applyOutcomeToRequest(instance *models.WorkflowInstanc
 	return nil
 }
 
-// GetMyTasks retrieves all tasks assigned to a user, scoped to org.
-func (s *WorkflowService) GetMyTasks(orgID, userID string, statusFilter string) ([]models.AssignedTask, error) {
-	if statusFilter != "" {
-		return s.taskRepo.GetByAssignee(orgID, userID, statusFilter)
-	}
-	return s.taskRepo.GetByAssignee(orgID, userID)
+// GetAllOrgTasks retrieves all tasks in an org regardless of assignee, paginated.
+func (s *WorkflowService) GetAllOrgTasks(orgID, branchID, statusFilter string, page, pageSize int) ([]models.AssignedTask, int, error) {
+	return s.taskRepo.GetAllByOrg(orgID, branchID, statusFilter, pageSize, (page-1)*pageSize)
+}
+
+// GetMyTasks retrieves the tasks assigned to a user, scoped to org and paginated.
+func (s *WorkflowService) GetMyTasks(orgID, userID, statusFilter string, page, pageSize int) ([]models.AssignedTask, int, error) {
+	return s.taskRepo.GetByAssignee(orgID, userID, statusFilter, pageSize, (page-1)*pageSize)
+}
+
+// GetTaskByID retrieves a single task by ID, scoped to org (any assignee).
+func (s *WorkflowService) GetTaskByID(taskID, orgID string) (*models.AssignedTask, error) {
+	return s.taskRepo.GetByID(taskID, orgID)
 }
 
 // GetInstanceHistory retrieves the complete history of a workflow instance, scoped to org.
@@ -391,7 +404,7 @@ func (s *WorkflowService) CancelInstance(taskID, orgID string) error {
 }
 
 // determineAssignee finds the user with the required role who has the fewest pending tasks,
-// scoped to the given org so tasks are never assigned cross-org.
+// scoped to the org (and branch when available) so tasks are never assigned cross-org.
 func (s *WorkflowService) determineAssignee(orgID string, allowedRoles []string, taskDetails models.TaskDetails) (string, error) {
 	if len(allowedRoles) == 0 {
 		return "", errors.New("no allowed roles defined for transition")
@@ -400,7 +413,7 @@ func (s *WorkflowService) determineAssignee(orgID string, allowedRoles []string,
 	orgUUID, _ := uuid.Parse(orgID)
 
 	for _, roleName := range allowedRoles {
-		user, err := s.userRepo.GetUserWithFewestTasksByRole(orgUUID, roleName)
+		user, err := s.userRepo.GetUserWithFewestTasksByRole(orgUUID, roleName, taskDetails.BranchID)
 		if err == nil && user != nil {
 			return user.UserID.String(), nil
 		}

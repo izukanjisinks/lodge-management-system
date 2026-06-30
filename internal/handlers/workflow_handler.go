@@ -8,6 +8,7 @@ import (
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/services"
+	"lodge-system/pkg/utils"
 )
 
 type WorkflowHandler struct {
@@ -31,8 +32,9 @@ func (h *WorkflowHandler) GetMyTasks(w http.ResponseWriter, r *http.Request) {
 
 	// Get status filter from query params (optional)
 	status := r.URL.Query().Get("status") // "pending", "completed", etc.
+	p := utils.ParsePagination(r)
 
-	tasks, err := h.service.GetMyTasks(orgID.String(), userID.String(), status)
+	tasks, total, err := h.service.GetMyTasks(orgID.String(), userID.String(), status, p.Page, p.PageSize)
 	if err != nil {
 		http.Error(w, "Failed to retrieve tasks", http.StatusInternalServerError)
 		return
@@ -40,8 +42,35 @@ func (h *WorkflowHandler) GetMyTasks(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"tasks": tasks,
-		"count": len(tasks),
+		"tasks":     tasks,
+		"count":     len(tasks),
+		"page":      p.Page,
+		"page_size": p.PageSize,
+		"total":     total,
+	})
+}
+
+// GetAllOrgTasks retrieves all tasks in the org regardless of assignee.
+// Each task includes assignee_name so the UI can label who it belongs to.
+func (h *WorkflowHandler) GetAllOrgTasks(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	status := r.URL.Query().Get("status")
+	branchID := r.URL.Query().Get("branch_id")
+	p := utils.ParsePagination(r)
+
+	tasks, total, err := h.service.GetAllOrgTasks(orgID.String(), branchID, status, p.Page, p.PageSize)
+	if err != nil {
+		http.Error(w, "Failed to retrieve tasks", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tasks":     tasks,
+		"count":     len(tasks),
+		"page":      p.Page,
+		"page_size": p.PageSize,
+		"total":     total,
 	})
 }
 
@@ -54,7 +83,8 @@ func (h *WorkflowHandler) GetMyPendingTasks(w http.ResponseWriter, r *http.Reque
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	tasks, err := h.service.GetMyTasks(orgID.String(), userID.String(), "pending")
+	p := utils.ParsePagination(r)
+	tasks, total, err := h.service.GetMyTasks(orgID.String(), userID.String(), "pending", p.Page, p.PageSize)
 	if err != nil {
 		http.Error(w, "Failed to retrieve pending tasks", http.StatusInternalServerError)
 		return
@@ -62,8 +92,11 @@ func (h *WorkflowHandler) GetMyPendingTasks(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"tasks": tasks,
-		"count": len(tasks),
+		"tasks":     tasks,
+		"count":     len(tasks),
+		"page":      p.Page,
+		"page_size": p.PageSize,
+		"total":     total,
 	})
 }
 
@@ -240,31 +273,13 @@ func (h *WorkflowHandler) GetTaskDetails(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	// Get all tasks for the user to find this one
-	tasks, err := h.service.GetMyTasks(orgID.String(), userID.String(), "")
+	// Resolve the task by ID within the org. Any staff member may view a task's
+	// details (read-only); acting on it is enforced separately in ProcessAction.
+	foundTask, err := h.service.GetTaskByID(taskID, orgID.String())
 	if err != nil {
-		http.Error(w, "Failed to retrieve task", http.StatusInternalServerError)
-		return
-	}
-
-	// Find the specific task
-	var foundTask *models.AssignedTask
-	for _, task := range tasks {
-		if task.ID == taskID {
-			foundTask = &task
-			break
-		}
-	}
-
-	if foundTask == nil {
-		http.Error(w, "Task not found or not assigned to you", http.StatusNotFound)
+		http.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
 

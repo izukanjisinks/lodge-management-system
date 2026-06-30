@@ -8,6 +8,9 @@ import (
 )
 
 func RegisterWorkflowRoutes(h *handlers.WorkflowHandler) {
+	http.HandleFunc("GET /api/v1/workflow/all-tasks",
+		withAuthAndRole(h.GetAllOrgTasks, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+
 	http.HandleFunc("GET /api/v1/workflow/my-tasks",
 		withAuthAndRole(h.GetMyTasks, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 

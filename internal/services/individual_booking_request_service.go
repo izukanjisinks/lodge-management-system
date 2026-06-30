@@ -50,15 +50,20 @@ func (s *IndividualBookingRequestService) Submit(guestID uuid.UUID, req *models.
 		return nil, errors.New("at least one room must be selected")
 	}
 
-	// Resolve org: use org_id from body, or fall back to the first room's org
+	// Resolve org and branch: prefer the values from the body, otherwise fall back
+	// to the first room (the entity being booked carries the authoritative branch).
 	orgID := req.OrgID
-	if orgID == uuid.Nil {
+	branchID := req.BranchID
+	if orgID == uuid.Nil || branchID == nil {
 		firstRoom, err := s.roomRepo.GetByIDUnscoped(req.Accommodation.Rooms[0].RoomID)
 		if err != nil {
 			return nil, errors.New("room not found")
 		}
-		if firstRoom.OrgID != nil {
+		if orgID == uuid.Nil && firstRoom.OrgID != nil {
 			orgID = *firstRoom.OrgID
+		}
+		if branchID == nil {
+			branchID = firstRoom.BranchID
 		}
 	}
 	if orgID == uuid.Nil {
@@ -70,6 +75,7 @@ func (s *IndividualBookingRequestService) Submit(guestID uuid.UUID, req *models.
 
 	booking, err := s.bookingService.SubmitPending(&models.PendingBookingInput{
 		OrgID:       orgID,
+		BranchID:    branchID,
 		WebUserID:   &guestID,
 		BookerType:  models.BookerTypeIndividual,
 		BookerName:  req.BookedBy.Name,
@@ -115,6 +121,7 @@ func (s *IndividualBookingRequestService) SubmitEvent(guestID uuid.UUID, req *mo
 
 	booking, err := s.bookingService.SubmitPending(&models.PendingBookingInput{
 		OrgID:       orgID,
+		BranchID:    req.BranchID,
 		WebUserID:   &guestID,
 		BookerType:  models.BookerTypeIndividual,
 		BookerName:  req.BookedBy.Name,
@@ -396,6 +403,9 @@ func (s *IndividualBookingRequestService) startWorkflow(b *models.Booking, label
 				Position:   "Guest",
 				Department: "Guest",
 			},
+		}
+		if b.BranchID != nil {
+			taskDetails.BranchID = b.BranchID.String()
 		}
 		if _, err := s.workflow.InitiateWorkflow(
 			models.WorkflowTypeBookingApproval,

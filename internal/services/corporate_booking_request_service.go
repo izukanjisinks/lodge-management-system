@@ -564,6 +564,9 @@ func (s *CorporateBookingRequestService) startWorflow(b *models.Booking, company
 				Department: "Guest",
 			},
 		}
+		if b.BranchID != nil {
+			taskDetails.BranchID = b.BranchID.String()
+		}
 		if _, err := s.workflow.InitiateWorkflow(
 			models.WorkflowTypeBookingApproval,
 			taskDetails,

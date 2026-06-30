@@ -359,49 +359,55 @@ func (r *UserRepository) GetRoleByName(name string) (*models.Role, error) {
 	return &role, nil
 }
 
-// GetUserWithFewestTasksByRole finds a user with the specified role who has the fewest pending tasks,
-// scoped to the given org so tasks are never assigned cross-org.
-func (r *UserRepository) GetUserWithFewestTasksByRole(orgID uuid.UUID, roleName string) (*models.User, error) {
-	query := `
+// GetUserWithFewestTasksByRole finds the active user with the given role who has
+// the fewest pending tasks. When branchID is non-empty the search is restricted
+// to users belonging to that branch; otherwise all users in the org are eligible.
+// Falls back to any org-level user if no branch-scoped user is found.
+func (r *UserRepository) GetUserWithFewestTasksByRole(orgID uuid.UUID, roleName string, branchID string) (*models.User, error) {
+	base := `
 		SELECT u.user_id, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		       r.role_id, r.name, r.description,
 		       COALESCE(COUNT(at.id), 0) as task_count
 		FROM users u
 		INNER JOIN roles r ON u.role_id = r.role_id
 		LEFT JOIN assigned_tasks at ON at.assigned_to = u.user_id AND at.status = 'pending'
-		WHERE r.name = $1 AND u.is_active = true AND u.org_id = $2
+		WHERE r.name = $1 AND u.is_active = true AND u.org_id = $2%s
 		GROUP BY u.user_id, u.email, u.password, u.role_id, u.is_active, u.created_at, u.updated_at,
 		         r.role_id, r.name, r.description
 		ORDER BY task_count ASC, u.created_at ASC
-		LIMIT 1
-	`
+		LIMIT 1`
 
-	var u models.User
-	var roleID sql.NullString
-	var rRoleID, rName, rDesc sql.NullString
-	var taskCount int
-
-	err := r.db.QueryRow(query, roleName, orgID).Scan(
-		&u.UserID, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
-		&rRoleID, &rName, &rDesc, &taskCount,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if roleID.Valid {
-		parsed, _ := uuid.Parse(roleID.String)
-		u.RoleID = &parsed
-	}
-
-	if rRoleID.Valid {
-		roleUUID, _ := uuid.Parse(rRoleID.String)
-		u.Role = &models.Role{
-			RoleID:      roleUUID,
-			Name:        rName.String,
-			Description: rDesc.String,
+	scan := func(query string, args ...interface{}) (*models.User, error) {
+		var u models.User
+		var roleID sql.NullString
+		var rRoleID, rName, rDesc sql.NullString
+		var taskCount int
+		err := r.db.QueryRow(query, args...).Scan(
+			&u.UserID, &u.Email, &u.Password, &roleID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+			&rRoleID, &rName, &rDesc, &taskCount,
+		)
+		if err != nil {
+			return nil, err
 		}
+		if roleID.Valid {
+			parsed, _ := uuid.Parse(roleID.String)
+			u.RoleID = &parsed
+		}
+		if rRoleID.Valid {
+			roleUUID, _ := uuid.Parse(rRoleID.String)
+			u.Role = &models.Role{RoleID: roleUUID, Name: rName.String, Description: rDesc.String}
+		}
+		return &u, nil
 	}
 
-	return &u, nil
+	if branchID != "" {
+		q := fmt.Sprintf(base, " AND u.branch_id = $3")
+		if u, err := scan(q, roleName, orgID, branchID); err == nil {
+			return u, nil
+		}
+		// Fall back to any org-level user if no one is on this branch with the role.
+	}
+
+	q := fmt.Sprintf(base, "")
+	return scan(q, roleName, orgID)
 }

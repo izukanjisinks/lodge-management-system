@@ -165,6 +165,8 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		where = append(where, fmt.Sprintf("b.booking_type = $%d", i))
 		args = append(args, bookingType)
 		i++
+	} else {
+		where = append(where, "b.booking_type <> 'meals'")
 	}
 	if status != "" {
 		where = append(where, fmt.Sprintf("b.status = $%d", i))

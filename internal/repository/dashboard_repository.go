@@ -178,7 +178,7 @@ func (r *DashboardRepository) RecentBookings(orgID uuid.UUID, branchID *uuid.UUI
 		    LIMIT 1
 		) asg ON TRUE
 		LEFT JOIN rooms r ON r.id = asg.room_id
-		WHERE b.org_id = $1%s
+		WHERE b.org_id = $1 AND b.status <> 'pending'%s
 		ORDER BY b.created_at DESC
 		LIMIT $2`, branchFilter)
 	rows, err := r.db.Query(query, args...)

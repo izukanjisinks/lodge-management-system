@@ -40,10 +40,10 @@ func (r *OrderRepository) Create(o *models.Order, items []models.PlaceOrderItemR
 	}()
 
 	err = tx.QueryRow(`
-		INSERT INTO orders (id, org_id, booking_id, attendee_id, type, status, notes, scheduled_for, meal_period, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		INSERT INTO orders (id, org_id, branch_id, booking_id, attendee_id, type, status, notes, scheduled_for, meal_period, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		RETURNING order_number`,
-		o.ID, orgID, o.BookingID, o.AttendeeID, o.Type, models.OrderStatusOpen, o.Notes, o.ScheduledFor, o.MealPeriod, now, now,
+		o.ID, orgID, o.BranchID, o.BookingID, o.AttendeeID, o.Type, models.OrderStatusOpen, o.Notes, o.ScheduledFor, o.MealPeriod, now, now,
 	).Scan(&o.OrderNumber)
 	if err != nil {
 		return nil, err
@@ -74,13 +74,13 @@ func (r *OrderRepository) Create(o *models.Order, items []models.PlaceOrderItemR
 
 func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, error) {
 	var o models.Order
-	var bookingID, attendeeID uuid.NullUUID
+	var branchID, bookingID, attendeeID uuid.NullUUID
 	var notes, bookingNumber, roomName, clientName, companyName, attendeeName sql.NullString
 
 	var scheduledFor models.NullDate
 	var mealPeriod sql.NullString
 	err := r.db.QueryRow(`
-		SELECT o.id, o.org_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
+		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
 		       asg.room_name,
@@ -101,7 +101,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		    ORDER BY bra.check_in ASC LIMIT 1
 		) asg ON TRUE
 		WHERE o.id=$1 AND o.org_id=$2`, id, orgID).
-		Scan(&o.ID, &o.OrgID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
+		Scan(&o.ID, &o.OrgID, &branchID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
 			&scheduledFor, &mealPeriod,
 			&o.CreatedAt, &o.UpdatedAt)
@@ -113,6 +113,9 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	}
 	if err != nil {
 		return nil, err
+	}
+	if branchID.Valid {
+		o.BranchID = &branchID.UUID
 	}
 	if bookingID.Valid {
 		o.BookingID = &bookingID.UUID
@@ -193,7 +196,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT o.id, o.org_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
+		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
 		       asg.room_name,
@@ -225,14 +228,17 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 	var orders []models.Order
 	for rows.Next() {
 		var o models.Order
-		var bid, aid uuid.NullUUID
+		var brid, bid, aid uuid.NullUUID
 		var notes, bookingNumber, roomName, clientName, companyName, attendeeName, mealPeriod sql.NullString
 		var scheduledFor models.NullDate
-		if err := rows.Scan(&o.ID, &o.OrgID, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
+		if err := rows.Scan(&o.ID, &o.OrgID, &brid, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
 			&scheduledFor, &mealPeriod,
 			&o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, 0, err
+		}
+		if brid.Valid {
+			o.BranchID = &brid.UUID
 		}
 		if bid.Valid {
 			o.BookingID = &bid.UUID

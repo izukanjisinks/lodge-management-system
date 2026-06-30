@@ -31,7 +31,7 @@ func NewOrderService(
 
 // PlaceOrder creates a new in-house order tied to a confirmed/checked-in booking
 // and immediately appends a line item to the booking's invoice.
-func (s *OrderService) PlaceOrder(orgID uuid.UUID, req *models.PlaceOrderRequest) (*models.Order, error) {
+func (s *OrderService) PlaceOrder(orgID uuid.UUID, branchID *uuid.UUID, req *models.PlaceOrderRequest) (*models.Order, error) {
 	if len(req.Items) == 0 {
 		return nil, errors.New("at least one item is required")
 	}
@@ -45,10 +45,15 @@ func (s *OrderService) PlaceOrder(orgID uuid.UUID, req *models.PlaceOrderRequest
 	}
 
 	o := &models.Order{
+		BranchID:   b.BranchID,
 		BookingID:  &req.BookingID,
 		AttendeeID: req.AttendeeID,
 		Type:       models.OrderTypeInHouse,
 		Notes:      req.Notes,
+	}
+	// Fall back to the caller's branch if the booking has none
+	if o.BranchID == nil {
+		o.BranchID = branchID
 	}
 	order, err := s.repo.Create(o, req.Items, orgID)
 	if err != nil {
@@ -60,13 +65,14 @@ func (s *OrderService) PlaceOrder(orgID uuid.UUID, req *models.PlaceOrderRequest
 }
 
 // PlaceWalkInOrder creates a new walk-in order with no booking — no invoice entry.
-func (s *OrderService) PlaceWalkInOrder(orgID uuid.UUID, req *models.PlaceWalkInOrderRequest) (*models.Order, error) {
+func (s *OrderService) PlaceWalkInOrder(orgID uuid.UUID, branchID *uuid.UUID, req *models.PlaceWalkInOrderRequest) (*models.Order, error) {
 	if len(req.Items) == 0 {
 		return nil, errors.New("at least one item is required")
 	}
 	o := &models.Order{
-		Type:  models.OrderTypeWalkIn,
-		Notes: req.Notes,
+		BranchID: branchID,
+		Type:     models.OrderTypeWalkIn,
+		Notes:    req.Notes,
 	}
 	return s.repo.Create(o, req.Items, orgID)
 }

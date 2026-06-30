@@ -45,14 +45,16 @@ func (h *BookingHandler) CreateIndividual(w http.ResponseWriter, r *http.Request
 	utils.RespondJSON(w, http.StatusCreated, booking)
 }
 
-// CreateFromRequest handles POST /api/v1/booking-requests/{request_id}/materialise
+// CreateFromRequest handles POST /api/v1/booking-requests/{request_id}/materialise.
+// Single-phase: the path value is the pending booking's ID; staff supply room
+// assignments and this promotes the pending booking to confirmed in place.
 func (h *BookingHandler) CreateFromRequest(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 	branchID := middleware.GetBranchIDFromContext(r.Context())
 
-	requestID, err := uuid.Parse(r.PathValue("request_id"))
+	bookingID, err := uuid.Parse(r.PathValue("request_id"))
 	if err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "Invalid request ID")
+		utils.RespondError(w, http.StatusBadRequest, "Invalid booking ID")
 		return
 	}
 
@@ -62,7 +64,7 @@ func (h *BookingHandler) CreateFromRequest(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	booking, err := h.service.CreateFromRequest(orgID, branchID, requestID, &matReq, nil)
+	booking, err := h.service.CreateFromBooking(orgID, branchID, bookingID, &matReq)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

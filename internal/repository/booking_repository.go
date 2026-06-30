@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"lodge-system/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type BookingRepository struct {
@@ -25,7 +27,9 @@ func (r *BookingRepository) Begin() (*sql.Tx, error) {
 }
 
 func (r *BookingRepository) Create(tx *sql.Tx, b *models.Booking) error {
-	b.ID = uuid.New()
+	if b.ID == uuid.Nil {
+		b.ID = uuid.New()
+	}
 	now := time.Now()
 	b.CreatedAt = now
 	b.UpdatedAt = now
@@ -35,24 +39,94 @@ func (r *BookingRepository) Create(tx *sql.Tx, b *models.Booking) error {
 		metadata = []byte(b.Metadata)
 	}
 
+	documents := b.Documents
+	if documents == nil {
+		documents = []string{}
+	}
+
 	return tx.QueryRow(`
 		INSERT INTO bookings (
 			id, org_id, branch_id,
 			booking_type, booker_type,
 			booker_name, booker_email, booker_phone,
 			web_user_id, cor_profile_id, company_id, request_id, venue_id,
-			total_amount, status, special_requests, overstayed, metadata,
+			total_amount, status, special_requests, overstayed, documents, metadata,
 			created_at, updated_at
 		) VALUES (
-			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
+			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21
 		) RETURNING booking_number`,
 		b.ID, b.OrgID, b.BranchID,
 		b.BookingType, b.BookerType,
 		b.BookerName, b.BookerEmail, b.BookerPhone,
 		b.WebUserID, b.CorProfileID, b.CompanyID, b.RequestID, b.VenueID,
-		b.TotalAmount, b.Status, b.SpecialRequests, b.Overstayed, metadata,
+		b.TotalAmount, b.Status, b.SpecialRequests, b.Overstayed, pq.Array(documents), metadata,
 		now, now,
 	).Scan(&b.BookingNumber)
+}
+
+// CreateOrPromote inserts a new booking, OR — if b.ID is already set and names an
+// existing pending booking — promotes that placeholder in place (updating its
+// fields and flipping pending → the supplied status). Child rows (attendees,
+// assignments, events, orders) attach to the same ID either way.
+//
+// This is the materialise choke point under the single-phase model: a customer
+// submission creates a pending booking up-front; on workflow approval the same
+// booking is promoted rather than duplicated. Staff walk-ins pass a nil ID and
+// always insert.
+func (r *BookingRepository) CreateOrPromote(tx *sql.Tx, b *models.Booking) error {
+	if b.ID != uuid.Nil {
+		var existingNumber string
+		err := tx.QueryRow(`
+			SELECT booking_number FROM bookings
+			WHERE id = $1 AND status = 'pending'`, b.ID).Scan(&existingNumber)
+		if err == nil {
+			// Promote the placeholder in place.
+			b.BookingNumber = existingNumber
+			b.UpdatedAt = time.Now()
+
+			var metadata interface{}
+			if len(b.Metadata) > 0 {
+				metadata = []byte(b.Metadata)
+			}
+			_, uerr := tx.Exec(`
+				UPDATE bookings SET
+					branch_id = $2, booking_type = $3, booker_type = $4,
+					booker_name = $5, booker_email = $6, booker_phone = $7,
+					web_user_id = $8, cor_profile_id = $9, company_id = $10, venue_id = $11,
+					total_amount = $12, status = $13, special_requests = $14,
+					metadata = $15, updated_at = $16
+				WHERE id = $1`,
+				b.ID, b.BranchID, b.BookingType, b.BookerType,
+				b.BookerName, b.BookerEmail, b.BookerPhone,
+				b.WebUserID, b.CorProfileID, b.CompanyID, b.VenueID,
+				b.TotalAmount, b.Status, b.SpecialRequests,
+				metadata, b.UpdatedAt,
+			)
+			return uerr
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		// b.ID set but no pending row — fall through to a normal insert with that ID.
+	}
+	return r.Create(tx, b)
+}
+
+// CreatePending inserts a parent-only booking in the 'pending' state with the full
+// submission envelope stored in metadata and no child rows. It runs in its own
+// transaction (submission is a single insert). The generated ID is set on b and is
+// later used as the workflow reference and the promote target on approval.
+func (r *BookingRepository) CreatePending(b *models.Booking) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	b.Status = models.BookingStatusPending
+	if err := r.Create(tx, b); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *BookingRepository) GetByID(id, orgID uuid.UUID) (*models.Booking, error) {
@@ -65,7 +139,7 @@ func (r *BookingRepository) GetByID(id, orgID uuid.UUID) (*models.Booking, error
 		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
 		       COALESCE(v.name, '')               AS venue_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
-		       b.created_at, b.updated_at, b.metadata
+		       b.created_at, b.updated_at, b.metadata, b.documents
 		FROM bookings b
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
 		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
@@ -96,6 +170,12 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		where = append(where, fmt.Sprintf("b.status = $%d", i))
 		args = append(args, status)
 		i++
+	} else {
+		// Pending bookings are unconfirmed customer submissions awaiting workflow
+		// approval. The back-office booking list hides them by default — staff act
+		// on them via the workflow task screen, not here. An explicit
+		// ?status=pending still surfaces them for anyone who wants that view.
+		where = append(where, "b.status <> 'pending'")
 	}
 	if from != nil {
 		where = append(where, fmt.Sprintf("b.created_at >= $%d", i))
@@ -228,7 +308,7 @@ func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, erro
 		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
 		       COALESCE(v.name, '')                            AS venue_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
-		       b.created_at, b.updated_at, b.metadata
+		       b.created_at, b.updated_at, b.metadata, b.documents
 		FROM bookings b
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
 		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
@@ -252,7 +332,7 @@ func (r *BookingRepository) ListByWebUserID(webUserID uuid.UUID, page, pageSize 
 		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
 		       COALESCE(v.name, '')                               AS venue_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
-		       b.created_at, b.updated_at, b.metadata
+		       b.created_at, b.updated_at, b.metadata, b.documents
 		FROM bookings b
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
 		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
@@ -368,7 +448,7 @@ func scanBooking(row bookingScanner) (*models.Booking, error) {
 		&companyName, &profileName, &venueName,
 		&b.TotalAmount, &b.Status, &specialRequests, &b.Overstayed,
 		&b.CreatedAt, &b.UpdatedAt,
-		&metadata,
+		&metadata, pq.Array(&b.Documents),
 	)
 	if err != nil {
 		return nil, err

@@ -15,15 +15,15 @@ import (
 )
 
 type BookingService struct {
-	bookingRepo    *repository.BookingRepository
-	attendeeRepo   *repository.BookingAttendeeRepository
-	assignmentRepo *repository.BookingRoomAssignmentRepository
-	requestRepo    *repository.CorporateBookingRequestRepository
-	guestRepo      *repository.CorporateGuestRepository
-	eventRepo      *repository.BookingEventRepository
-	venueRepo      *repository.VenueRepository
-	orderRepo      *repository.OrderRepository
-	invoiceSvc     *InvoiceService
+	bookingRepo      *repository.BookingRepository
+	attendeeRepo     *repository.BookingAttendeeRepository
+	assignmentRepo   *repository.BookingRoomAssignmentRepository
+	requestRepo      *repository.CorporateBookingRequestRepository
+	guestRepo        *repository.CorporateGuestRepository
+	eventRepo        *repository.BookingEventRepository
+	venueRepo        *repository.VenueRepository
+	orderRepo        *repository.OrderRepository
+	invoiceSvc       *InvoiceService
 }
 
 func NewBookingService(
@@ -56,6 +56,88 @@ func (s *BookingService) SetInvoiceService(inv *InvoiceService) {
 // into orders (one per named guest, plus a buffet order for top-level items).
 func (s *BookingService) SetOrderRepository(repo *repository.OrderRepository) {
 	s.orderRepo = repo
+}
+
+// SubmitPending creates a parent-only booking in the 'pending' state from a customer
+// submission. The full envelope is stored in metadata and decoded later at workflow
+// approval to materialise children (rooms / event sessions / meal orders). No child
+// rows or inventory are created here — a pending booking holds nothing until approved.
+func (s *BookingService) SubmitPending(in *models.PendingBookingInput) (*models.Booking, error) {
+	if in.BookerName == "" {
+		return nil, errors.New("booker_name is required")
+	}
+	b := &models.Booking{
+		OrgID:        in.OrgID,
+		BranchID:     in.BranchID,
+		BookingType:  in.BookingType,
+		BookerType:   in.BookerType,
+		BookerName:   in.BookerName,
+		BookerEmail:  in.BookerEmail,
+		BookerPhone:  in.BookerPhone,
+		WebUserID:    in.WebUserID,
+		CorProfileID: in.CorProfileID,
+		CompanyID:    in.CompanyID,
+		Status:       models.BookingStatusPending,
+		Documents:    in.Documents,
+		Metadata:     in.Metadata,
+	}
+	if err := s.bookingRepo.CreatePending(b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// GetForApproval loads a booking by ID for the workflow approval/materialise paths.
+func (s *BookingService) GetForApproval(id, orgID uuid.UUID) (*models.Booking, error) {
+	return s.bookingRepo.GetByID(id, orgID)
+}
+
+// GetByIDUnscoped loads a booking by ID without org scoping (used by web-user reads
+// that authorise via web_user_id ownership instead).
+func (s *BookingService) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {
+	return s.bookingRepo.GetByIDUnscoped(id)
+}
+
+// CancelForWebUser cancels a pending booking owned by the given web user. Only the
+// owner can cancel, and only while still pending. Returns the booking's org ID so the
+// caller can cancel the associated workflow.
+func (s *BookingService) CancelForWebUser(id, webUserID uuid.UUID) (uuid.UUID, error) {
+	b, err := s.bookingRepo.GetByIDUnscoped(id)
+	if err != nil {
+		return uuid.Nil, errors.New("booking not found")
+	}
+	if b.WebUserID == nil || *b.WebUserID != webUserID {
+		return uuid.Nil, errors.New("booking not found")
+	}
+	if b.Status != models.BookingStatusPending {
+		return uuid.Nil, errors.New("only pending bookings can be cancelled")
+	}
+	if err := s.SetStatus(id, b.OrgID, models.BookingStatusCancelled, models.BookingStatusPending); err != nil {
+		return uuid.Nil, err
+	}
+	return b.OrgID, nil
+}
+
+// SetStatus transitions a booking to newStatus, but only if it is currently in
+// fromStatus (an optimistic guard so a reject can't clobber an already-confirmed
+// booking). Used by the reject/cancel paths on pending bookings.
+func (s *BookingService) SetStatus(id, orgID uuid.UUID, newStatus, fromStatus string) error {
+	b, err := s.bookingRepo.GetByID(id, orgID)
+	if err != nil {
+		return errors.New("booking not found")
+	}
+	if b.Status != fromStatus {
+		return fmt.Errorf("booking is %s, expected %s", b.Status, fromStatus)
+	}
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := s.bookingRepo.UpdateStatus(tx, id, orgID, newStatus); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // generateInvoice is a best-effort hook: a booking that successfully commits should
@@ -116,7 +198,10 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, 
 		SpecialRequests: req.SpecialRequests,
 		Metadata:        metadata,
 	}
-	if err = s.bookingRepo.Create(tx, b); err != nil {
+	if req.PromoteID != nil {
+		b.ID = *req.PromoteID
+	}
+	if err = s.bookingRepo.CreateOrPromote(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create booking: %w", err)
 	}
 
@@ -171,6 +256,7 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, 
 func (s *BookingService) CreateIndividualEvent(
 	orgID uuid.UUID,
 	webUserID *uuid.UUID,
+	promoteID *uuid.UUID,
 	envelope *models.SubmitEventBookingRequest,
 	metadata json.RawMessage,
 ) (*models.Booking, error) {
@@ -208,7 +294,10 @@ func (s *BookingService) CreateIndividualEvent(
 		Status:      models.BookingStatusConfirmed,
 		Metadata:    metadata,
 	}
-	if err = s.bookingRepo.Create(tx, b); err != nil {
+	if promoteID != nil {
+		b.ID = *promoteID
+	}
+	if err = s.bookingRepo.CreateOrPromote(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create booking: %w", err)
 	}
 
@@ -224,22 +313,42 @@ func (s *BookingService) CreateIndividualEvent(
 	return b, nil
 }
 
-// ─── Corporate booking (materialise from approved request) ────────────────────
+// ─── Corporate booking (promote a pending booking) ────────────────────────────
 
-func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID, requestID uuid.UUID, matReq *models.MaterialiseRequest, webUserID *uuid.UUID) (*models.Booking, error) {
-	req, err := s.requestRepo.GetByID(requestID, orgID)
+// CreateFromBooking promotes a pending corporate booking (bookingID) into a confirmed
+// booking, materialising children from the envelope stored in the booking's metadata.
+// It builds a CorporateBookingRequest shim from the booking so the shared materialise
+// body (which predates single-phase) keeps working unchanged.
+func (s *BookingService) CreateFromBooking(orgID uuid.UUID, branchID *uuid.UUID, bookingID uuid.UUID, matReq *models.MaterialiseRequest) (*models.Booking, error) {
+	b, err := s.bookingRepo.GetByID(bookingID, orgID)
 	if err != nil {
-		return nil, errors.New("corporate booking request not found")
+		return nil, errors.New("booking not found")
 	}
-	if req.Status != models.CorporateBookingStatusApproved {
-		return nil, errors.New("only approved requests can be materialised into a booking")
+	if b.Status != models.BookingStatusPending {
+		return nil, errors.New("only pending bookings can be materialised")
 	}
 
-	// The materialise endpoint is called by staff (no web user JWT), so fall back
-	// to the web_user_id already stored on the request itself.
-	if webUserID == nil {
-		webUserID = req.WebUserID
+	req := &models.CorporateBookingRequest{
+		ID:           b.ID,
+		OrgID:        orgID,
+		BranchID:     b.BranchID,
+		CorProfileID: b.CorProfileID,
+		CompanyID:    b.CompanyID,
+		WebUserID:    b.WebUserID,
+		BookingType:  corporateTypeFromBooking(b.BookingType),
+		Status:       models.CorporateBookingStatusApproved,
+		Payload:      b.Metadata,
+		ProfileName:  b.BookerName,
+		AuthoriserEmail: b.BookerEmail,
+		AuthoriserPhone: b.BookerPhone,
 	}
+	return s.createCorporateBooking(orgID, branchID, req, matReq, b.WebUserID, &bookingID)
+}
+
+// createCorporateBooking is the shared materialise body. promoteID, when set,
+// promotes that pending booking in place rather than inserting a new row.
+func (s *BookingService) createCorporateBooking(orgID uuid.UUID, branchID *uuid.UUID, req *models.CorporateBookingRequest, matReq *models.MaterialiseRequest, webUserID *uuid.UUID, promoteID *uuid.UUID) (*models.Booking, error) {
+	var err error
 
 	// Only accommodation requests require room assignments
 	if req.BookingType == models.CorporateBookingTypeAccommodation {
@@ -355,11 +464,13 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 		CorProfileID: req.CorProfileID,
 		CompanyID:    req.CompanyID,
 		WebUserID:    webUserID,
-		RequestID:    &requestID,
 		Status:       models.BookingStatusConfirmed,
 		Metadata:     meta,
 	}
-	if err = s.bookingRepo.Create(tx, b); err != nil {
+	if promoteID != nil {
+		b.ID = *promoteID
+	}
+	if err = s.bookingRepo.CreateOrPromote(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create booking: %w", err)
 	}
 
@@ -441,7 +552,7 @@ func (s *BookingService) CreateFromRequest(orgID uuid.UUID, branchID *uuid.UUID,
 	// their attendee_id + items) plus one buffet order for top-level items. Prices
 	// are looked up from menu_items by the order repo.
 	if req.BookingType == models.CorporateBookingTypeMeals {
-		if err = s.materialiseMealOrders(orgID, b.ID, &mealsPayload, guestAttendeeIDs); err != nil {
+		if err = s.materialiseMealOrders(orgID, b.ID, &mealsPayload, guestAttendeeIDs, b.BranchID); err != nil {
 			return nil, err
 		}
 	}
@@ -491,6 +602,7 @@ func (s *BookingService) materialiseMealOrders(
 	orgID, bookingID uuid.UUID,
 	payload *models.SubmitMealsRequest,
 	guestAttendeeIDs []uuid.UUID,
+	branchID *uuid.UUID,
 ) error {
 	if s.orderRepo == nil {
 		return errors.New("orders are not configured; cannot materialise meals booking")
@@ -519,6 +631,7 @@ func (s *BookingService) materialiseMealOrders(
 		}
 		attendeeID := guestAttendeeIDs[i]
 		order := &models.Order{
+			BranchID:   branchID,
 			BookingID:  &bookingID,
 			AttendeeID: &attendeeID,
 			Type:       models.OrderTypeInHouse,
@@ -531,6 +644,7 @@ func (s *BookingService) materialiseMealOrders(
 	// Buffet / shared order from top-level items (no attendee).
 	if buffet := toOrderItems(payload.Items); len(buffet) > 0 {
 		order := &models.Order{
+			BranchID:  branchID,
 			BookingID: &bookingID,
 			Type:      models.OrderTypeInHouse,
 			Notes:     "Buffet / shared order",
@@ -744,7 +858,7 @@ func (s *BookingService) materialiseEventSessions(
 // CreateIndividualMeal materialises an approved individual meal request into a
 // bookings record + one order per session (per-attendant for detailed mode,
 // per-session for headcount/buffet mode).
-func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.UUID, envelope *models.SubmitMealBookingRequest, metadata json.RawMessage) (*models.Booking, error) {
+func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitMealBookingRequest, metadata json.RawMessage) (*models.Booking, error) {
 	tx, err := s.bookingRepo.Begin()
 	if err != nil {
 		return nil, err
@@ -757,6 +871,7 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 
 	b := &models.Booking{
 		OrgID:       orgID,
+		BranchID:    envelope.BranchID,
 		BookingType: models.BookingTypeMeals,
 		BookerType:  models.BookerTypeIndividual,
 		BookerName:  envelope.BookedBy.Name,
@@ -766,7 +881,10 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 		Status:      models.BookingStatusConfirmed,
 		Metadata:    metadata,
 	}
-	if err = s.bookingRepo.Create(tx, b); err != nil {
+	if promoteID != nil {
+		b.ID = *promoteID
+	}
+	if err = s.bookingRepo.CreateOrPromote(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create meals booking: %w", err)
 	}
 
@@ -776,7 +894,7 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 		return nil, err
 	}
 
-	if err = s.materialiseMealSessions(orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs); err != nil {
+	if err = s.materialiseMealSessions(orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs, b.BranchID); err != nil {
 		return nil, err
 	}
 
@@ -790,7 +908,7 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 
 // CreateCorporateMeal materialises an approved corporate meal request (Flow B)
 // into a bookings record + orders using the same session engine.
-func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, companyID *uuid.UUID, webUserID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, companyID *uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	tx, err := s.bookingRepo.Begin()
 	if err != nil {
 		return nil, err
@@ -817,7 +935,10 @@ func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, comp
 	if envelope.BranchID != nil {
 		b.BranchID = envelope.BranchID
 	}
-	if err = s.bookingRepo.Create(tx, b); err != nil {
+	if promoteID != nil {
+		b.ID = *promoteID
+	}
+	if err = s.bookingRepo.CreateOrPromote(tx, b); err != nil {
 		return nil, fmt.Errorf("failed to create meals booking: %w", err)
 	}
 
@@ -826,7 +947,7 @@ func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, comp
 		return nil, err
 	}
 
-	if err = s.materialiseMealSessions(orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs); err != nil {
+	if err = s.materialiseMealSessions(orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs, b.BranchID); err != nil {
 		return nil, err
 	}
 
@@ -868,6 +989,7 @@ func (s *BookingService) materialiseMealSessions(
 	meal *models.MealBlock,
 	attendants []models.CorBookingAttendant,
 	attendeeIDs []uuid.UUID,
+	branchID *uuid.UUID,
 ) error {
 	if s.orderRepo == nil {
 		return errors.New("order repository not configured")
@@ -906,6 +1028,7 @@ func (s *BookingService) materialiseMealSessions(
 					attendeeID = &aid
 				}
 				order := &models.Order{
+					BranchID:     branchID,
 					BookingID:    &bookingID,
 					AttendeeID:   attendeeID,
 					Type:         models.OrderTypeInHouse,
@@ -927,6 +1050,7 @@ func (s *BookingService) materialiseMealSessions(
 				pax = 1
 			}
 			order := &models.Order{
+				BranchID:     branchID,
 				BookingID:    &bookingID,
 				Type:         models.OrderTypeInHouse,
 				ScheduledFor: &scheduledFor,
@@ -1022,6 +1146,19 @@ func bookingTypeFromRequest(t string) string {
 		return models.BookingTypeEvent
 	default:
 		return models.BookingTypeRoom
+	}
+}
+
+// corporateTypeFromBooking maps a booking_type back to the corporate request type the
+// shared materialise body switches on.
+func corporateTypeFromBooking(t string) string {
+	switch t {
+	case models.BookingTypeMeals:
+		return models.CorporateBookingTypeMeals
+	case models.BookingTypeEvent:
+		return models.CorporateBookingTypeEvent
+	default:
+		return models.CorporateBookingTypeAccommodation
 	}
 }
 

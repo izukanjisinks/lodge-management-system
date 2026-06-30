@@ -161,6 +161,65 @@ func (r *CorporateBookingRequestRepository) List(orgID uuid.UUID, bookingType, s
 	return reqs, total, nil
 }
 
+func (r *CorporateBookingRequestRepository) ListByWebUserID(webUserID uuid.UUID, page, pageSize int) ([]models.CorporateBookingRequest, int, error) {
+	offset := (page - 1) * pageSize
+
+	var total int
+	if err := r.db.QueryRow(
+		`SELECT COUNT(*) FROM corporate_booking_requests WHERE web_user_id = $1`, webUserID,
+	).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := r.db.Query(`
+		SELECT
+			cbr.id, cbr.org_id, cbr.branch_id, cbr.cor_profile_id, cbr.company_id, cbr.web_user_id,
+			cbr.booking_type, cbr.status,
+			cbr.reason_for_booking, cbr.notes,
+			cbr.authoriser_name, cbr.authoriser_email, cbr.authoriser_phone,
+			cbr.authoriser_title, cbr.authoriser_department, cbr.authoriser_gl_code,
+			cbr.documents, cbr.payload, cbr.created_at, cbr.updated_at,
+			c.company_name, b.name, CONCAT(p.first_name, ' ', p.last_name)
+		FROM corporate_booking_requests cbr
+		LEFT JOIN cor_company_details c ON c.id = cbr.company_id
+		LEFT JOIN cor_branch_details b  ON b.id = cbr.branch_id
+		LEFT JOIN cor_profiles p        ON p.id = cbr.cor_profile_id
+		WHERE cbr.web_user_id = $1
+		ORDER BY cbr.created_at DESC
+		LIMIT $2 OFFSET $3`, webUserID, pageSize, offset,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var reqs []models.CorporateBookingRequest
+	for rows.Next() {
+		var req models.CorporateBookingRequest
+		var payloadBytes []byte
+		var companyName, branchName, profileName sql.NullString
+		if err := rows.Scan(
+			&req.ID, &req.OrgID, &req.BranchID, &req.CorProfileID, &req.CompanyID, &req.WebUserID,
+			&req.BookingType, &req.Status,
+			&req.ReasonForBooking, &req.Notes,
+			&req.AuthoriserName, &req.AuthoriserEmail, &req.AuthoriserPhone,
+			&req.AuthoriserTitle, &req.AuthoriserDepartment, &req.AuthoriserGLCode,
+			pq.Array(&req.Documents), &payloadBytes, &req.CreatedAt, &req.UpdatedAt,
+			&companyName, &branchName, &profileName,
+		); err != nil {
+			return nil, 0, err
+		}
+		if len(payloadBytes) > 0 {
+			req.Payload = json.RawMessage(payloadBytes)
+		}
+		req.CompanyName = companyName.String
+		req.BranchName = branchName.String
+		req.ProfileName = profileName.String
+		reqs = append(reqs, req)
+	}
+	return reqs, total, nil
+}
+
 func (r *CorporateBookingRequestRepository) UpdateStatus(id, orgID uuid.UUID, status string) error {
 	res, err := r.db.Exec(`
 		UPDATE corporate_booking_requests SET status = $1, updated_at = NOW()

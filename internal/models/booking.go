@@ -37,6 +37,7 @@ const (
 	BookingStatusCheckedIn  = "checked_in"
 	BookingStatusCheckedOut = "checked_out"
 	BookingStatusCancelled  = "cancelled"
+	BookingStatusRejected   = "rejected"
 
 	BookingTypeRoom       = "accommodation"
 	BookingTypeMeals      = "meals"
@@ -54,11 +55,12 @@ const (
 )
 
 var ValidBookingTransitions = map[string][]string{
-	BookingStatusPending:    {BookingStatusConfirmed, BookingStatusCancelled},
+	BookingStatusPending:    {BookingStatusConfirmed, BookingStatusCancelled, BookingStatusRejected},
 	BookingStatusConfirmed:  {BookingStatusCheckedIn, BookingStatusCancelled},
 	BookingStatusCheckedIn:  {BookingStatusCheckedOut},
 	BookingStatusCheckedOut: {},
 	BookingStatusCancelled:  {},
+	BookingStatusRejected:   {},
 }
 
 // ─── Core structs ─────────────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ type Booking struct {
 	Status          string          `json:"status"`
 	SpecialRequests string          `json:"special_requests,omitempty"`
 	Overstayed      bool            `json:"overstayed"`
+	Documents       []string        `json:"documents,omitempty"`
 	Metadata        json.RawMessage `json:"metadata,omitempty"`
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
@@ -172,6 +175,11 @@ type CreateIndividualBookingRequest struct {
 	CheckOut        DateOnly        `json:"check_out"`
 	SpecialRequests string          `json:"special_requests,omitempty"`
 	Metadata        json.RawMessage `json:"metadata,omitempty"`
+
+	// PromoteID names the pending booking to promote in place (set at workflow
+	// approval, so the placeholder created at submission becomes the confirmed
+	// booking rather than spawning a duplicate). Nil for staff walk-ins.
+	PromoteID *uuid.UUID `json:"-"`
 }
 
 type CreateAttendeeRequest struct {

@@ -86,7 +86,7 @@ func (s *CorporateBookingRequestService) venueBranchID(orgID, venueID uuid.UUID)
 
 // ─── Submission ───────────────────────────────────────────────────────────────
 
-func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitAccommodationRequest) (*models.CorporateBookingRequest, error) {
+func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitAccommodationRequest) (*models.Booking, error) {
 	// Validate required fields
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
@@ -136,7 +136,7 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, we
 		Department: req.Company.DepartmentName,
 	}
 
-	companyID, branchIDPtr, corProfileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	companyID, _, corProfileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -149,41 +149,32 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, we
 	if webUserID != uuid.Nil {
 		webUserIDPtr = &webUserID
 	}
-	r := &models.CorporateBookingRequest{
-		OrgID:            orgID,
-		BranchID:         branchIDPtr,
-		CorProfileID:     &corProfileID,
-		CompanyID:        &companyID,
-		WebUserID:        webUserIDPtr,
-		BookingType:      models.CorporateBookingTypeAccommodation,
-		Status:           models.CorporateBookingStatusPending,
-		Notes:            req.Accommodation.Notes,
-		Documents:        req.Documents,
-		Payload:          payload,
-		ProfileName:      req.BookedBy.Name,
-		CompanyName:      req.Company.Name,
-	}
-	// Map approver fields from the nested approver object
-	if req.Approver != nil {
-		r.AuthoriserName = req.Approver.Name
-		r.AuthoriserEmail = req.Approver.Email
-		r.AuthoriserPhone = req.Approver.Phone
-		r.AuthoriserTitle = req.Approver.Title
-	}
 
-	if err := s.requestRepo.Create(r); err != nil {
+	booking, err := s.booking.SubmitPending(&models.PendingBookingInput{
+		OrgID:        orgID,
+		BranchID:     req.BranchID, // lodge branch from URL, not cor_branch_details ID
+		WebUserID:    webUserIDPtr,
+		CorProfileID: &corProfileID,
+		CompanyID:    &companyID,
+		BookerType:   models.BookerTypeCorporate,
+		BookerName:   req.BookedBy.Name,
+		BookingType:  models.CorporateBookingTypeAccommodation,
+		Documents:    req.Documents,
+		Metadata:     payload,
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	s.startWorflow(r, orgID)
-	return r, nil
+	s.startWorflow(booking, req.Company.Name)
+	return booking, nil
 }
 
 // SubmitEventBooking handles the standalone event envelope (Flow B) from
 // eventBooking.js for corporate bookers. It maps the nested company/approver/
 // booked_by into the ResolveChain inputs, stores the whole envelope as JSONB, and
 // starts the approval workflow.
-func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.CorporateBookingRequest, error) {
+func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -226,7 +217,7 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, web
 		Department: req.Company.DepartmentName,
 	}
 
-	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	companyID, _, profileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -237,40 +228,31 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, web
 	if webUserID != uuid.Nil {
 		webUserIDPtr = &webUserID
 	}
-	r := &models.CorporateBookingRequest{
-		OrgID:            orgID,
-		BranchID:         branchID,
-		CorProfileID:     &profileID,
-		CompanyID:        &companyID,
-		WebUserID:        webUserIDPtr,
-		BookingType:      models.CorporateBookingTypeEvent,
-		Status:           models.CorporateBookingStatusPending,
-		ReasonForBooking: req.Event.ReasonForBooking,
-		Notes:            req.Event.Notes,
-		Documents:        req.Documents,
-		Payload:          json.RawMessage(payloadBytes),
-		ProfileName:      req.BookedBy.Name,
-		CompanyName:      req.Company.Name,
-	}
-	if req.Approver != nil {
-		r.AuthoriserName = req.Approver.Name
-		r.AuthoriserEmail = req.Approver.Email
-		r.AuthoriserPhone = req.Approver.Phone
-		r.AuthoriserTitle = req.Approver.Title
-	}
 
-	if err := s.requestRepo.Create(r); err != nil {
+	booking, err := s.booking.SubmitPending(&models.PendingBookingInput{
+		OrgID:        orgID,
+		BranchID:     req.BranchID,
+		WebUserID:    webUserIDPtr,
+		CorProfileID: &profileID,
+		CompanyID:    &companyID,
+		BookerType:   models.BookerTypeCorporate,
+		BookerName:   req.BookedBy.Name,
+		BookingType:  models.CorporateBookingTypeEvent,
+		Documents:    req.Documents,
+		Metadata:     json.RawMessage(payloadBytes),
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	s.startWorflow(r, orgID)
-	return r, nil
+	s.startWorflow(booking, req.Company.Name)
+	return booking, nil
 }
 
 // SubmitMealBooking handles the standalone meal envelope (Flow B) from
 // mealBooking.js for corporate bookers. Stores the whole envelope as JSONB and
 // starts the approval workflow.
-func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.CorporateBookingRequest, error) {
+func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -301,7 +283,7 @@ func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webU
 		Department: req.Company.DepartmentName,
 	}
 
-	companyID, branchID, profileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	companyID, _, profileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -312,47 +294,82 @@ func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webU
 	if webUserID != uuid.Nil {
 		webUserIDPtr = &webUserID
 	}
-	r := &models.CorporateBookingRequest{
-		OrgID:            orgID,
-		BranchID:         branchID,
-		CorProfileID:     &profileID,
-		CompanyID:        &companyID,
-		WebUserID:        webUserIDPtr,
-		BookingType:      models.CorporateBookingTypeMeals,
-		Status:           models.CorporateBookingStatusPending,
-		ReasonForBooking: req.Meal.ReasonForBooking,
-		Notes:            req.Meal.Notes,
-		Documents:        req.Documents,
-		Payload:          json.RawMessage(payloadBytes),
-		ProfileName:      req.BookedBy.Name,
-		CompanyName:      req.Company.Name,
-	}
-	if req.Approver != nil {
-		r.AuthoriserName = req.Approver.Name
-		r.AuthoriserEmail = req.Approver.Email
-		r.AuthoriserPhone = req.Approver.Phone
-		r.AuthoriserTitle = req.Approver.Title
-	}
 
-	if err := s.requestRepo.Create(r); err != nil {
+	booking, err := s.booking.SubmitPending(&models.PendingBookingInput{
+		OrgID:        orgID,
+		BranchID:     req.BranchID,
+		WebUserID:    webUserIDPtr,
+		CorProfileID: &profileID,
+		CompanyID:    &companyID,
+		BookerType:   models.BookerTypeCorporate,
+		BookerName:   req.BookedBy.Name,
+		BookingType:  models.CorporateBookingTypeMeals,
+		Documents:    req.Documents,
+		Metadata:     json.RawMessage(payloadBytes),
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	s.startWorflow(r, orgID)
-	return r, nil
+	s.startWorflow(booking, req.Company.Name)
+	return booking, nil
 }
 
 // ─── Backoffice ───────────────────────────────────────────────────────────────
 
+// GetByID returns a pending corporate booking shaped as a CorporateBookingRequest so
+// the existing back-office task screen (which reads .payload/.booking_type) keeps
+// working. Single-phase: the id is a booking ID and the payload comes from metadata.
 func (s *CorporateBookingRequestService) GetByID(id, orgID uuid.UUID) (*models.CorporateBookingRequest, error) {
-	req, err := s.requestRepo.GetByID(id, orgID)
-	if err != nil {
-		return nil, err
+	if s.booking == nil {
+		return nil, errors.New("booking service not configured")
 	}
+	b, err := s.booking.GetForApproval(id, orgID)
+	if err != nil {
+		return nil, errors.New("booking not found")
+	}
+	req := bookingToCorporateRequest(b)
 	if req.BookingType == models.CorporateBookingTypeMeals {
 		req.MealsSummary = s.buildMealsSummary(orgID, req.Payload)
 	}
 	return req, nil
+}
+
+// bookingToCorporateRequest maps a booking back into the legacy request shape the
+// back-office expects (payload ← metadata, status mapped to request vocabulary).
+func bookingToCorporateRequest(b *models.Booking) *models.CorporateBookingRequest {
+	return &models.CorporateBookingRequest{
+		ID:           b.ID,
+		OrgID:        b.OrgID,
+		BranchID:     b.BranchID,
+		CorProfileID: b.CorProfileID,
+		CompanyID:    b.CompanyID,
+		WebUserID:    b.WebUserID,
+		BookingType:  corporateTypeFromBooking(b.BookingType),
+		Status:       requestStatusFromBooking(b.Status),
+		Documents:    b.Documents,
+		Payload:      b.Metadata,
+		ProfileName:  b.BookerName,
+		CompanyName:  b.CompanyName,
+		CreatedAt:    b.CreatedAt,
+		UpdatedAt:    b.UpdatedAt,
+	}
+}
+
+// requestStatusFromBooking maps a booking status to the request-status vocabulary the
+// back-office task UI was written against.
+func requestStatusFromBooking(s string) string {
+	switch s {
+	case models.BookingStatusPending:
+		return models.CorporateBookingStatusPending
+	case models.BookingStatusRejected:
+		return models.CorporateBookingStatusRejected
+	case models.BookingStatusCancelled:
+		return models.CorporateBookingStatusCancelled
+	default:
+		// confirmed / checked_in / checked_out all mean "approved & materialised"
+		return models.CorporateBookingStatusApproved
+	}
 }
 
 // buildMealsSummary resolves each menu_item_id in a meals payload to its current
@@ -423,8 +440,22 @@ func (s *CorporateBookingRequestService) buildMealsSummary(orgID uuid.UUID, payl
 	return summary
 }
 
+// List returns pending corporate bookings shaped as requests for the back-office
+// "booking requests" screen. Single-phase: pending bookings ARE the requests.
 func (s *CorporateBookingRequestService) List(orgID uuid.UUID, bookingType, status string, page, pageSize int) ([]models.CorporateBookingRequest, int, error) {
-	return s.requestRepo.List(orgID, bookingType, status, page, pageSize)
+	if s.booking == nil {
+		return nil, 0, errors.New("booking service not configured")
+	}
+	// A request screen shows things awaiting action → pending bookings.
+	bookings, total, err := s.booking.List(orgID, models.BookerTypeCorporate, bookingType, models.BookingStatusPending, nil, nil, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]models.CorporateBookingRequest, 0, len(bookings))
+	for i := range bookings {
+		out = append(out, *bookingToCorporateRequest(&bookings[i]))
+	}
+	return out, total, nil
 }
 
 // ApproveFromWorkflow / RejectFromWorkflow satisfy the workflow's
@@ -438,101 +469,108 @@ func (s *CorporateBookingRequestService) RejectFromWorkflow(id, orgID uuid.UUID)
 	return s.Reject(id, orgID)
 }
 
+// Approve promotes a pending corporate booking (id is the booking ID). Event and
+// meals bookings are self-contained (venue/menu chosen at submission) and promote in
+// place to confirmed immediately. Accommodation needs staff to assign rooms, so it
+// stays pending here — the materialise endpoint promotes it once rooms are assigned.
 func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
-	req, err := s.requestRepo.GetByID(id, orgID)
+	if s.booking == nil {
+		return errors.New("booking service not configured")
+	}
+	b, err := s.booking.GetForApproval(id, orgID)
 	if err != nil {
-		return err
+		return errors.New("booking not found")
 	}
-	if req.Status != models.CorporateBookingStatusPending {
-		return errors.New("only pending requests can be approved")
+	if b.Status == models.BookingStatusConfirmed {
+		// Accommodation: materialise already promoted this booking before the
+		// workflow step fired. Nothing left to do.
+		return nil
 	}
-	if err := s.requestRepo.UpdateStatus(id, orgID, models.CorporateBookingStatusApproved); err != nil {
-		return err
+	if b.Status != models.BookingStatusPending {
+		return errors.New("only pending bookings can be approved")
 	}
 
-	// Event and meals requests are self-contained (venue/menu chosen at submission),
-	// so approval materialises the booking automatically — no separate staff step.
-	// Accommodation still needs staff to assign rooms, so it stays approved-only.
-	if s.booking != nil && req.BookingType == models.CorporateBookingTypeEvent {
+	switch b.BookingType {
+	case models.CorporateBookingTypeEvent:
 		var lodgeBranchID *uuid.UUID
 		var envelope models.SubmitEventBookingRequest
-		if json.Unmarshal(req.Payload, &envelope) == nil && envelope.Event != nil && len(envelope.Event.Sessions) > 0 {
+		if json.Unmarshal(b.Metadata, &envelope) == nil && envelope.Event != nil && len(envelope.Event.Sessions) > 0 {
 			if vID, err := uuid.Parse(envelope.Event.Sessions[0].VenueID); err == nil {
 				lodgeBranchID = s.venueBranchID(orgID, vID)
 			}
 		} else {
 			var legacy models.SubmitEventRequest
-			_ = json.Unmarshal(req.Payload, &legacy)
+			_ = json.Unmarshal(b.Metadata, &legacy)
 			lodgeBranchID = s.venueBranchID(orgID, legacy.VenueID)
 		}
-
-		if _, err := s.booking.CreateFromRequest(orgID, lodgeBranchID, id, nil, req.WebUserID); err != nil {
-			return fmt.Errorf("request approved but booking creation failed: %w", err)
+		if _, err := s.booking.CreateFromBooking(orgID, lodgeBranchID, id, nil); err != nil {
+			return fmt.Errorf("approved but booking promotion failed: %w", err)
 		}
-	}
-	if s.booking != nil && req.BookingType == models.CorporateBookingTypeMeals {
+
+	case models.CorporateBookingTypeMeals:
 		var envelope models.SubmitMealBookingRequest
-		if json.Unmarshal(req.Payload, &envelope) == nil && envelope.Meal != nil && len(envelope.Meal.Sessions) > 0 {
-			if _, err := s.booking.CreateCorporateMeal(orgID, req.CorProfileID, req.CompanyID, req.WebUserID, &envelope); err != nil {
-				return fmt.Errorf("request approved but meals booking creation failed: %w", err)
+		if json.Unmarshal(b.Metadata, &envelope) == nil && envelope.Meal != nil && len(envelope.Meal.Sessions) > 0 {
+			if _, err := s.booking.CreateCorporateMeal(orgID, b.CorProfileID, b.CompanyID, b.WebUserID, &id, &envelope); err != nil {
+				return fmt.Errorf("approved but meals promotion failed: %w", err)
 			}
 		} else {
-			if _, err := s.booking.CreateFromRequest(orgID, nil, id, nil, req.WebUserID); err != nil {
-				return fmt.Errorf("request approved but booking creation failed: %w", err)
+			if _, err := s.booking.CreateFromBooking(orgID, nil, id, nil); err != nil {
+				return fmt.Errorf("approved but booking promotion failed: %w", err)
 			}
 		}
+
+	default:
+		// Accommodation: leave pending until staff assign rooms via the materialise
+		// endpoint. Nothing to do here — approval is recorded by the workflow itself.
 	}
 	return nil
 }
 
+// Reject marks a pending corporate booking as rejected.
 func (s *CorporateBookingRequestService) Reject(id, orgID uuid.UUID) error {
-	req, err := s.requestRepo.GetByID(id, orgID)
-	if err != nil {
-		return err
+	if s.booking == nil {
+		return errors.New("booking service not configured")
 	}
-	if req.Status != models.CorporateBookingStatusPending {
-		return errors.New("only pending requests can be rejected")
-	}
-	return s.requestRepo.UpdateStatus(id, orgID, models.CorporateBookingStatusRejected)
+	return s.booking.SetStatus(id, orgID, models.BookingStatusRejected, models.BookingStatusPending)
 }
 
+// Cancel marks a pending corporate booking as cancelled.
 func (s *CorporateBookingRequestService) Cancel(id, orgID uuid.UUID) error {
-	req, err := s.requestRepo.GetByID(id, orgID)
-	if err != nil {
-		return err
+	if s.booking == nil {
+		return errors.New("booking service not configured")
 	}
-	if req.Status == models.CorporateBookingStatusApproved {
-		return errors.New("approved requests cannot be cancelled")
-	}
-	return s.requestRepo.UpdateStatus(id, orgID, models.CorporateBookingStatusCancelled)
+	return s.booking.SetStatus(id, orgID, models.BookingStatusCancelled, models.BookingStatusPending)
 }
 
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 
-func (s *CorporateBookingRequestService) startWorflow(r *models.CorporateBookingRequest, orgID uuid.UUID) {
+// startWorflow kicks off the booking-approval workflow for a pending corporate
+// booking. TaskID is the booking ID (single-phase): a terminal approve/reject
+// promotes or rejects that same booking row. companyName is the display label.
+func (s *CorporateBookingRequestService) startWorflow(b *models.Booking, companyName string) {
 	if s.workflow == nil {
 		return
 	}
 	go func() {
 		taskDetails := models.TaskDetails{
-			TaskID:          r.ID.String(),
-			TaskRef:         r.ID.String()[:8],
+			TaskID:          b.ID.String(),
+			TaskRef:         b.ID.String()[:8],
 			TaskType:        "corporate_booking",
-			TaskDescription: "Corporate " + r.BookingType + " booking request from " + r.CompanyName,
+			TaskDescription: "Corporate " + b.BookingType + " booking request from " + companyName,
 			SenderDetails: models.SenderDetails{
-				SenderID:   r.ID.String(),
-				SenderName: r.CompanyName,
-				Position:   r.BookingType,
+				SenderID:   b.ID.String(),
+				SenderName: companyName,
+				Position:   b.BookingType,
 				Department: "Guest",
 			},
 		}
 		if _, err := s.workflow.InitiateWorkflow(
 			models.WorkflowTypeBookingApproval,
 			taskDetails,
-			r.ID.String(),
+			b.ID.String(),
 			"medium",
 			nil,
-			orgID.String(),
+			b.OrgID.String(),
 		); err != nil {
 			_ = err
 		}

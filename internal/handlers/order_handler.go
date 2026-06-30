@@ -115,7 +115,8 @@ func (h *OrderHandler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	order, err := h.service.PlaceOrder(orgID, &req)
+	branchID, _ := middleware.ResolveBranchID(r)
+	order, err := h.service.PlaceOrder(orgID, branchID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -132,7 +133,8 @@ func (h *OrderHandler) PlaceWalkInOrder(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	order, err := h.service.PlaceWalkInOrder(orgID, &req)
+	branchID, _ := middleware.ResolveBranchID(r)
+	order, err := h.service.PlaceWalkInOrder(orgID, branchID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

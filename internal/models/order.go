@@ -18,6 +18,7 @@ const (
 type Order struct {
 	ID            uuid.UUID    `json:"id"`
 	OrgID         uuid.UUID    `json:"org_id"`
+	BranchID      *uuid.UUID   `json:"branch_id,omitempty"`
 	BookingID     *uuid.UUID   `json:"booking_id,omitempty"`
 	AttendeeID    *uuid.UUID   `json:"attendee_id,omitempty"`
 	BookingNumber string       `json:"booking_number,omitempty"`

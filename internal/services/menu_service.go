@@ -1,6 +1,7 @@
 package services
 
 import (
+	"database/sql"
 	"errors"
 
 	"lodge-system/internal/models"
@@ -108,6 +109,13 @@ func (s *MenuService) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
 
 func (s *MenuService) GuestGetMenu(orgID uuid.UUID, branchID *uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
 	menu, err := s.repo.GuestGetMenu(orgID, branchID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// No menu configured for this lodge yet — return an empty menu rather
+		// than 404 so the guest meals tab simply shows nothing to order.
+		return &models.MenuResponse{
+			Items: models.MenuItemsPage{Data: []models.MenuItem{}, Page: page, PageSize: pageSize, Total: 0},
+		}, nil
+	}
 	if err != nil {
 		return nil, errors.New("menu not found")
 	}

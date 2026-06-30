@@ -322,7 +322,7 @@ func (r *MenuRepository) GuestGetMenu(orgID uuid.UUID, branchID *uuid.UUID) (*mo
 			SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
 			FROM menus
 			WHERE org_id = $1 AND branch_id = $2 AND is_active = TRUE
-			LIMIT 1`, orgID, branchID).
+			LIMIT 1`, orgID, *branchID).
 			Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, err
